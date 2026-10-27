@@ -151,3 +151,10 @@ Vercel Hobby is intended for **personal non-commercial use**; a public branded s
 CamMicGo SEO Agent's original code is published under the [MIT license](./LICENSE). Third-party dependencies retain their respective licenses and attribution requirements.
 
 Made by **[CamMicGo](https://www.cammicgo.com)** — free webcam, microphone, headphone and device tests.
+
+### October 2026 interface update
+
+- GA4 date labels are formatted with abbreviated month names (for example, `09 Oct`) instead of raw `20261009` strings.
+- Google sign-in uses a multicolour G symbol and higher-contrast button styling.
+- The Ads beta draft now explicitly specifies a **CAMPAIGN_TOTAL** budget in euros. For future real Google Ads API creation, use `CampaignBudget.total_amount_micros` and a campaign start/end date with a supported bidding strategy; **do not substitute an average daily budget**. The preview does not submit advertisements, charge money, or guarantee eligibility for campaign creation. Official guidance: https://developers.google.com/google-ads/api/docs/campaigns/budgets/overview
+- The geographic map remains a simplified illustration with basic per-country cards, not yet the fully geographically accurate interactive choropleth requested. Scenic artwork and reusable country popups are still planned.
