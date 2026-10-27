@@ -38,7 +38,13 @@ CamMicGo SEO Agent is a **free, open-source alternative to GSC Wizard**, focused
 | SEO opportunities and content briefs | ❌ | ❌ | ✅ |
 | Local stdio MCP | ❌ | ❌ | ✅ |\n| Calendar, YouTube and Google Ads | ❌ | ❌ | Modular read-only opt-in integrations |
 
-The GA4 dashboard now includes a date-selectable 28-day traffic chart and an interactive country overview with a schematic map and sortable-style ranked country list. The map uses approximate country centroids rather than visitor locations. Charts and country data are available only after browser OAuth; these private data tools are not yet callable from public MCP.\n\n### Current UI
+The GA4 dashboard now includes a date-selectable 28-day traffic chart and an interactive country overview with a schematic map and sortable-style ranked country list. The map uses approximate country centroids rather than visitor locations. Charts and country data are available only after browser OAuth; these private data tools are not yet callable from public MCP.\n\n### Google Ads campaign planner (preview)
+
+The connected web dashboard now links to **[/dashboard/ads](https://seo.cammicgo.com/dashboard/ads)**. This prepares an example CamMicGo Search campaign with a **maximum €150 entered budget, maximum seven days, selectable countries and keywords**. **No Google Ads account or campaign is accessed; nothing is created or charged.** The authenticated private MCP beta includes a non-spending `prepare_ads_campaign` tool, but the beta is disabled by default. Google Ads OAuth, project access approval, account/manager selection, `validate_only` API validation, server-side controls, revocation, customer currency/timezone validation, durable quotas and human confirmation must be delivered and tested before enabling campaign mutations.
+
+**Budget caution:** Google Ads average daily budgets may overdeliver on individual days and don't by themselves guarantee an exact seven-day total. A real spend ceiling requires careful campaign scheduling, monitoring and separate user authorization. A €150 preview is not a guaranteed charge cap.
+
+### Current UI
 
 Connect: https://seo.cammicgo.com/connect  
 Dashboard: https://seo.cammicgo.com/dashboard  
