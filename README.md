@@ -21,7 +21,7 @@
 
 ## What is this?
 
-CamMicGo SEO Agent is a **free, open-source SEO-focused Google connector** for human users and, eventually, their own AI agents. It is **not a fork of Gum** and does **not yet implement Gum's full Google API catalog**. Gum is a broad CLI + local MCP tool for many Google services; this project focuses on Search Console and GA4, with a browser-based OAuth flow and hosted Next.js endpoint.
+CamMicGo SEO Agent is a **free, open-source alternative to GSC Wizard**, focused on Google Search Console, Google Analytics 4 and SEO insights for AI assistants. It is an independently developed project with a secure browser-based Google OAuth flow and a hosted Next.js endpoint. Our goal is to offer transparent, extensible SEO analytics with both remote MCP and local agent support.
 
 > **Current implementation:** A public MCP `service_info` tool; browser-based read-only Google OAuth (shared project or bring your own GCP OAuth client); listing your authorized Search Console and GA4 properties; a Search Console query report; a GA4 traffic and page report. **Private Google data is NOT yet available to MCP clients.** No public remote MCP auth flow or installable authenticated local MCP server is shipped. Do not mistake the web dashboard for an authenticated MCP integration.
 
@@ -80,13 +80,9 @@ The only public tool currently exposed is `service_info`, a non-sensitive capabi
 https://seo.cammicgo.com/api/mcp
 ```
 
-**Planned MCP tool names** (not shipped yet): `list_search_sites`, `search_performance`, `compare_search_periods`, `list_ga4_properties`, `ga4_report`, `seo_opportunities`, `get_google_quota`, `get_service_usage`, `connect_account`. Each requires identifying the caller and authorizing the specific property; never trust a site/property argument without checking access.
+**Planned MCP tool names** (not shipped yet): `list_search_sites`, `search_performance`, `compare_search_periods`, `list_ga4_properties`, `ga4_report`, `seo_opportunities`, `get_google_quota`, `get_service_usage`, `connect_account`. Each requires identifying the caller and authorizing the specific property; never trust a site/property arother toolsent without checking access.
 
 For local agents, a future `stdio` adapter could launch on the user's own PC and obtain OAuth locally. Its setup will differ from the hosted service; it does not exist in this release.
-
-### Comparison with Gum
-
-[Gum](https://github.com/ehmo/gum) is an independent MIT-licensed Google API CLI and MCP server providing **broad API discovery and dispatch** (Workspace, Search Console, Ads and more). Its local setup already provides `gum mcp --stdio`. For users who need broad Google operations **today**, consider installing upstream Gum as documented there. CamMicGo SEO Agent is an independent SEO product and does **not** claim parity with Gum. If Gum code is reused later, original copyright/attribution notices must be preserved.
 
 ## Quotas and fair usage
 
@@ -136,8 +132,8 @@ Vercel Hobby is intended for **personal non-commercial use**; a public branded s
 - No automatic article publishing or destructive Google actions in the current version.
 - Verify Google's OAuth publishing requirements, privacy policy and access controls before inviting external users.
 
-## License and attribution
+## License and third-party notices
 
-This repository's original code is [MIT](./LICENSE). Third-party components retain their own licenses. [Gum](https://github.com/ehmo/gum) is MIT licensed **but its source is not currently included**.
+CamMicGo SEO Agent's original code is published under the [MIT license](./LICENSE). Third-party dependencies retain their respective licenses and attribution requirements.
 
 Made by **[CamMicGo](https://www.cammicgo.com)** — free webcam, microphone, headphone and device tests.
