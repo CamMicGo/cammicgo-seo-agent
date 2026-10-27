@@ -18,3 +18,30 @@
 
 /* CamMicGo Audience Atlas: immersive country portraits with authentic GA4 reports */
 .atlas-dialog{position:fixed;inset:0;z-index:150;overflow-y:auto;overscroll-behavior:contain;background:#080e20;color:#f2f6ff;animation:atlas-enter .32s ease-out}.atlas-photo{position:fixed;inset:0;background-size:cover;background-position:center;background-image:radial-gradient(circle at 70% 30%,#2d6694,#0d1c3b 55%,#080e20);animation:atlas-pan 24s ease-in-out infinite alternate;pointer-events:none}.atlas-inner{min-height:100%;position:relative;display:flex;flex-direction:column;padding:max(20px,env(safe-area-inset-top)) max(22px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(22px,env(safe-area-inset-left));max-width:1560px;margin:auto}.atlas-top{display:flex;justify-content:space-between;align-items:center;gap:16px}.atlas-brand{color:#f2f6ff;text-decoration:none;letter-spacing:.02em;font-size:15px}.atlas-brand strong{color:#8cb6ff}.atlas-controls{display:flex;gap:7px}.atlas-controls button{border:1px solid #ffffff66;color:white;background:#0b1730bb;border-radius:11px;min-height:42px;padding:8px 14px;cursor:pointer;backdrop-filter:blur(8px)}.atlas-controls button:hover{background:#2555a4}.atlas-country{margin-top:clamp(40px,8vh,110px)}.atlas-kicker{font-size:11px;letter-spacing:.18em;color:#a9d4ff;font-weight:800}.atlas-country h2{margin:12px 0 0;color:white;font-size:clamp(55px,10vw,132px);font-weight:850;letter-spacing:-.06em;line-height:.95;text-shadow:0 6px 24px #000b}.atlas-country p{margin-top:12px;color:#e3f0ff}.atlas-space{flex:1;min-height:clamp(70px,17vh,270px)}.atlas-panels{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:16px}.atlas-panel{border:1px solid #ffffff44;border-radius:18px;background:#08162bdc;color:#f7f9ff;padding:20px 22px;box-shadow:0 12px 35px #0004;backdrop-filter:blur(17px)}.atlas-panel h3{font-size:12px;text-transform:uppercase;letter-spacing:.13em;color:#a5c7ff;margin:0 0 17px}.atlas-kpis>div:first-of-type{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.atlas-kpis span{display:block;font-size:12px;color:#c6d7f5}.atlas-kpis strong{display:block;color:#fff;margin-top:8px;font-size:clamp(22px,3vw,39px)}.atlas-spark{height:70px;display:flex;align-items:flex-end;gap:3px;margin-top:17px}.atlas-spark i{display:block;flex:1;min-width:2px;max-height:100%;background:linear-gradient(#85baff,#316df4);border-radius:3px 3px 0 0}.atlas-pages ol{list-style:none;margin:0;padding:0}.atlas-pages li{display:flex;justify-content:space-between;gap:15px;border-bottom:1px solid #ffffff23;padding:9px 0;font-size:13px}.atlas-pages li span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.atlas-pages li strong{white-space:nowrap;color:#98d4ff;font-size:12px}.atlas-foot{display:flex;flex-wrap:wrap;gap:8px 24px;justify-content:space-between;padding-top:14px;font-size:11px;color:#c3d8f3}.atlas-foot a{color:#c8e3ff}.atlas-foot a:hover{color:white}@keyframes atlas-enter{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}@keyframes atlas-pan{from{transform:scale(1)}to{transform:scale(1.065) translateX(-1%)}}@media(max-width:750px){.atlas-panels{grid-template-columns:1fr}.atlas-country{margin-top:48px}.atlas-country h2{font-size:clamp(52px,13vw,88px)}.atlas-space{min-height:23vh}.atlas-kpis>div:first-of-type{gap:6px}.atlas-inner{padding-left:15px;padding-right:15px}.atlas-panel{padding:16px}.atlas-brand{font-size:12px}}@media(prefers-reduced-motion:reduce){.atlas-dialog,.atlas-photo{animation:none}}
+
+/* Atlas as a dismissible modal on desktop, edge-to-edge on small screens */
+.atlas-dialog{background:transparent;display:flex;align-items:center;justify-content:center;padding:clamp(12px,3vw,48px);overflow:hidden}
+.atlas-backdrop{position:fixed;inset:0;background:#071027b7;backdrop-filter:blur(7px);cursor:pointer}
+.atlas-inner{position:relative;isolation:isolate;width:min(1120px,96vw);height:min(840px,92vh);min-height:0;overflow:auto;overscroll-behavior:contain;border-radius:24px;border:1px solid #89b2eb75;background:#091528d6;box-shadow:0 24px 95px #010511bb;padding:28px}
+.atlas-photo{position:absolute;inset:0;background-position:center;background-size:cover;animation:none;z-index:0}
+.atlas-inner>*:not(.atlas-photo){position:relative;z-index:1}
+.atlas-brand{display:flex;align-items:center;gap:10px;font-weight:750;color:#f9fbff}
+.atlas-brand img{border-radius:9px;object-fit:contain;width:33px;height:33px}
+.atlas-country{margin-top:44px}
+.atlas-country h2{font-size:clamp(52px,7vw,90px)}
+.atlas-space{min-height:70px}
+.atlas-panels{margin-top:14px;grid-template-columns:1fr 1.15fr}
+.atlas-kpis>div:first-of-type{align-items:start;text-align:center}
+.atlas-kpis strong{font-variant-numeric:tabular-nums;text-align:center}
+.atlas-kpis span{overflow-wrap:anywhere}
+@media(max-width:750px){
+.atlas-dialog{padding:0;align-items:stretch}
+.atlas-inner{width:100%;height:100dvh;max-height:none;border-radius:0;border:0;padding:22px 15px;overflow-y:auto}
+.atlas-country{margin-top:66px}
+.atlas-country h2{font-size:clamp(48px,11vw,72px)}
+.atlas-space{min-height:24vh}
+.atlas-panels{grid-template-columns:1fr}
+.atlas-kpis>div:first-of-type{grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.atlas-kpis span{font-size:11px}
+.atlas-kpis strong{font-size:clamp(21px,6vw,33px)}
+}
