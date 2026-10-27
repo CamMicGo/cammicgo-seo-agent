@@ -182,3 +182,7 @@ Country popup now offers **Google Analytics 4**, **Search Console** and **Google
 ### Map visibility fix
 
 The Analytics country map uses the world-map component's `responsive` size mode instead of a fixed 480px canvas, with container overflow and SVG width adjusted for mobile. This aims to prevent partial clipping on narrow displays. The country list remains available as an accessible alternative. A rendered-device visual acceptance test is still recommended.
+
+### Unified reporting-period behavior
+
+The GA4 country Atlas passes the same selected period into the country-filtered Search Console endpoint. The standalone Search Console performance page also offers 24-hour, 28-day and all-available period options. **The 24-hour Search Console selection explicitly returns an unavailable notice** rather than silently substituting an older day; GSC finalized reporting is not directly comparable to GA4's today/yesterday calendar-day data. The detailed GA4 daily table formats dates as day + abbreviated month, e.g. `26 Oct`. Google Ads is not yet a connected reporting source and does not participate in the period selection.
