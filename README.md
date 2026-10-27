@@ -33,12 +33,12 @@ CamMicGo SEO Agent is a **free, open-source alternative to GSC Wizard**, focused
 | List Search Console sites | ✅ | ❌ | ✅ |
 | Search queries, clicks, impressions, CTR, average position | ✅ | ❌ | Compare dates, country, device, page |
 | List GA4 properties | ✅ | ❌ | ✅ |
-| GA4 top pages, traffic by day | ✅ | ❌ | Segments, events, attribution |
+| GA4 top pages, interactive daily chart and country comparison | ✅ | ❌ | Segments, events, attribution, full geographic choropleth |
 | GA4 Data API quota returned by Google | API response | ❌ | Visible gauges and history |
 | SEO opportunities and content briefs | ❌ | ❌ | ✅ |
 | Local stdio MCP | ❌ | ❌ | ✅ |
 
-### Current UI
+The GA4 dashboard now includes a date-selectable 28-day traffic chart and an interactive country overview with a schematic map and sortable-style ranked country list. The map uses approximate country centroids rather than visitor locations. Charts and country data are available only after browser OAuth; these private data tools are not yet callable from public MCP.\n\n### Current UI
 
 Connect: https://seo.cammicgo.com/connect  
 Dashboard: https://seo.cammicgo.com/dashboard  
@@ -88,7 +88,7 @@ The only public tool currently exposed is `service_info`, a non-sensitive capabi
 https://seo.cammicgo.com/api/mcp
 ```
 
-**Planned MCP tool names** (not shipped yet): `list_search_sites`, `search_performance`, `compare_search_periods`, `list_ga4_properties`, `ga4_report`, `seo_opportunities`, `get_google_quota`, `get_service_usage`, `connect_account`. Each requires identifying the caller and authorizing the specific property; never trust a site/property arother toolsent without checking access.
+**Planned MCP tool names** (not shipped yet): `list_search_sites`, `search_performance`, `compare_search_periods`, `list_ga4_properties`, `ga4_report`, `seo_opportunities`, `get_google_quota`, `get_service_usage`, `connect_account`. Each requires identifying the caller and authorizing the specific property; never trust a site/property argument without checking access.
 
 For local agents, a future `stdio` adapter could launch on the user's own PC and obtain OAuth locally. Its setup will differ from the hosted service; it does not exist in this release.
 
