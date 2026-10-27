@@ -1,6 +1,7 @@
 import {createMcpHandler} from 'mcp-handler';
 import {z} from 'zod';
 import {NextRequest,NextResponse} from 'next/server';
+import {makeCampaignDraft} from '@/lib/ads-campaign';
 import {verifyMcpAccess} from '@/lib/mcp-access';
 import {authorizedAccessToken,googleFetch} from '@/lib/google-session';
 export const runtime='nodejs';
@@ -11,6 +12,7 @@ async function handler(req:NextRequest){
  const ctx=verifyMcpAccess(req.headers.get('authorization'));if(!ctx)return unauthorized();
  const mcp=createMcpHandler(server=>{
   server.registerTool('service_info',{title:'CamMicGo SEO Agent',description:'Service capabilities and token lifetime.',inputSchema:z.object({})},async()=>asText({name:'CamMicGo SEO Agent',beta:true,expiresAt:new Date(ctx.expires).toISOString(),selectedSite:ctx.site||null,selectedGA4Property:ctx.property||null}));
+  server.registerTool('prepare_ads_campaign',{title:'Prepare CamMicGo Google Ads campaign (no spending)',description:'Prepare a preview-only, paused Search campaign concept for CamMicGo, capped at 150 euros and 7 days. Does not call Google Ads or create advertisements.',inputSchema:z.object({totalBudgetEur:z.number().positive().max(150).default(150),durationDays:z.number().int().min(1).max(7).default(7),countries:z.array(z.enum(['US','FR','GB','DE','CA','JP','KR','AU','ES','IT','NL','BE'])).min(1).max(6).default(['US','FR','GB'])})},async args=>{try{return asText({draft:makeCampaignDraft(args),submittedToGoogle:false,requiresAdsOAuth:true,requiresHumanApproval:true})}catch(e){return asText({error:e instanceof Error?e.message:'Invalid request'})}});
   server.registerTool('list_selected_properties',{title:'Selected properties',description:'Show the specific Google site and Analytics property authorized by the user for this 15-minute session.',inputSchema:z.object({})},async()=>asText({site:ctx.site||null,property:ctx.property||null}));
   server.registerTool('search_performance',{title:'Search Console query performance',description:'Get clicks, impressions, CTR and average ranking position for the selected Search Console site over the last 28 completed days.',inputSchema:z.object({})},async()=>{
    if(!ctx.site)return asText({error:'No Search Console site selected'});
