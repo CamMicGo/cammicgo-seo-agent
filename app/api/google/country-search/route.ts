@@ -6,9 +6,10 @@ export async function GET(request:NextRequest){
  const session=await getSession();if(!session)return NextResponse.json({error:'Connect your Google account'},{status:401});
  const site=request.nextUrl.searchParams.get('site')||'',country=request.nextUrl.searchParams.get('country')||'',period=request.nextUrl.searchParams.get('period')||'28d';
  if(!site||site.length>500||!alpha3[country]||!['24h','28d','all'].includes(period))return NextResponse.json({error:'Select an authorized site and supported country'},{status:400});
+ if(period==='24h')return NextResponse.json({rows:[],unavailable:true,note:'Search Console does not yet provide reliably finalized data for the same latest 24-hour window as GA4. Choose Last 28 days or All available history.'},{headers:{'Cache-Control':'private,no-store'}});
  // Search Console does not provide GA4 real-time data. Exclude the current and preceding days for settled metrics.
  const end=new Date(Date.now()-3*86400000).toISOString().slice(0,10);
- const start=period==='all'?'2020-01-01':new Date(Date.now()-(period==='24h'?4:30)*86400000).toISOString().slice(0,10);
+ const start=period==='all'?'2020-01-01':new Date(Date.now()-30*86400000).toISOString().slice(0,10);
  try{
  const {token}=await authorizedAccessToken(session);
  const sites=await googleFetch('https://www.googleapis.com/webmasters/v3/sites',token);
