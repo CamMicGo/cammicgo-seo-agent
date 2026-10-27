@@ -1,0 +1,4 @@
+import {decrypt,encrypt,type GoogleSession} from '@/lib/google-session';
+export type DelegatedAccess={version:1;google:GoogleSession;site?:string;property?:string;expires:number;issued:number};
+export function sealMcpAccess(input:Omit<DelegatedAccess,'version'|'expires'|'issued'>){const now=Date.now();return {token:encrypt({...input,version:1,issued:now,expires:now+15*60*1000}),expiresAt:new Date(now+15*60*1000).toISOString()}}
+export function verifyMcpAccess(authorization:string|null){if(!authorization?.startsWith('Bearer '))return null;const raw=authorization.slice(7);if(raw.length>12000)return null;const access=decrypt<DelegatedAccess>(raw);if(!access||access.version!==1||!Number.isFinite(access.expires)||Date.now()>access.expires||access.expires-Date.now()>15*60*1000||!access.google?.credentials?.clientId||!(access.site||access.property))return null;return access}
