@@ -23,7 +23,7 @@
 
 CamMicGo SEO Agent is a **free, open-source alternative to GSC Wizard**, focused on Google Search Console, Google Analytics 4 and SEO insights for AI assistants. It is an independently developed project with a secure browser-based Google OAuth flow and a hosted Next.js endpoint. Our goal is to offer transparent, extensible SEO analytics with both remote MCP and local agent support.
 
-> **Current implementation:** A public MCP `service_info` tool; browser-based read-only Google OAuth (shared project or bring your own GCP OAuth client); listing your authorized Search Console and GA4 properties; a Search Console query report; a GA4 traffic and page report. **Private Google data is NOT yet available to MCP clients.** No public remote MCP auth flow or installable authenticated local MCP server is shipped. Do not mistake the web dashboard for an authenticated MCP integration.
+> **Current implementation:** A public MCP `service_info` tool; browser-based read-only Google OAuth (shared project or bring your own GCP OAuth client); listing your authorized Search Console and GA4 properties; a Search Console query report; a GA4 traffic and page report. **Private Google MCP tools are implemented behind a disabled feature flag for limited testing, not available to public clients by default.** No public remote MCP auth flow or installable authenticated local MCP server is shipped. Do not mistake the web dashboard for an authenticated MCP integration.
 
 ### Current capabilities
 
@@ -36,7 +36,7 @@ CamMicGo SEO Agent is a **free, open-source alternative to GSC Wizard**, focused
 | GA4 top pages, interactive daily chart and country comparison | ✅ | ❌ | Segments, events, attribution, full geographic choropleth |
 | GA4 Data API quota returned by Google | API response | ❌ | Visible gauges and history |
 | SEO opportunities and content briefs | ❌ | ❌ | ✅ |
-| Local stdio MCP | ❌ | ❌ | ✅ |
+| Local stdio MCP | ❌ | ❌ | ✅ |\n| Calendar, YouTube and Google Ads | ❌ | ❌ | Modular read-only opt-in integrations |
 
 The GA4 dashboard now includes a date-selectable 28-day traffic chart and an interactive country overview with a schematic map and sortable-style ranked country list. The map uses approximate country centroids rather than visitor locations. Charts and country data are available only after browser OAuth; these private data tools are not yet callable from public MCP.\n\n### Current UI
 
@@ -82,7 +82,7 @@ OAuth scopes: `https://www.googleapis.com/auth/webmasters.readonly` and `https:/
 
 ## MCP
 
-The only public tool currently exposed is `service_info`, a non-sensitive capabilities/status response. You can test discovery with any Streamable HTTP compatible MCP inspector. This is **not** a usable authenticated SEO MCP yet.
+The public production MCP remains unavailable for private account data until secure client OAuth and durable usage limits are enabled. A feature-gated 15-minute property-scoped test path has been implemented for controlled testing but must stay disabled until its security requirements are met. You can test discovery with any Streamable HTTP compatible MCP inspector. This is **not** a usable authenticated SEO MCP yet.
 
 ```text
 https://seo.cammicgo.com/api/mcp
@@ -92,7 +92,7 @@ https://seo.cammicgo.com/api/mcp
 
 For local agents, a future `stdio` adapter could launch on the user's own PC and obtain OAuth locally. Its setup will differ from the hosted service; it does not exist in this release.
 
-## Quotas and fair usage
+**[Google Calendar, YouTube, Ads and Workspace expansion + detailed security plan](./docs/GOOGLE-MODULES-AND-SECURITY.md)** documents the independently developed modular integration strategy. Calendar, YouTube and Google Ads modules are planned and **not yet enabled**. Read-only consent is the default; sensitive providers require separate opt-in and review.\n\n## Quotas and fair usage
 
 There are **three distinct kinds of quota**:
 
