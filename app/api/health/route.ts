@@ -1,3 +1,3 @@
 import {NextResponse} from 'next/server';
 export const runtime='nodejs';
-export function GET(){return NextResponse.json({service:'CamMicGo SEO Agent',status:'preview',googleOAuth:'not_configured',mcp:'/api/mcp'},{headers:{'Cache-Control':'no-store'}})}
+export function GET(){const configured=Boolean(process.env.GOOGLE_CLIENT_ID&&process.env.GOOGLE_CLIENT_SECRET&&process.env.SESSION_ENCRYPTION_KEY);return NextResponse.json({service:'CamMicGo SEO Agent',status:'technical-preview',googleOAuth:configured?'configured-for-testing':'configuration-required',mcp:'/api/mcp',privateMcpTools:'not-enabled'},{headers:{'Cache-Control':'no-store'}})}
