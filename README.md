@@ -45,6 +45,14 @@ Dashboard: https://seo.cammicgo.com/dashboard
 Service status: https://seo.cammicgo.com/api/health  
 Remote MCP preview: https://seo.cammicgo.com/api/mcp
 
+## Setup for your AI assistant
+
+**[ChatGPT, Claude, Gemini CLI and local MCP installation plans](./docs/CONNECTING-AGENTS.md)** — explains separate AI→CamMicGo and CamMicGo→Google OAuth flows, exact compatibility of the current preview, the remote URL and the proposed local distribution.
+
+**[Quotas, fair use, 10,000-agent capacity and public Google OAuth launch checklist](./docs/QUOTAS-AND-LAUNCH.md)** — including real GA4 token accounting, distinct Search Console limits and Google's external testing restrictions.
+
+> A web login does not by itself authenticate a third-party AI agent. Private MCP tools and the local stdio executable are **not yet shipped**. The documentation does not imply otherwise.
+
 ## Start locally (developer preview)
 
 Requires **Node.js 22+**, Git and a Google Cloud project. This runs a **local Next.js web server**, **not** a local MCP stdio adapter. Local development does not by itself connect the server to ChatGPT/Gemini.
