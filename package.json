@@ -11,7 +11,8 @@
     "local:login": "node scripts/local-mcp.mjs login",
     "mcp:local": "node scripts/local-mcp.mjs stdio",
     "local:doctor": "node scripts/local-mcp.mjs doctor",
-    "agent:setup": "node scripts/setup-agent.mjs"
+    "agent:setup": "node scripts/setup-agent.mjs",
+    "install:local": "node scripts/install-local.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",
