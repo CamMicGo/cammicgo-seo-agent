@@ -12,11 +12,18 @@ async function handler(req:NextRequest){
   const {verifySupabaseMcpUser}=await import('@/lib/supabase-mcp-auth');
   const user=await verifySupabaseMcpUser(req.headers.get('authorization'));
   if(!user)return unauthorized();
-  // Google connections and quota enforcement are not wired to Supabase users yet.
-  // Expose only identity/status; never reuse a Google browser cookie for an agent.
+  const {readGoogle,consumeQuota}=await import('@/lib/mcp-google-store');
   const protectedMcp=createMcpHandler(server=>{
-   server.registerTool('service_info',{title:'CamMicGo MCP OAuth status',description:'Show authenticated MCP connection status; Google tools remain disabled until account linking and quotas are enforced.',inputSchema:z.object({})},async()=>asText({authenticated:true,identityProvider:'Supabase Auth',googleToolsEnabled:false,reason:'Google property consent, encrypted server-side token storage and per-user quota enforcement are pending.'}));
-   server.registerTool('account_status',{title:'MCP account identity',description:'Confirm that this MCP session belongs to a validated Supabase Auth user, without revealing Google credentials.',inputSchema:z.object({})},async()=>asText({authenticated:true,userId:user.id,clientId:user.clientId||null,googleConnectedForMcp:false}));
+   server.registerTool('service_info',{title:'Authenticated MCP status',description:'Check connected Google account.',inputSchema:z.object({})},async()=>asText({authenticated:true,googleConnected:!!(await readGoogle(user.id))}));
+   server.registerTool('list_google_properties',{title:'Google Search Console and GA4 properties',description:'List properties accessible to the linked Google account.',inputSchema:z.object({})},async()=>{
+    try{
+     const session=await readGoogle(user.id);if(!session)return asText({error:'Connect Google first'});
+     if(!await consumeQuota(user.id))return asText({error:'Daily quota exceeded'});
+     const {token}=await authorizedAccessToken(session);
+     const [gsc,ga4]=await Promise.all([googleFetch('https://www.googleapis.com/webmasters/v3/sites',token),googleFetch('https://analyticsadmin.googleapis.com/v1beta/accountSummaries?pageSize=100',token)]);
+     return asText({gsc:gsc.ok?await gsc.json():{error:gsc.status},ga4:ga4.ok?await ga4.json():{error:ga4.status}});
+    }catch(e){return asText({error:e instanceof Error?e.message:'Google error'})}
+   });
   });
   return protectedMcp(req);
  }
