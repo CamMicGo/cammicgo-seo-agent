@@ -49,7 +49,7 @@ The connected web dashboard now links to **[/dashboard/ads](https://seo.cammicgo
 Connect: https://seo.cammicgo.com/connect  
 Dashboard: https://seo.cammicgo.com/dashboard  
 Service status: https://seo.cammicgo.com/api/health  
-Remote MCP preview: https://seo.cammicgo.com/api/mcp
+Remote MCP preview: https://seo.cammicgo.com/api/mcp  \nMCP readiness status: https://seo.cammicgo.com/api/mcp/status
 
 ## Setup for your AI assistant
 
@@ -164,7 +164,7 @@ This writes a CamMicGo `stdio` server entry into the selected user's configurati
 
 ## MCP
 
-The public production MCP remains unavailable for private account data until secure client OAuth and durable usage limits are enabled. A feature-gated 15-minute property-scoped test path has been implemented for controlled testing but must stay disabled until its security requirements are met. You can test discovery with any Streamable HTTP compatible MCP inspector. This is **not** a usable authenticated SEO MCP yet.
+The public production MCP accepts discovery of the `service_info` tool only, after this change is deployed. Private Google account data **remain unavailable to remote MCP clients** until secure client OAuth and durable usage limits are enabled. Verify actual production readiness at `/api/mcp/status`. A feature-gated 15-minute property-scoped test path has been implemented for controlled testing but must stay disabled until its security requirements are met. You can test discovery with any Streamable HTTP compatible MCP inspector. This is **not** a usable authenticated SEO MCP yet.
 
 ```text
 https://seo.cammicgo.com/api/mcp
