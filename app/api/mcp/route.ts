@@ -8,6 +8,19 @@ export const runtime='nodejs';
 const asText=(value:unknown)=>({content:[{type:'text' as const,text:JSON.stringify(value)}]});
 function unauthorized(){return NextResponse.json({error:'MCP access required',setup:'Connect Google at https://seo.cammicgo.com/connect and issue a scoped temporary token in your dashboard'},{status:401,headers:{'Cache-Control':'no-store','WWW-Authenticate':'Bearer realm="CamMicGo SEO Agent", resource_metadata="https://seo.cammicgo.com/.well-known/oauth-protected-resource"'}})}
 async function handler(req:NextRequest){
+ if(process.env.ENABLE_SUPABASE_MCP_AUTH==='true'){
+  const {verifySupabaseMcpUser}=await import('@/lib/supabase-mcp-auth');
+  const user=await verifySupabaseMcpUser(req.headers.get('authorization'));
+  if(!user)return unauthorized();
+  // Google connections and quota enforcement are not wired to Supabase users yet.
+  // Expose only identity/status; never reuse a Google browser cookie for an agent.
+  const protectedMcp=createMcpHandler(server=>{
+   server.registerTool('service_info',{title:'CamMicGo MCP OAuth status',description:'Show authenticated MCP connection status; Google tools remain disabled until account linking and quotas are enforced.',inputSchema:z.object({})},async()=>asText({authenticated:true,identityProvider:'Supabase Auth',googleToolsEnabled:false,reason:'Google property consent, encrypted server-side token storage and per-user quota enforcement are pending.'}));
+   server.registerTool('account_status',{title:'MCP account identity',description:'Confirm that this MCP session belongs to a validated Supabase Auth user, without revealing Google credentials.',inputSchema:z.object({})},async()=>asText({authenticated:true,userId:user.id,clientId:user.clientId||null,googleConnectedForMcp:false}));
+  });
+  return protectedMcp(req);
+ }
+
  if(process.env.ENABLE_MCP_BETA!=='true'){
   // Anonymous discovery only; do not expose Google account tools without MCP OAuth.
   const publicMcp=createMcpHandler(server=>server.registerTool('service_info',{title:'CamMicGo SEO Agent server status',description:'Public status of remote MCP and secure connection requirements.',inputSchema:z.object({})},async()=>asText({name:'CamMicGo SEO Agent',remote:true,authenticatedTools:false,reason:'Google OAuth for remote MCP agents and shared durable quotas are not enabled.',localMcpSetup:'https://github.com/CamMicGo/cammicgo-seo-agent#local-mcp-server-read-only-preview'})));
