@@ -18,14 +18,14 @@ try{
  console.log('  http://localhost:3000/api/auth/google/callback');
  console.log('  http://127.0.0.1:38271/oauth/callback');
  console.log('  Ajoutez votre compte Google comme testeur si le consentement est en mode Testing.\n');
- const ack=(await rl.question('Ces étapes Google Cloud sont-elles terminées ? (o/N) : ')).trim().toLowerCase();
+ const ack=(await ask('Ces étapes Google Cloud sont-elles terminées ? (o/N) : ')).trim().toLowerCase();
  if(!['o','oui','y','yes'].includes(ack)){console.log('Vous pourrez relancer npm run install:local une fois Google Cloud configuré.');process.exitCode=0}
  else{
   if(existsSync(join(root,'.env.local')))console.log('Identifiants locaux existants conservés ; utiliser setup:local pour les remplacer volontairement.');
   else await run('setup-local.mjs');
   await run('local-mcp.mjs',['login']);
   await run('local-mcp.mjs',['doctor']);
-  const target=(await rl.question('Quel agent souhaitez-vous configurer ? (claude/gemini/cursor/aucun) : ')).trim().toLowerCase();
+  const target=(await ask('Quel agent souhaitez-vous configurer ? (claude/gemini/cursor/aucun) : ')).trim().toLowerCase();
   if(['claude','gemini','cursor'].includes(target))await run('setup-agent.mjs',[target]);
   else console.log('Configuration automatique ignorée ; le MCP local peut être lancé via npm run mcp:local.');
   console.log('\nTerminé. Redémarrez votre agent IA puis demandez : « Liste mes propriétés Google Search Console ».');
