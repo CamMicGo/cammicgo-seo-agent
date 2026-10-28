@@ -7,7 +7,7 @@ import {spawn} from 'node:child_process';
 import {createInterface} from 'node:readline/promises';
 import {stdin,stdout} from 'node:process';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
-const rl=createInterface({input:stdin,output:stdout});
+async function ask(message){const rl=createInterface({input:stdin,output:stdout});try{return await rl.question(message)}finally{rl.close()}}
 function run(file,args=[]){return new Promise((resolveRun,reject)=>{const child=spawn(process.execPath,[join(root,'scripts',file),...args],{cwd:root,stdio:'inherit'});child.on('error',reject);child.on('exit',c=>c===0?resolveRun():reject(new Error(file+' failed with exit code '+c)))})}
 try{
  console.log('\nCamMicGo SEO Agent — Installation locale guidée\n');
@@ -32,4 +32,3 @@ try{
   console.log('Aucun token Google n’a été transmis à CamMicGo Vercel ou Supabase par cette installation.');
  }
 }catch(e){console.error('Échec de la configuration locale :',e instanceof Error?e.message:e);process.exitCode=1}
-finally{rl.close()}
