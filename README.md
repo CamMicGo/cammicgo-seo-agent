@@ -357,3 +357,9 @@ npm run test:mcp:local
 ```
 
 This automated test runs a separate local MCP process with **throwaway, fake credentials** and checks the JSON-RPC initialization handshake, tool list and `service_info` call. It **does not** call Google or verify a real OAuth login; users must still complete `npm run install:local` and check that their Google account grants the required scopes. Calendar and YouTube are read-only and depend on each user's API permissions. No real Ads Keyword Planner or Ads campaign creation is exposed in the local tools. Running the tests does not automatically deploy Vercel or authorize the remote MCP endpoint.
+
+## Remote AI-client connection details
+
+**Client display name:** CamMicGo SEO Agent. **MCP server (Streamable HTTP):** `https://seo.cammicgo.com/api/mcp`. See [the client connection page](https://seo.cammicgo.com/mcp/connect) for Claude, ChatGPT and Gemini CLI setup, and [Google Cloud BYO setup](https://seo.cammicgo.com/connect) for browser Google login with your own OAuth Web client ID/secret. **Remote private Google tools are not yet available to general third-party clients:** MCP agent OAuth, secure Google-account linking and atomic shared quota enforcement still need integration testing before opening production. Do not confuse Google web login with MCP client authorization. 
+
+**App-directory short description:** “Read-only Search Console and Google Analytics insights for AI assistants, with personal Google Cloud OAuth options. Private remote MCP integrations are in development.”
