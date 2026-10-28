@@ -9,9 +9,10 @@ export async function POST(req:NextRequest){
  if(req.headers.get('origin')!==req.nextUrl.origin)return NextResponse.json({error:'Origin mismatch'},{status:403});
  const clientId=process.env.GOOGLE_CLIENT_ID,clientSecret=process.env.GOOGLE_CLIENT_SECRET;
  if(!clientId||!clientSecret)return NextResponse.json({error:'Google not configured'},{status:503});
+ const payload=await req.json().catch(()=>({})) as {authorizationId?:string};
  const state=randomBytes(24).toString('hex'),verifier=randomBytes(32).toString('base64url');
  const credentials:Credentials={clientId,clientSecret,mode:'shared'};
- const pending:Pending&{mcpUserId:string}={state,verifier,credentials,issuedAt:Date.now(),mcpUserId:user.id};
+ const pending:Pending&{mcpUserId:string;authorizationId?:string}={state,verifier,credentials,issuedAt:Date.now(),mcpUserId:user.id,authorizationId:payload.authorizationId};
  const challenge=createHash('sha256').update(verifier).digest('base64url');
  const url=new URL('https://accounts.google.com/o/oauth2/v2/auth');
  url.search=new URLSearchParams({client_id:clientId,redirect_uri:googleOAuthCallback(),response_type:'code',scope:'https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/analytics.readonly https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/calendar.readonly',access_type:'offline',prompt:'consent',state,code_challenge:challenge,code_challenge_method:'S256'}).toString();
