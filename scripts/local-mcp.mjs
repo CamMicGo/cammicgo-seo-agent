@@ -63,6 +63,19 @@ async function stdio(){
   if(!(all.accountSummaries||[]).some(x=>(x.propertySummaries||[]).some(p=>p.property===property)))return asText({error:'Property not authorized'});
   return asText(await google('https://analyticsdata.googleapis.com/v1beta/'+property+':runReport',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dateRanges:[{startDate:'28daysAgo',endDate:'yesterday'}],dimensions:[{name:'pagePath'}],metrics:[{name:'screenPageViews'},{name:'activeUsers'}],limit:20,returnPropertyQuota:true})}))
  });
+ m.registerTool('seo_keyword_opportunities',{description:'Read 28-day Search Console opportunity queries from an authorized site (not Google Ads Keyword Planner volume)',inputSchema:z.object({site:z.string().min(1).max(500),minImpressions:z.number().int().min(1).max(1000000).default(30)})},async({site,minImpressions})=>{
+  const all=await google('https://www.googleapis.com/webmasters/v3/sites');if(!(all.siteEntry||[]).some(x=>x.siteUrl===site))return asText({error:'Site is not authorized'});
+  const end=new Date(Date.now()-3*86400000),start=new Date(end.getTime()-27*86400000);
+  const data=await google('https://www.googleapis.com/webmasters/v3/sites/'+encodeURIComponent(site)+'/searchAnalytics/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({startDate:start.toISOString().slice(0,10),endDate:end.toISOString().slice(0,10),dimensions:['query'],rowLimit:300})});
+  const rows=(data.rows||[]).filter(r=>r.impressions>=minImpressions&&r.position>=4&&r.position<=20).sort((a,b)=>b.impressions*(1-b.ctr)-a.impressions*(1-a.ctr)).slice(0,25);
+  return asText({site,rows,note:'Organic Search Console heuristic; not paid keyword search volume or a traffic forecast'})
+ });
+ m.registerTool('ga4_countries',{description:'Read 28-day GA4 country sessions for an authorized property',inputSchema:z.object({property:z.string().regex(/^properties\\/\\d+$/)})},async({property})=>{
+  const all=await google('https://analyticsadmin.googleapis.com/v1beta/accountSummaries?pageSize=200');
+  if(!(all.accountSummaries||[]).some(x=>(x.propertySummaries||[]).some(p=>p.property===property)))return asText({error:'Property not authorized'});
+  return asText(await google('https://analyticsdata.googleapis.com/v1beta/'+property+':runReport',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dateRanges:[{startDate:'28daysAgo',endDate:'yesterday'}],dimensions:[{name:'country'},{name:'countryId'}],metrics:[{name:'sessions'},{name:'activeUsers'}],limit:100,returnPropertyQuota:true})}))
+ });
+ m.registerTool('service_info',{description:'Show local MCP capabilities and security limits',inputSchema:z.object({})},async()=>asText({name:'CamMicGo SEO Agent Local',mode:'stdio',remoteDependency:false,googleReadOnly:true,tools:['list_search_sites','search_performance','seo_keyword_opportunities','list_ga4_properties','ga4_top_pages','ga4_countries'],adsCampaignWrites:false,calendar:false,youtube:false}));
  await m.connect(new StdioServerTransport());
 }
 async function doctor(){credentials();console.log('Google OAuth credentials: configured');if(existsSync(secretsPath)){await token();console.log('Encrypted Google token: valid');}else console.log('Encrypted Google token: missing; run npm run local:login');console.log('This local MCP supports read-only GSC and GA4; no ads spending.')}
