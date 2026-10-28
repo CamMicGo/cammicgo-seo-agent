@@ -111,3 +111,17 @@ Official guidance: https://supabase.com/docs/guides/auth/oauth-server/getting-st
 **Remote MCP smoke test:** `npm run remote:doctor` checks reachability/transport only; it is not evidence that remote private Search Console/GA4 tools are authorized.
 
 **Storage readiness:** `cmg_private` is installed in a Supabase project. The latest schema includes an optional `supabase_user_id` link and fields for encrypted Google credentials. Installing tables is not equivalent to completing consent/account linking: avoid enabling `ENABLE_SUPABASE_MCP_AUTH` for private Google tools until the linking, scoped authorization, encryption key rotation and atomic quotas have been tested.
+
+## Test sur Android avec Claude — limites et séquence exacte
+
+**Claude Desktop ne s'installe pas sur Android.** Utilisez l'application mobile **Claude** ou le site `claude.ai`. Les connecteurs MCP **distants** sont utilisables sur Claude mobile, mais ils se connectent depuis l'infrastructure d'Anthropic : un MCP local `stdio` sur un PC n'est pas accessible tel quel sur le téléphone.
+
+1. Sur un PC (ou via le navigateur mobile si le compte propose cette option), ouvrez Claude → **Personnaliser → Connecteurs → Ajouter → Personnalisé → Web**.
+2. Nom de test : **CamMicGo SEO Agent** ; URL : `https://seo.cammicgo.com/api/mcp`.
+3. À ce stade, le serveur public n'offre que ses outils d'information ; **ne pas s'attendre à accéder aux données Google privées**. La finalisation des sessions Google côté serveur, OAuth du client MCP et quotas durables est indispensable avant un test réel.
+4. Une fois le connecteur distant authentifié officiellement et les outils autorisés déployés, ouvrez Claude sur Android et sélectionnez le connecteur dans la conversation.
+5. Demandez successivement : « Liste mes sites Search Console », « Liste mes propriétés GA4 », « Affiche les pages consultées et les pays des 28 derniers jours », « Liste les chaînes YouTube auxquelles j'ai accès », « Montre mes prochains événements Calendar ». Vérifiez que l'assistant identifie les propriétés sans inventer d'association entre sites et GA4.
+
+**Autre parcours immédiatement disponible sur ordinateur :** créez un client OAuth de type *Application de bureau* dans votre projet Google Cloud, activez Search Console, GA4 Data/Admin, YouTube Data API v3 et Calendar API, puis utilisez `npm run install:local`, `npm run local:doctor` et `npm run agent:setup -- claude`. Cela installe le MCP local en lecture seule avec les quotas Google de votre projet. Reconnectez-vous avec `npm run local:login` pour consentir aux nouveaux scopes. Les outils locaux ne déclenchent aucune dépense publicitaire.
+
+**Ne saisissez jamais votre client secret Google, refresh token ou un fichier JSON OAuth dans un message Claude/ChatGPT.** Les droits disponibles dépendent également de l'approbation des scopes Google et des propriétés réellement partagées avec votre compte.
