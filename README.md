@@ -2,8 +2,8 @@
 
 <img src="https://avatars.githubusercontent.com/u/322584442?v=4" width="128" alt="CamMicGo webcam logo" />
 
-# CamMicGo SEO Agent
-### Free · Open Source · SEO insights for AI assistants
+# CAMMICGO SEO Agent
+### MCP Plugin · Free · Open Source · Google SEO & Analytics for AI assistants
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Technical preview](https://img.shields.io/badge/status-technical%20preview-yellow.svg)](https://seo.cammicgo.com)
@@ -19,7 +19,7 @@
 
 ---
 
-## What is this?
+**CAMMICGO SEO Agent** is the official display name for the proposed MCP plugin / AI connector. Read the [French and English plugin description](./docs/PLUGIN-DESCRIPTION.md) for supported services, privacy details and feature availability. This is a **technical preview**, not yet a published ChatGPT app/plugin.\n\n## What is this?
 
 CamMicGo SEO Agent is a **free, open-source alternative to GSC Wizard**, focused on Google Search Console, Google Analytics 4 and SEO insights for AI assistants. It is an independently developed project with a secure browser-based Google OAuth flow and a hosted Next.js endpoint. Our goal is to offer transparent, extensible SEO analytics with both remote MCP and local agent support.
 
