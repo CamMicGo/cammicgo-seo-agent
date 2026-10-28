@@ -23,7 +23,7 @@
 
 CamMicGo SEO Agent is a **free, open-source alternative to GSC Wizard**, focused on Google Search Console, Google Analytics 4 and SEO insights for AI assistants. It is an independently developed project with a secure browser-based Google OAuth flow and a hosted Next.js endpoint. Our goal is to offer transparent, extensible SEO analytics with both remote MCP and local agent support.
 
-> **Current implementation:** A public MCP `service_info` tool; browser-based read-only Google OAuth (shared project or bring your own GCP OAuth client); listing your authorized Search Console and GA4 properties; a Search Console query report; a GA4 traffic and page report. **Private Google MCP tools are implemented behind a disabled feature flag for limited testing, not available to public clients by default.** No public remote MCP auth flow or installable authenticated local MCP server is shipped. Do not mistake the web dashboard for an authenticated MCP integration.
+> **Current implementation:** A public MCP `service_info` tool; browser-based read-only Google OAuth (shared project or bring your own GCP OAuth client); listing your authorized Search Console and GA4 properties; a Search Console query report; a GA4 traffic and page report. **Private Google MCP tools are implemented behind a disabled feature flag for limited testing, not available to public clients by default.** A local read-only stdio MCP CLI is now included in source; a downloadable installer and the public remote MCP OAuth flow are still not shipped. Do not mistake the web dashboard for an authenticated remote MCP integration.
 
 ### Current capabilities
 
@@ -36,7 +36,7 @@ CamMicGo SEO Agent is a **free, open-source alternative to GSC Wizard**, focused
 | GA4 top pages, interactive daily chart and country comparison | ✅ | ❌ | Segments, events, attribution, full geographic choropleth |
 | GA4 Data API quota returned by Google | API response | ❌ | Visible gauges and history |
 | SEO opportunities and content briefs | ❌ | ❌ | ✅ |
-| Local stdio MCP | ❌ | ❌ | ✅ |\n| Calendar, YouTube and Google Ads | ❌ | ❌ | Modular read-only opt-in integrations |
+| Local stdio MCP (source CLI) | ✅ | Not applicable | Packaged installers |\n| Calendar, YouTube and Google Ads | ❌ | ❌ | Opt-in Google integrations |
 
 The GA4 dashboard now includes a date-selectable 28-day traffic chart and an interactive country overview with a schematic map and sortable-style ranked country list. The map uses approximate country centroids rather than visitor locations. Charts and country data are available only after browser OAuth; these private data tools are not yet callable from public MCP.\n\n### Google Ads campaign planner (preview)
 
@@ -57,11 +57,11 @@ Remote MCP preview: https://seo.cammicgo.com/api/mcp
 
 **[Quotas, fair use, 10,000-agent capacity and public Google OAuth launch checklist](./docs/QUOTAS-AND-LAUNCH.md)** — including real GA4 token accounting, distinct Search Console limits and Google's external testing restrictions.
 
-> A web login does not by itself authenticate a third-party AI agent. Private MCP tools and the local stdio executable are **not yet shipped**. The documentation does not imply otherwise.
+> A web login does not by itself authenticate a third-party AI agent. Private remote MCP tools are **not yet available to public agents**, but the local read-only stdio CLI is now available in source. The documentation does not imply otherwise.
 
 ## Start locally (developer preview)
 
-Requires **Node.js 22+**, Git and a Google Cloud project. This runs a **local Next.js web server**, **not** a local MCP stdio adapter. Local development does not by itself connect the server to ChatGPT/Gemini.
+Requires **Node.js 22+**, Git and a Google Cloud project. The following commands run a local Next.js web dashboard. For an actual local stdio MCP server, see **Local MCP server (read-only preview)** below. These are separate processes and login flows.
 
 ```bash
 git clone https://github.com/CamMicGo/cammicgo-seo-agent.git
@@ -91,7 +91,7 @@ L'assistant affiche l'adresse de redirection à enregistrer dans Google Cloud, d
 
 ### Local Google Cloud OAuth (BYO project and project-level quota)
 
-**This works for the local Next.js browser dashboard, not yet for a standalone local `stdio` MCP client.** A local `npm run dev` process is an HTTP Next.js app. The private MCP endpoint is not yet installable/authorized by ChatGPT, Claude or Gemini; do not enable `ENABLE_MCP_BETA` as a shortcut.
+**These OAuth callback instructions apply to the local Next.js browser dashboard.** The local stdio MCP login requires an **additional** redirect URI, `http://127.0.0.1:38271/oauth/callback`, as described below. Do not enable hosted `ENABLE_MCP_BETA` as a shortcut to authenticating ChatGPT or Claude.
 
 1. Visit [Google Cloud Console](https://console.cloud.google.com/projectcreate), create a project belonging to **you**, and note its project ID. You do not need access to CamMicGo's Google Cloud project.
 2. In **APIs & Services → Library**, enable **Google Search Console API**, **Google Analytics Data API**, and **Google Analytics Admin API**. For Ads, Calendar and YouTube add their APIs only when the corresponding integrations ship; enabling them alone does not add MCP tools.
@@ -120,7 +120,7 @@ OAuth scopes: `https://www.googleapis.com/auth/webmasters.readonly` and `https:/
 
 ## Local MCP server (read-only preview)
 
-A **working local stdio process is now included in source** at `scripts/local-mcp.mjs`. It runs on your machine rather than on CamMicGo's Vercel deployment. It exposes `list_search_sites`, `search_performance`, `list_ga4_properties`, and `ga4_top_pages`. Google access is read-only; there are **no Ads writes**, Calendar or YouTube tools in this executable yet. This is a source-based Node.js CLI, **not a packaged Windows/macOS/Linux installer**.
+A **working local stdio process is now included in source** at `scripts/local-mcp.mjs`. It runs on your machine rather than on CamMicGo's Vercel deployment. It exposes `service_info`, `list_search_sites`, `search_performance`, `seo_keyword_opportunities`, `list_ga4_properties`, `ga4_top_pages`, and `ga4_countries`. Google access is read-only; there are **no Ads writes**, Calendar or YouTube tools in this executable yet. This is a source-based Node.js CLI, **not a packaged Windows/macOS/Linux installer**.
 
 1. Install Node.js 22+, clone this repository and run `npm install`.
 2. In your own Google Cloud project enable **Search Console API**, **Google Analytics Data API** and **Google Analytics Admin API**. Configure OAuth consent and add yourself as a test user when in Testing.
@@ -170,7 +170,7 @@ The public production MCP remains unavailable for private account data until sec
 https://seo.cammicgo.com/api/mcp
 ```
 
-**Planned MCP tool names** (not shipped yet): `list_search_sites`, `search_performance`, `compare_search_periods`, `list_ga4_properties`, `ga4_report`, `seo_opportunities`, `get_google_quota`, `get_service_usage`, `connect_account`. Each requires identifying the caller and authorizing the specific property; never trust a site/property argument without checking access.
+**Additional remote MCP tools and capabilities planned** (not shipped publicly yet): `compare_search_periods`, `ga4_report`, `get_google_quota`, `get_service_usage`, `connect_account`. Each requires identifying the caller and authorizing the specific property; never trust a site/property argument without checking access.
 
 For local agents, a future `stdio` adapter could launch on the user's own PC and obtain OAuth locally. Its setup will differ from the hosted service; it does not exist in this release.
 
