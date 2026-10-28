@@ -21,7 +21,7 @@ const keyPath=join(dir,'token.key');
 const scopes=['https://www.googleapis.com/auth/webmasters.readonly','https://www.googleapis.com/auth/analytics.readonly','https://www.googleapis.com/auth/youtube.readonly','https://www.googleapis.com/auth/calendar.readonly'];
 function prepare(){mkdirSync(dir,{recursive:true,mode:0o700});try{chmodSync(dir,0o700)}catch{}}
 function env(){const path=resolve(dirname(fileURLToPath(import.meta.url)),'..','.env.local');if(existsSync(path)){for(const line of readFileSync(path,'utf8').split(/\r?\n/)){const m=line.match(/^([A-Z_]+)=(.*)$/);if(m&&!process.env[m[1]]){let v=m[2].trim();if(v.startsWith('"')&&v.endsWith('"')){try{v=JSON.parse(v)}catch{}}process.env[m[1]]=v}}}}
-function credentials(){env();const clientId=process.env.GOOGLE_CLIENT_ID,clientSecret=process.env.GOOGLE_CLIENT_SECRET;if(!clientId?.endsWith('.apps.googleusercontent.com')||!clientSecret)throw Error('Use npm run setup:local first to configure your own Google OAuth web client.');return {clientId,clientSecret}}
+function credentials(){env();const clientId=process.env.GOOGLE_CLIENT_ID,clientSecret=process.env.GOOGLE_CLIENT_SECRET;if(!clientId?.endsWith('.apps.googleusercontent.com')||!clientSecret)throw Error('Configure your Google OAuth Desktop client via npm run install:local (or setup:local).');return {clientId,clientSecret}}
 function getKey(){prepare();if(!existsSync(keyPath))writeFileSync(keyPath,randomBytes(32),{mode:0o600,flag:'wx'});return readFileSync(keyPath)}
 function seal(data){const iv=randomBytes(12),c=createCipheriv('aes-256-gcm',getKey(),iv);const b=Buffer.concat([c.update(JSON.stringify(data)),c.final()]);prepare();writeFileSync(secretsPath,Buffer.concat([iv,c.getAuthTag(),b]),{mode:0o600});try{chmodSync(secretsPath,0o600)}catch{}}
 function unseal(){if(!existsSync(secretsPath))throw Error('Not signed in. Run npm run local:login.');const b=readFileSync(secretsPath),d=createDecipheriv('aes-256-gcm',getKey(),b.subarray(0,12));d.setAuthTag(b.subarray(12,28));return JSON.parse(Buffer.concat([d.update(b.subarray(28)),d.final()]).toString())}
@@ -30,7 +30,7 @@ async function google(url,opts){const r=await fetch(url,{...opts,headers:{...(op
 function openBrowser(url){const cmd=process.platform==='win32'?'rundll32.exe':process.platform==='darwin'?'open':'xdg-open';const args=process.platform==='win32'?['url.dll,FileProtocolHandler',url]:[url];const child=spawn(cmd,args,{detached:true,stdio:'ignore'});child.on('error',()=>console.error('Open manually:',url));child.unref()}
 async function login(){
  const {clientId,clientSecret}=credentials();const port=38271,callback='http://127.0.0.1:'+port+'/oauth/callback';
- console.log('In Google Cloud OAuth Web client, register EXACT authorized redirect URI:',callback);
+ console.log('Google OAuth: using local loopback callback '+callback+'. Desktop clients do not need a manually registered redirect URI.');
  console.log('Your account must be a test user while the consent screen is in Testing.');
  const state=randomBytes(24).toString('base64url'),verifier=randomBytes(32).toString('base64url');
  const url=new URL('https://accounts.google.com/o/oauth2/v2/auth');
