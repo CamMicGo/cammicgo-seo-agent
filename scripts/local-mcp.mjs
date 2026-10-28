@@ -5,7 +5,8 @@
  * Credentials are encrypted on disk using a local key. This is not OS keychain storage.
  */
 import {readFileSync,writeFileSync,existsSync,mkdirSync,chmodSync} from 'node:fs';
-import {join} from 'node:path';
+import {join,dirname,resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {homedir} from 'node:os';
 import {createServer} from 'node:http';
 import {createHash,randomBytes,createCipheriv,createDecipheriv} from 'node:crypto';
@@ -19,7 +20,7 @@ const secretsPath=join(dir,'google-token.enc');
 const keyPath=join(dir,'token.key');
 const scopes=['https://www.googleapis.com/auth/webmasters.readonly','https://www.googleapis.com/auth/analytics.readonly'];
 function prepare(){mkdirSync(dir,{recursive:true,mode:0o700});try{chmodSync(dir,0o700)}catch{}}
-function env(){const path=join(process.cwd(),'.env.local');if(existsSync(path)){for(const line of readFileSync(path,'utf8').split(/\r?\n/)){const m=line.match(/^([A-Z_]+)=(.*)$/);if(m&&!process.env[m[1]]){let v=m[2].trim();if(v.startsWith('"')&&v.endsWith('"')){try{v=JSON.parse(v)}catch{}}process.env[m[1]]=v}}}}
+function env(){const path=resolve(dirname(fileURLToPath(import.meta.url)),'..','.env.local');if(existsSync(path)){for(const line of readFileSync(path,'utf8').split(/\r?\n/)){const m=line.match(/^([A-Z_]+)=(.*)$/);if(m&&!process.env[m[1]]){let v=m[2].trim();if(v.startsWith('"')&&v.endsWith('"')){try{v=JSON.parse(v)}catch{}}process.env[m[1]]=v}}}}
 function credentials(){env();const clientId=process.env.GOOGLE_CLIENT_ID,clientSecret=process.env.GOOGLE_CLIENT_SECRET;if(!clientId?.endsWith('.apps.googleusercontent.com')||!clientSecret)throw Error('Use npm run setup:local first to configure your own Google OAuth web client.');return {clientId,clientSecret}}
 function getKey(){prepare();if(!existsSync(keyPath))writeFileSync(keyPath,randomBytes(32),{mode:0o600,flag:'wx'});return readFileSync(keyPath)}
 function seal(data){const iv=randomBytes(12),c=createCipheriv('aes-256-gcm',getKey(),iv);const b=Buffer.concat([c.update(JSON.stringify(data)),c.final()]);prepare();writeFileSync(secretsPath,Buffer.concat([iv,c.getAuthTag(),b]),{mode:0o600});try{chmodSync(secretsPath,0o600)}catch{}}
