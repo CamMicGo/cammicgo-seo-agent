@@ -296,3 +296,7 @@ Unlike gum's dynamically searched API catalog and its 29 startup MCP tools (9 me
 ### MCP OAuth discovery status (October 2026)
 
 The remote MCP has discovery routes at `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server`. **They fail closed unless `ENABLE_MCP_OAUTH=true` and `MCP_OAUTH_ISSUER` identify a separately deployed, functional HTTPS authorization server.** A challenge from the private MCP beta references the protected-resource metadata URL. The authorization-server well-known endpoint redirects to the configured issuer's RFC 8414 metadata; the application does not implement its own OAuth authorization code/token endpoints. **Do not set `ENABLE_MCP_OAUTH=true` until the external issuer is operational AND the MCP route verifies access tokens for its audience, scopes and user.** Metadata alone does not connect ChatGPT or Claude to private Google accounts. The existing temporary bearer beta is not interchangeable with OAuth 2.1. No access tokens are ever to be pasted into prompts.
+
+### Hosted MCP OAuth (Supabase Auth)
+
+**[Supabase Auth OAuth 2.1 setup and security status](./docs/SUPABASE-MCP-OAUTH.md)** — step-by-step dashboard instructions, protected-resource discovery, shared Supabase Community project caveats, and remaining work. The opt-in Supabase-authenticated endpoint currently exposes only identity/status tools; private Google data remains disabled until account linking and enforced quotas are complete. The Google OAuth browser dashboard is a separate authorization flow.
