@@ -1,9 +1,13 @@
 import {NextResponse} from 'next/server';
 export const dynamic='force-dynamic';
-// This app is not itself an OAuth authorization server. The configured, independently
-// operational issuer must provide RFC 8414 metadata and token endpoints.
+// Authorization server discovery belongs to the actual OAuth issuer.
+// Do not impersonate an authorization server or invent authorization/token endpoints.
 export function GET(){
- if(process.env.ENABLE_MCP_OAUTH!=='true'||!process.env.MCP_OAUTH_ISSUER)return NextResponse.json({error:'No active MCP authorization server',status:'not_ready'},{status:503,headers:{'Cache-Control':'no-store'}});
- const issuer=process.env.MCP_OAUTH_ISSUER;
- return NextResponse.json({error:'Authorization-server metadata is served by the configured issuer, not by the CamMicGo resource server.',issuer},{status:404,headers:{'Cache-Control':'no-store'}});
+ if(process.env.ENABLE_MCP_OAUTH!=='true'||!process.env.MCP_OAUTH_ISSUER)return NextResponse.json({error:'MCP authorization server not configured',status:'not_ready'},{status:503,headers:{'Cache-Control':'no-store'}});
+ try{
+  const issuer=new URL(process.env.MCP_OAUTH_ISSUER);
+  if(issuer.protocol!=='https:'||issuer.username||issuer.password||issuer.search||issuer.hash)throw Error('Invalid issuer');
+  const metadata=new URL('/.well-known/oauth-authorization-server'+issuer.pathname.replace(/\/$/,''),issuer.origin);
+  return NextResponse.redirect(metadata,307);
+ }catch{return NextResponse.json({error:'Invalid issuer'},{status:503})}
 }
