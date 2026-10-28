@@ -13,7 +13,7 @@ try{
  console.log('\nCamMicGo SEO Agent — Installation locale guidée\n');
  console.log('Configuration requise (une seule fois) dans votre propre Google Cloud :');
  console.log('  https://console.cloud.google.com/apis/dashboard');
- console.log('  Activez Search Console API, Analytics Data API et Analytics Admin API.');
+ console.log('  Activez Search Console API, Analytics Data API, Analytics Admin API, YouTube Data API v3 et Calendar API.');
  console.log('  OAuth Web client — ajoutez ces deux URI autorisées :');
  console.log('  http://localhost:3000/api/auth/google/callback');
  console.log('  http://127.0.0.1:38271/oauth/callback');
