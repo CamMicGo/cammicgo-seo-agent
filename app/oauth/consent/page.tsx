@@ -35,7 +35,7 @@ export default function OAuthConsent(){
   setBusy(false);
   setError(err?err.message:'Check your email for a secure sign-in link, then return to this page.');
  }
- async function connectGoogle(){try{const {data}=await getSupabase().auth.getSession();if(!data.session)throw Error('Sign in first');const response=await fetch('/api/mcp/google/start',{method:'POST',headers:{Authorization:'Bearer '+data.session.access_token}});const result=await response.json();if(!response.ok||!result.url)throw Error(result.error||'Google OAuth failed');window.location.assign(result.url)}catch(e){setError(e instanceof Error?e.message:'Google connection failed')}}
+ async function connectGoogle(){try{const {data}=await getSupabase().auth.getSession();if(!data.session)throw Error('Sign in first');const response=await fetch('/api/mcp/google/start',{method:'POST',headers:{Authorization:'Bearer '+data.session.access_token,'Content-Type':'application/json'},body:JSON.stringify({authorizationId:id})});const result=await response.json();if(!response.ok||!result.url)throw Error(result.error||'Google OAuth failed');window.location.assign(result.url)}catch(e){setError(e instanceof Error?e.message:'Google connection failed')}}
  async function decide(approve:boolean){
   if(!id||busy)return;
   setBusy(true);setError('');
