@@ -53,3 +53,22 @@
 
 /* Ensure all world-map geometry fits mobile and desktop containers */
 .geo-grid{min-width:0}.geo-grid>*{min-width:0}.geo-map{min-width:0;overflow:visible}.geo-map>div{width:100%;max-width:100%;min-width:0}.geo-map svg{display:block;max-width:100%;width:100%!important;height:auto!important;overflow:visible}.geo-map .worldmap__figure{max-width:100%;margin:0}.geo-map text{font-size:12px}@media(max-width:700px){.geo-grid{display:block}.geo-map{padding:10px;margin-bottom:16px}.geo-map svg{width:100%!important}}
+
+/* Atlas navigation: return to top after content, never overlap brand/header */
+.atlas-back-to-top{position:relative;float:none;top:auto;z-index:2;align-self:flex-end;display:inline-flex;align-items:center;gap:8px;width:auto;height:auto;min-width:0;padding:11px 16px;margin:22px 0 6px;border-radius:12px;font-weight:750}
+.atlas-inner{background:rgba(30,64,117,.72)}
+.atlas-photo{filter:brightness(1.42) saturate(1.08)}
+.atlas-tabs button{background:rgba(218,231,252,.95);color:#1a3966;border:1px solid #aac7ee;font-weight:650}
+.atlas-tabs button:hover{background:#ffffff}
+.atlas-tabs button[aria-pressed=true]{background:#3478dc;color:#ffffff;border-color:#a9cafa}
+/* One scrolling viewport for both axes; header and first column remain visible */
+.atlas-search-table,.scroll-table{position:relative;max-height:min(52vh,460px);overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;border-radius:12px;border:1px solid #cad7eb}
+.atlas-search-table table,.scroll-table table{border-collapse:separate;border-spacing:0;min-width:600px;width:100%}
+.atlas-search-table thead,.scroll-table thead{position:relative;z-index:2}
+.atlas-search-table th,.scroll-table th{position:sticky;top:0;z-index:3;background:#dce9fc;white-space:nowrap;box-shadow:0 1px 0 #aebfd9}
+.atlas-search-table :is(th,td):first-child,.scroll-table :is(th,td):first-child{position:sticky;left:0;z-index:2;background:#f6f9ff;min-width:155px;max-width:300px;box-shadow:1px 0 0 #b8c9e0}
+.atlas-search-table thead th:first-child,.scroll-table thead th:first-child{z-index:5;background:#dce9fc;box-shadow:1px 1px 0 #aebfd9}
+.atlas-search-table td,.scroll-table td{background:#ffffff}
+.atlas-search-table tbody tr:nth-child(even) td,.scroll-table tbody tr:nth-child(even) td{background:#f4f8ff}
+.atlas-search-table tbody tr:nth-child(even) td:first-child,.scroll-table tbody tr:nth-child(even) td:first-child{background:#eef4fc}
+@media(max-width:750px){.atlas-search-table,.scroll-table{max-height:48dvh}.atlas-search-table table,.scroll-table table{min-width:620px}.atlas-search-table :is(th,td):first-child,.scroll-table :is(th,td):first-child{min-width:150px;max-width:205px}.atlas-inner{background:rgba(30,64,117,.76)}}
