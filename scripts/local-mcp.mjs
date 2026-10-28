@@ -80,13 +80,3 @@ async function stdio(){
 }
 async function doctor(){credentials();console.log('Google OAuth credentials: configured');if(existsSync(secretsPath)){await token();console.log('Encrypted Google token: valid');}else console.log('Encrypted Google token: missing; run npm run local:login');console.log('This local MCP supports read-only GSC and GA4; no ads spending.')}
 try{const cmd=process.argv[2];if(cmd==='login')await login();else if(cmd==='stdio')await stdio();else if(cmd==='doctor')await doctor();else{console.error('Usage: node scripts/local-mcp.mjs login|stdio|doctor');process.exitCode=2}}catch(e){console.error('CamMicGo:',e.message);process.exitCode=1}
-))})},async({property})=>{
-  const all=await google('https://analyticsadmin.googleapis.com/v1beta/accountSummaries?pageSize=200');
-  if(!(all.accountSummaries||[]).some(x=>(x.propertySummaries||[]).some(p=>p.property===property)))return asText({error:'Property not authorized'});
-  return asText(await google('https://analyticsdata.googleapis.com/v1beta/'+property+':runReport',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dateRanges:[{startDate:'28daysAgo',endDate:'yesterday'}],dimensions:[{name:'country'},{name:'countryId'}],metrics:[{name:'sessions'},{name:'activeUsers'}],limit:100,returnPropertyQuota:true})}))
- });
- m.registerTool('service_info',{description:'Show local MCP capabilities and security limits',inputSchema:z.object({})},async()=>asText({name:'CamMicGo SEO Agent Local',mode:'stdio',remoteDependency:false,googleReadOnly:true,tools:['list_search_sites','search_performance','seo_keyword_opportunities','list_ga4_properties','ga4_top_pages','ga4_countries'],adsCampaignWrites:false,calendar:false,youtube:false}));
- await m.connect(new StdioServerTransport());
-}
-async function doctor(){credentials();console.log('Google OAuth credentials: configured');if(existsSync(secretsPath)){await token();console.log('Encrypted Google token: valid');}else console.log('Encrypted Google token: missing; run npm run local:login');console.log('This local MCP supports read-only GSC and GA4; no ads spending.')}
-try{const cmd=process.argv[2];if(cmd==='login')await login();else if(cmd==='stdio')await stdio();else if(cmd==='doctor')await doctor();else{console.error('Usage: node scripts/local-mcp.mjs login|stdio|doctor');process.exitCode=2}}catch(e){console.error('CamMicGo:',e.message);process.exitCode=1}
