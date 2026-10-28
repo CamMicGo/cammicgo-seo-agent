@@ -2,11 +2,12 @@
 import {useEffect,useState} from 'react';
 import {createClient} from '@supabase/supabase-js';
 
-const supabase=createClient(
-  'https://vfngxjsryklqldarkxhy.supabase.co',
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '',
-  {auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}}
-);
+const publicKey=process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+// Do not instantiate Supabase at module scope: Next.js prerenders client pages during builds.
+function getSupabase(){
+ if(!publicKey)throw new Error('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY is missing');
+ return createClient('https://vfngxjsryklqldarkxhy.supabase.co',publicKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+}
 type Details={client?:{name?:string;client_name?:string};scopes?:string[];redirect_uri?:string};
 export default function OAuthConsent(){
  const [id,setId]=useState('');
@@ -20,23 +21,24 @@ export default function OAuthConsent(){
   setId(authorizationId);
   if(!authorizationId){setError('Missing authorization request. Start again from ChatGPT.');return;}
   void (async()=>{
-   const {data:{user}}=await supabase.auth.getUser();
+   if(!publicKey){setError('Supabase connection is not configured.');return;}
+   const {data:{user}}=await getSupabase().auth.getUser();
    setLoggedIn(!!user);
-   const {data,error:err}=await supabase.auth.oauth.getAuthorizationDetails(authorizationId);
+   const {data,error:err}=await getSupabase().auth.oauth.getAuthorizationDetails(authorizationId);
    if(err){setError(err.message);return;}
    setDetails(data as Details);
   })();
  },[]);
  async function sendLink(){
   setBusy(true);setError('');
-  const {error:err}=await supabase.auth.signInWithOtp({email,options:{emailRedirectTo:window.location.href}});
+  const {error:err}=await getSupabase().auth.signInWithOtp({email,options:{emailRedirectTo:window.location.href}});
   setBusy(false);
   setError(err?err.message:'Check your email for a secure sign-in link, then return to this page.');
  }
  async function decide(approve:boolean){
   if(!id||busy)return;
   setBusy(true);setError('');
-  const result=approve?await supabase.auth.oauth.approveAuthorization(id):await supabase.auth.oauth.denyAuthorization(id);
+  const result=approve?await getSupabase().auth.oauth.approveAuthorization(id):await getSupabase().auth.oauth.denyAuthorization(id);
   if(result.error){setError(result.error.message);setBusy(false);return;}
   const url=result.data?.redirect_url;
   if(!url){setError('Authorization did not return a redirect URL.');setBusy(false);return;}
