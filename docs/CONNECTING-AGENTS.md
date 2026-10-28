@@ -125,3 +125,19 @@ Official guidance: https://supabase.com/docs/guides/auth/oauth-server/getting-st
 **Autre parcours immédiatement disponible sur ordinateur :** créez un client OAuth de type *Application de bureau* dans votre projet Google Cloud, activez Search Console, GA4 Data/Admin, YouTube Data API v3 et Calendar API, puis utilisez `npm run install:local`, `npm run local:doctor` et `npm run agent:setup -- claude`. Cela installe le MCP local en lecture seule avec les quotas Google de votre projet. Reconnectez-vous avec `npm run local:login` pour consentir aux nouveaux scopes. Les outils locaux ne déclenchent aucune dépense publicitaire.
 
 **Ne saisissez jamais votre client secret Google, refresh token ou un fichier JSON OAuth dans un message Claude/ChatGPT.** Les droits disponibles dépendent également de l'approbation des scopes Google et des propriétés réellement partagées avec votre compte.
+
+## Remote-first rollout — October 2026
+
+**Priority: remotely hosted MCP for ChatGPT and Claude, then self-hosted/local.** The live status page is `https://seo.cammicgo.com/dashboard/mcp` (once this revision is deployed). Our existing browser Google sign-in supports a user-supplied Google OAuth Web client, but that **does not** authorize an MCP client to query that user's data. The private MCP beta contains GSC and GA4 read tools; its experimental bearer delegation is not equivalent to OAuth 2.1 for ChatGPT or Claude and must not be exposed publicly.
+
+For the intended flow, an AI client uses authorization-code + PKCE to obtain a **CamMicGo resource-scoped token**; the user is identified by the server, sees the requested properties and grants, then separately links Google with their own OAuth client or the shared CamMicGo project. The server must store Google refresh tokens encrypted under a per-account record, check property ownership at request time, and atomically account for daily usage shared with the browser dashboard. A BYO GCP project shifts the applicable Google **project** quota to that project for calls made with that client's authorization; Google per-site, per-user and GA4 property quotas remain in force. Never put a Google client secret in an AI conversation or embed it in MCP tool arguments.
+
+**Client availability caveat:** ChatGPT custom MCP app setup is web-only in OpenAI's current documentation, so phone-only ChatGPT testing cannot be promised. Claude mobile remote connector behavior depends on account and current support. Calendar and YouTube read tools currently exist in the local source server; remote OAuth and opt-in permissions for those tools are not shipped. Google Ads Keyword Planner and real ad mutations remain unimplemented pending API access and explicit spend protections.
+
+### Deployment gates before remote account testing
+
+- OAuth resource metadata and working authorization server endpoints with registered/verified AI clients, PKCE, token audience and revocation.
+- Web-to-MCP consent UX, persistent user-to-Google connection linking and BYO OAuth server storage with cryptographic isolation.
+- Verified Supabase credentials on Vercel (never in GitHub), private-schema access, durable shared quota limit and audit logging without raw tokens.
+- Integration tests with two separate Google users, denied cross-account access, quota exhaustion and OAuth refresh/revoke paths.
+- Real end-to-end connection tests on supported clients before announcing availability.
