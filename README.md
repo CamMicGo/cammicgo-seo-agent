@@ -145,6 +145,21 @@ Example agent configuration (replace absolute paths with those on your computer)
 
 The local MCP resolves its own repository's `.env.local` automatically, regardless of the agent's working directory. **Never copy your Google OAuth client secret into an agent's JSON configuration.** Keep `.env.local` private and out of Git. If your client uses a different MCP configuration format, use the same executable and argument.
 
+
+### One-command agent registration (local MCP)
+
+After `npm run setup:local` and `npm run local:login`, choose your local MCP client:
+
+```bash
+npm run agent:setup -- claude
+# or
+npm run agent:setup -- gemini
+# or
+npm run agent:setup -- cursor
+```
+
+This writes a CamMicGo `stdio` server entry into the selected user's configuration without copying any Google credential or token. Existing unrelated MCP entries are preserved. If a file exists, it makes a backup and refuses to overwrite an existing CamMicGo entry or an existing backup. Restart the desktop agent, then ask it to list your Google Search Console sites. ChatGPT web is **not** a local stdio client and requires the remote OAuth setup separately. Windows/macOS/Linux desktop integrations can vary by installed agent version; verify the client supports local `stdio` commands.
+
 **Google quota:** Local Google API calls use credentials associated with your own GCP project, subject to Google's separate property/user quotas. This bypasses the hosted CamMicGo *application* quota, not Google's limits. Local storage and Google token refresh are user-managed. The hosted remote MCP at `https://seo.cammicgo.com/api/mcp` has a **different** authentication model; it still requires a complete OAuth MCP authorization server and persistent quota enforcement before private access can be enabled safely.
 
 ## MCP
