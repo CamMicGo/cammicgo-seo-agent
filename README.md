@@ -320,3 +320,30 @@ The remote MCP has discovery routes at `/.well-known/oauth-protected-resource` a
 ### Hosted MCP OAuth (Supabase Auth)
 
 **[Supabase Auth OAuth 2.1 setup and security status](./docs/SUPABASE-MCP-OAUTH.md)** — step-by-step dashboard instructions, protected-resource discovery, shared Supabase Community project caveats, and remaining work. The opt-in Supabase-authenticated endpoint currently exposes only identity/status tools; private Google data remains disabled until account linking and enforced quotas are complete. The Google OAuth browser dashboard is a separate authorization flow.
+
+## Installation MCP locale avec Google OAuth Bureau (Windows, macOS, Linux)
+
+**13 outils MCP locaux sont implémentés dans le code** (Search Console, GA4, YouTube et Calendar, plus recherche de propriétés et informations de service). Il s'agit d'un serveur `stdio` local, indépendant de Vercel et de Supabase. Google Ads Keyword Planner et les campagnes payantes n'en font pas partie. Les appels réels nécessitent des tests sur chaque plateforme et des permissions Google adaptées.
+
+1. Dans **Google Cloud → Google Auth Platform → Clients**, créez un client **Application de bureau** (ne choisissez pas Application Web pour le serveur MCP local). Dans **Audience**, ajoutez votre compte aux utilisateurs de test si le projet est en Testing. Activez **Search Console API**, **Analytics Data API**, **Analytics Admin API**, **YouTube Data API v3** et **Calendar API** pour les outils correspondants.
+2. Téléchargez le **JSON du client Bureau** sur votre ordinateur. Gardez-le privé. **Ne le joignez jamais à un ticket GitHub ni à une discussion.** Un secret visible dans une capture doit être révoqué et remplacé avant utilisation.
+3. Installez Node.js 22 ou plus récent, puis exécutez :
+
+```bash
+git clone https://github.com/CamMicGo/cammicgo-seo-agent.git
+cd cammicgo-seo-agent
+npm install
+npm run oauth:desktop -- "/chemin/vers/client_secret.json"
+npm run local:login
+npm run local:doctor
+npm run agent:setup -- claude
+```
+
+Remplacez `claude` par `gemini` ou `cursor` selon l'agent installé. Redémarrez l'agent après configuration. L'authentification ouvre le navigateur et revient sur `http://127.0.0.1:38271/oauth/callback` (loopback du client Bureau ; **aucune URI de redirection manuelle à enregistrer pour un client Bureau**). Les tokens sont obtenus automatiquement, sans copier-coller manuel.
+
+Pour un parcours plus guidé, `npm run install:local` orchestre ces étapes et propose de configurer l'agent. Si `.env.local` existe déjà, l'import du client Bureau s'arrête par sécurité au lieu de remplacer silencieusement les identifiants.
+
+**Sécurité actuelle :** les jetons sont chiffrés avec une clé locale stockée dans `~/.cammicgo-seo-agent/token.key` et le fichier chiffré `google-token.enc`, protégés par les permissions du système lorsque celles-ci sont appliquées. Ce n'est **pas encore le trousseau sécurisé natif de l'OS** (Keychain/Credential Manager/Secret Service). Ne partagez ni ces fichiers, ni `.env.local`. Les quotas propres au projet GCP s'appliquent sous réserve des limites de chaque API et propriété.
+
+**Différence Web / Desktop :** `npm run dev` lance le tableau de bord Web, dont le flux OAuth utilise un client **Web** et un autre callback. Un client OAuth **Bureau** est prévu pour `npm run local:login` et `npm run mcp:local`. Ne mélangez pas les deux pour un même parcours OAuth.
+
