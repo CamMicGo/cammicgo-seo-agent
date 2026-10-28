@@ -70,7 +70,7 @@ async function stdio(){
   const rows=(data.rows||[]).filter(r=>r.impressions>=minImpressions&&r.position>=4&&r.position<=20).sort((a,b)=>b.impressions*(1-b.ctr)-a.impressions*(1-a.ctr)).slice(0,25);
   return asText({site,rows,note:'Organic Search Console heuristic; not paid keyword search volume or a traffic forecast'})
  });
- m.registerTool('ga4_countries',{description:'Read 28-day GA4 country sessions for an authorized property',inputSchema:z.object({property:z.string().regex(new RegExp('^properties/[0-9]+})},async({property})=>{
+ m.registerTool('ga4_countries',{description:'Read 28-day GA4 country sessions for an authorized property',inputSchema:z.object({property:z.string().regex(new RegExp('^properties/[0-9]+$'))})},async({property})=>{
   const all=await google('https://analyticsadmin.googleapis.com/v1beta/accountSummaries?pageSize=200');
   if(!(all.accountSummaries||[]).some(x=>(x.propertySummaries||[]).some(p=>p.property===property)))return asText({error:'Property not authorized'});
   return asText(await google('https://analyticsdata.googleapis.com/v1beta/'+property+':runReport',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dateRanges:[{startDate:'28daysAgo',endDate:'yesterday'}],dimensions:[{name:'country'},{name:'countryId'}],metrics:[{name:'sessions'},{name:'activeUsers'}],limit:100,returnPropertyQuota:true})}))
