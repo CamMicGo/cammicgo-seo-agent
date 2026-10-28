@@ -36,7 +36,7 @@ CamMicGo SEO Agent is a **free, open-source alternative to GSC Wizard**, focused
 | GA4 top pages, interactive daily chart and country comparison | ✅ | ❌ | Segments, events, attribution, full geographic choropleth |
 | GA4 Data API quota returned by Google | API response | ❌ | Visible gauges and history |
 | SEO opportunities and content briefs | ❌ | ❌ | ✅ |
-| Local stdio MCP (source CLI) | ✅ | Not applicable | Packaged installers |\n| Calendar, YouTube and Google Ads | ❌ | ❌ | Opt-in Google integrations |
+| Local stdio MCP (source CLI) | ✅ | Not applicable | Packaged installers |\n| YouTube and Calendar | ❌ | ❌ | ✅ Local MCP read-only tools; hosted OAuth still pending |\n| Google Ads account reports and Keyword Planner | ❌ | ❌ | Google Ads OAuth + appropriate Google Ads API level required |
 
 The GA4 dashboard now includes a date-selectable 28-day traffic chart and an interactive country overview with a schematic map and sortable-style ranked country list. The map uses approximate country centroids rather than visitor locations. Charts and country data are available only after browser OAuth; these private data tools are not yet callable from public MCP.\n\n### Google Ads campaign planner (preview)
 
@@ -122,7 +122,11 @@ OAuth scopes: `https://www.googleapis.com/auth/webmasters.readonly` and `https:/
 
 **Simplest installation:** after cloning the repo and running `npm install`, start `npm run install:local`. This interactive wizard guides your Google Cloud OAuth setup, opens Google sign-in, verifies local credentials, and registers the stdio server with Claude Desktop, Gemini CLI, or Cursor. It does not create the Google Cloud OAuth client automatically; you must do that once in your own Google Cloud Console. No Google access tokens need to be pasted into the terminal or agent configuration.
 
-A **working local stdio process is now included in source** at `scripts/local-mcp.mjs`. It runs on your machine rather than on CamMicGo's Vercel deployment. It exposes `service_info`, `list_search_sites`, `search_performance`, `seo_keyword_opportunities`, `list_ga4_properties`, `ga4_top_pages`, and `ga4_countries`. Google access is read-only; there are **no Ads writes**, Calendar or YouTube tools in this executable yet. This is a source-based Node.js CLI, **not a packaged Windows/macOS/Linux installer**.
+
+**Local versus hosted AI apps:** Local `stdio` can be used in Claude Desktop, Gemini CLI, and Cursor after running `npm run agent:setup -- claude` (or `gemini` / `cursor`). **ChatGPT on Android/web and hosted Claude connectors require a remotely accessible HTTPS MCP with delegated OAuth**, not a localhost stdio command. The production endpoint currently does not offer authenticated private Google MCP tools. An easy public installable ChatGPT app is therefore **not ready**; avoid giving your Google client secret, access token or refresh token directly to any AI chat.
+
+**Google Ads API:** According to the current official Google Ads API policy, Explorer can support ordinary account reporting (`GoogleAdsService.Search` and `SearchStream`) with OAuth and account access, but the Keyword Planner services remain unavailable until Basic/Standard. Neither reporting nor planning is implemented yet in this local MCP. No campaigns are created and no Google Ads account is modified.
+A **working local stdio process is now included in source** at `scripts/local-mcp.mjs`. It runs on your machine rather than on CamMicGo's Vercel deployment. It exposes `service_info`, `list_search_sites`, `search_performance`, `seo_keyword_opportunities`, `list_ga4_properties`, `ga4_top_pages`, and `ga4_countries`. Google access is read-only; the local executable also provides `youtube_my_channels`, `youtube_my_videos`, `youtube_video_metrics`, `calendar_list`, `calendar_upcoming_events`, and `find_google_properties`. **No Google Ads API integration or campaign writes are implemented.** This is a source-based Node.js CLI, **not a packaged Windows/macOS/Linux installer**.
 
 1. Install Node.js 22+, clone this repository and run `npm install`.
 2. In your own Google Cloud project enable **Search Console API**, **Google Analytics Data API** and **Google Analytics Admin API**. Configure OAuth consent and add yourself as a test user when in Testing.
