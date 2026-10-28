@@ -15,7 +15,7 @@ function plain(html:string){return html.replace(/<[^>]+>/g,'').replace(/&[^;]+;/
 export async function GET(request:NextRequest){
  const code=(request.nextUrl.searchParams.get('country')||'').toUpperCase();
  if(!/^[A-Z]{2}$/.test(code))return NextResponse.json({error:'Invalid country code'},{status:400});
- const curated=verified[code];if(curated){const uri='https://commons.wikimedia.org/wiki/Special:FilePath/'+encodeURIComponent(curated.file)+'?width=1200';return NextResponse.json({country:code,available:true,imageUrl:uri,sourceUrl:'https://commons.wikimedia.org/wiki/File:'+encodeURIComponent(curated.file.replace(/ /g,'_')),credit:curated.credit,license:curated.license,caption:curated.file},{headers:{'Cache-Control':'public,s-maxage=86400'}})}
+ const curated=verified[code];if(curated){const uri='https://commons.wikimedia.org/wiki/Special:FilePath/'+encodeURIComponent(curated.file)+'?width=1200';try{const probe=await fetch(uri,{method:'HEAD',signal:AbortSignal.timeout(4500)});if(probe.ok&&(probe.headers.get('content-type')||'').startsWith('image/'))return NextResponse.json({country:code,available:true,imageUrl:uri,sourceUrl:'https://commons.wikimedia.org/wiki/File:'+encodeURIComponent(curated.file.replace(/ /g,'_')),credit:curated.credit,license:curated.license,caption:curated.file},{headers:{'Cache-Control':'public,s-maxage=86400'}})}catch{/* Fall through to licensed image search. */}}
  const label=new Intl.DisplayNames(['en'],{type:'region'}).of(code)||code;
  const search=landmarks[code]||label+' scenic landmark landscape photograph';
  const url=new URL('https://commons.wikimedia.org/w/api.php');
