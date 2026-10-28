@@ -6,7 +6,7 @@ import {verifyMcpAccess} from '@/lib/mcp-access';
 import {authorizedAccessToken,googleFetch} from '@/lib/google-session';
 export const runtime='nodejs';
 const asText=(value:unknown)=>({content:[{type:'text' as const,text:JSON.stringify(value)}]});
-function unauthorized(){return NextResponse.json({error:'MCP access required',setup:'Connect Google at https://seo.cammicgo.com/connect and issue a scoped temporary token in your dashboard'},{status:401,headers:{'Cache-Control':'no-store','WWW-Authenticate':'Bearer realm="CamMicGo SEO Agent beta"'}})}
+function unauthorized(){return NextResponse.json({error:'MCP access required',setup:'Connect Google at https://seo.cammicgo.com/connect and issue a scoped temporary token in your dashboard'},{status:401,headers:{'Cache-Control':'no-store','WWW-Authenticate':'Bearer realm="CamMicGo SEO Agent", resource_metadata="https://seo.cammicgo.com/.well-known/oauth-protected-resource"'}})}
 async function handler(req:NextRequest){
  if(process.env.ENABLE_MCP_BETA!=='true'){
   // Anonymous discovery only; do not expose Google account tools without MCP OAuth.
