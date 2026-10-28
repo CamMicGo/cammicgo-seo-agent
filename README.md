@@ -71,13 +71,29 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open http://localhost:3000. Note that the OAuth callback in the **current code is hardcoded to** `https://seo.cammicgo.com/api/auth/google/callback`, so OAuth **cannot be completed against localhost as-is**. Local authenticated operation requires implementing environment-based callback URLs and adding `http://localhost:3000/api/auth/google/callback` to your own GCP OAuth client first. Never redirect local OAuth codes to a deployed third-party app.
+Open http://localhost:3000. The OAuth callback now follows the server-controlled `APP_BASE_URL`; set it to `http://localhost:3000` and register `http://localhost:3000/api/auth/google/callback` in the **same GCP project whose client ID and secret you use**. Never redirect local OAuth codes to a hosted third-party installation.
+
+### Local Google Cloud OAuth (BYO project and project-level quota)
+
+**This works for the local Next.js browser dashboard, not yet for a standalone local `stdio` MCP client.** A local `npm run dev` process is an HTTP Next.js app. The private MCP endpoint is not yet installable/authorized by ChatGPT, Claude or Gemini; do not enable `ENABLE_MCP_BETA` as a shortcut.
+
+1. Visit [Google Cloud Console](https://console.cloud.google.com/projectcreate), create a project belonging to **you**, and note its project ID. You do not need access to CamMicGo's Google Cloud project.
+2. In **APIs & Services → Library**, enable **Google Search Console API**, **Google Analytics Data API**, and **Google Analytics Admin API**. For Ads, Calendar and YouTube add their APIs only when the corresponding integrations ship; enabling them alone does not add MCP tools.
+3. Open **Google Auth Platform → Branding** and fill in the app name, user support email and developer contact details. Under **Audience**, choose External/Testing for personal tests, add your Google account under test users; use Internal only for eligible Workspace organizations. Publishing and Google verification may be needed for wider use. Testing consent/refresh tokens can expire according to Google's policies.
+4. Open **Google Auth Platform → Clients → Create client → Web application**. Add **Authorized redirect URI** exactly `http://localhost:3000/api/auth/google/callback`. You may register `http://localhost:3000` as an authorized JavaScript origin if needed, but the server-side authorization-code flow primarily uses the callback URI. Google permits HTTP for localhost, not for ordinary public domains. Different port? Update both GCP and `APP_BASE_URL` to match exactly.
+5. Copy `.env.example` to `.env.local` and enter your **own** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `APP_BASE_URL=http://localhost:3000`, and a fresh 32-byte Base64 `SESSION_ENCRYPTION_KEY` (generate with `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`). **Never commit, publish, screenshot or paste the secret.**
+6. Run `npm install && npm run dev`, open `http://localhost:3000/connect` and authorize Google. Pick only the Search Console sites and GA4 properties the signed-in Google account can read. The server requests `webmasters.readonly` and `analytics.readonly` OAuth scopes; no Ads write permission is granted.
+7. Verify requests and usage in your **own** Google Cloud project under **APIs & Services → Enabled APIs & services → Quotas & System Limits / Metrics**. If a request is denied, check project API enablement, test-user approval, scopes, property permissions, and `redirect_uri_mismatch` first.
+
+**What “use your own quota” actually means:** Google API calls authorized using the user's own OAuth client and project are generally accounted against that project's relevant developer/project quota, **subject to Google's per-user, per-site and per-property restrictions**. A personal Google Cloud project does **not** guarantee extra GA4 property quota, unlimited requests, or a bypass of Google's restrictions. Running locally avoids hosted CamMicGo app usage accounting, but does not eliminate Google quotas or potential Google Cloud billing. Google Ads Keyword Planner requires separate Google Ads API approval/access, not just enabling the API.
+
+**Local data safety:** Client secret and Google tokens are only for your local server/session. Do not bind the local development server to a public interface or forward the port publicly. Current cookies can contain encrypted Google session tokens and BYO secrets; local use is a *developer preview*, not a hardened, distributable desktop MCP product.
 
 ### Google Cloud setup
 
 1. Create or select a GCP project. Enable **Search Console API**, **Google Analytics Data API**, and **Google Analytics Admin API**.
 2. Configure Google Auth Platform → Audience. External / Testing requires adding your own Google account as a test user.
-3. Create an **OAuth 2.0 Web application**. For the hosted app, register `https://seo.cammicgo.com/api/auth/google/callback`.
+3. Create an **OAuth 2.0 Web application**. For the hosted app, register `https://seo.cammicgo.com/api/auth/google/callback`; for a local instance register `http://localhost:3000/api/auth/google/callback` and set `APP_BASE_URL` accordingly.
 4. Provide `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in **Vercel Production environment variables**, not in public GitHub files.
 5. Generate a **32-byte random encryption key** and store its Base64 encoding in `SESSION_ENCRYPTION_KEY`; do not reuse keys across installations.
 6. Redeploy, visit `/connect`, authorize read-only scopes, select the sites/properties your account can access.
