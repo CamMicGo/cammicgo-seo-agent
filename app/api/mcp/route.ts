@@ -8,7 +8,11 @@ export const runtime='nodejs';
 const asText=(value:unknown)=>({content:[{type:'text' as const,text:JSON.stringify(value)}]});
 function unauthorized(){return NextResponse.json({error:'MCP access required',setup:'Connect Google at https://seo.cammicgo.com/connect and issue a scoped temporary token in your dashboard'},{status:401,headers:{'Cache-Control':'no-store','WWW-Authenticate':'Bearer realm="CamMicGo SEO Agent beta"'}})}
 async function handler(req:NextRequest){
- if(process.env.ENABLE_MCP_BETA!=='true')return NextResponse.json({error:'Private MCP beta is not enabled yet'},{status:503});
+ if(process.env.ENABLE_MCP_BETA!=='true'){
+  // Anonymous discovery only; do not expose Google account tools without MCP OAuth.
+  const publicMcp=createMcpHandler(server=>server.registerTool('service_info',{title:'CamMicGo SEO Agent server status',description:'Public status of remote MCP and secure connection requirements.',inputSchema:z.object({})},async()=>asText({name:'CamMicGo SEO Agent',remote:true,authenticatedTools:false,reason:'Google OAuth for remote MCP agents and shared durable quotas are not enabled.',localMcpSetup:'https://github.com/CamMicGo/cammicgo-seo-agent#local-mcp-server-read-only-preview'})));
+  return publicMcp(req);
+ }
  const ctx=verifyMcpAccess(req.headers.get('authorization'));if(!ctx)return unauthorized();
  const mcp=createMcpHandler(server=>{
   server.registerTool('service_info',{title:'CamMicGo SEO Agent',description:'Service capabilities and token lifetime.',inputSchema:z.object({})},async()=>asText({name:'CamMicGo SEO Agent',beta:true,expiresAt:new Date(ctx.expires).toISOString(),selectedSite:ctx.site||null,selectedGA4Property:ctx.property||null}));
