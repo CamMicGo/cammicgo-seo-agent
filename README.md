@@ -130,24 +130,20 @@ A **working local stdio process is now included in source** at `scripts/local-mc
 6. Run `npm run local:doctor` to verify that your OAuth credentials and tokens are present.
 7. Configure an MCP stdio client with the absolute path to Node.js and the absolute path to the script (example below), then restart the agent. Avoid relative paths that depend on the agent's current working directory. `npm run mcp:local` runs the same stdio process for manual testing.
 
-Example agent configuration (replace the paths):
+Example agent configuration (replace absolute paths with those on your computer):
 
 ```json
 {
   "mcpServers": {
     "cammicgo-seo-local": {
       "command": "/absolute/path/to/node",
-      "args": ["/absolute/path/to/cammicgo-seo-agent/scripts/local-mcp.mjs"],
-      "env": {
-        "GOOGLE_CLIENT_ID": "your-oauth-client-id.apps.googleusercontent.com",
-        "GOOGLE_CLIENT_SECRET": "your-oauth-client-secret"
-      }
+      "args": ["/absolute/path/to/cammicgo-seo-agent/scripts/local-mcp.mjs", "stdio"]
     }
   }
 }
 ```
 
-**Important:** This raw example exposes a client secret in the agent's config file. Prefer launching the process with a private environment already configured, e.g. from a locally installed wrapper script, instead of pasting secrets into agent configuration. A dedicated installer that securely resolves the local application directory and registers client configurations is still planned. Alternatively configure your agent to launch `npm run mcp:local` in the repository root so the server reads `.env.local`, but only if your client supports an explicit working directory. For the shown absolute-script example, the process must receive the credentials via private environment variables, because the current script locates `.env.local` relative to the working directory. **Do not share agent config files containing client secrets.**
+The local MCP resolves its own repository's `.env.local` automatically, regardless of the agent's working directory. **Never copy your Google OAuth client secret into an agent's JSON configuration.** Keep `.env.local` private and out of Git. If your client uses a different MCP configuration format, use the same executable and argument.
 
 **Google quota:** Local Google API calls use credentials associated with your own GCP project, subject to Google's separate property/user quotas. This bypasses the hosted CamMicGo *application* quota, not Google's limits. Local storage and Google token refresh are user-managed. The hosted remote MCP at `https://seo.cammicgo.com/api/mcp` has a **different** authentication model; it still requires a complete OAuth MCP authorization server and persistent quota enforcement before private access can be enabled safely.
 
