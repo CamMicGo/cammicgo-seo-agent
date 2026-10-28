@@ -18,7 +18,7 @@ import {z} from 'zod';
 const dir=join(homedir(),'.cammicgo-seo-agent');
 const secretsPath=join(dir,'google-token.enc');
 const keyPath=join(dir,'token.key');
-const scopes=['https://www.googleapis.com/auth/webmasters.readonly','https://www.googleapis.com/auth/analytics.readonly'];
+const scopes=['https://www.googleapis.com/auth/webmasters.readonly','https://www.googleapis.com/auth/analytics.readonly','https://www.googleapis.com/auth/youtube.readonly','https://www.googleapis.com/auth/calendar.readonly'];
 function prepare(){mkdirSync(dir,{recursive:true,mode:0o700});try{chmodSync(dir,0o700)}catch{}}
 function env(){const path=resolve(dirname(fileURLToPath(import.meta.url)),'..','.env.local');if(existsSync(path)){for(const line of readFileSync(path,'utf8').split(/\r?\n/)){const m=line.match(/^([A-Z_]+)=(.*)$/);if(m&&!process.env[m[1]]){let v=m[2].trim();if(v.startsWith('"')&&v.endsWith('"')){try{v=JSON.parse(v)}catch{}}process.env[m[1]]=v}}}}
 function credentials(){env();const clientId=process.env.GOOGLE_CLIENT_ID,clientSecret=process.env.GOOGLE_CLIENT_SECRET;if(!clientId?.endsWith('.apps.googleusercontent.com')||!clientSecret)throw Error('Use npm run setup:local first to configure your own Google OAuth web client.');return {clientId,clientSecret}}
@@ -75,8 +75,21 @@ async function stdio(){
   if(!(all.accountSummaries||[]).some(x=>(x.propertySummaries||[]).some(p=>p.property===property)))return asText({error:'Property not authorized'});
   return asText(await google('https://analyticsdata.googleapis.com/v1beta/'+property+':runReport',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dateRanges:[{startDate:'28daysAgo',endDate:'yesterday'}],dimensions:[{name:'country'},{name:'countryId'}],metrics:[{name:'sessions'},{name:'activeUsers'}],limit:100,returnPropertyQuota:true})}))
  });
- m.registerTool('service_info',{description:'Show local MCP capabilities and security limits',inputSchema:z.object({})},async()=>asText({name:'CamMicGo SEO Agent Local',mode:'stdio',remoteDependency:false,googleReadOnly:true,tools:['list_search_sites','search_performance','seo_keyword_opportunities','list_ga4_properties','ga4_top_pages','ga4_countries'],adsCampaignWrites:false,calendar:false,youtube:false}));
+ m.registerTool('youtube_my_channels',{description:'List channels owned by the signed-in YouTube account (read-only)',inputSchema:z.object({})},async()=>asText(await google('https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,contentDetails&mine=true&maxResults=50')));
+ m.registerTool('youtube_my_videos',{description:'List videos from your own YouTube channel uploads playlist (read-only)',inputSchema:z.object({maxResults:z.number().int().min(1).max(50).default(20)})},async({maxResults})=>{
+  const channels=await google('https://www.googleapis.com/youtube/v3/channels?part=contentDetails&mine=true');
+  const playlist=channels.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;if(!playlist)return asText({items:[],note:'No channel/uploads playlist available'});
+  return asText(await google('https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId='+encodeURIComponent(playlist)+'&maxResults='+maxResults));
+ });
+ m.registerTool('youtube_video_metrics',{description:'Public video statistics for a video ID (not private YouTube Analytics reports)',inputSchema:z.object({videoId:z.string().regex(/^[a-zA-Z0-9_-]{11}$/)})},async({videoId})=>asText(await google('https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id='+encodeURIComponent(videoId))));
+ m.registerTool('calendar_list',{description:'List calendars visible to the signed-in user (read-only)',inputSchema:z.object({})},async()=>asText(await google('https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=100')));
+ m.registerTool('calendar_upcoming_events',{description:'List upcoming calendar events (read-only, no modification)',inputSchema:z.object({calendarId:z.string().min(1).max(250).default('primary'),maxResults:z.number().int().min(1).max(100).default(20)})},async({calendarId,maxResults})=>{
+  const calendars=await google('https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=250');
+  if(!(calendars.items||[]).some(c=>c.id===calendarId)&&calendarId!=='primary')return asText({error:'Calendar not accessible'});
+  return asText(await google('https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(calendarId)+'/events?singleEvents=true&orderBy=startTime&timeMin='+encodeURIComponent(new Date().toISOString())+'&maxResults='+maxResults));
+ });
+ m.registerTool('service_info',{description:'Show local MCP capabilities and security limits',inputSchema:z.object({})},async()=>asText({name:'CamMicGo SEO Agent Local',mode:'stdio',remoteDependency:false,googleReadOnly:true,tools:['list_search_sites','search_performance','seo_keyword_opportunities','list_ga4_properties','ga4_top_pages','ga4_countries','youtube_my_channels','youtube_my_videos','youtube_video_metrics','calendar_list','calendar_upcoming_events'],adsCampaignWrites:false,calendar:true,youtube:true}));
  await m.connect(new StdioServerTransport());
 }
-async function doctor(){credentials();console.log('Google OAuth credentials: configured');if(existsSync(secretsPath)){await token();console.log('Encrypted Google token: valid');}else console.log('Encrypted Google token: missing; run npm run local:login');console.log('This local MCP supports read-only GSC and GA4; no ads spending.')}
+async function doctor(){credentials();console.log('Google OAuth credentials: configured');if(existsSync(secretsPath)){await token();console.log('Encrypted Google token: valid');}else console.log('Encrypted Google token: missing; run npm run local:login');console.log('This local MCP supports read-only GSC, GA4, YouTube and Calendar; no ads spending. If you previously signed in, run npm run local:login to grant new scopes.')}
 try{const cmd=process.argv[2];if(cmd==='login')await login();else if(cmd==='stdio')await stdio();else if(cmd==='doctor')await doctor();else{console.error('Usage: node scripts/local-mcp.mjs login|stdio|doctor');process.exitCode=2}}catch(e){console.error('CamMicGo:',e.message);process.exitCode=1}
