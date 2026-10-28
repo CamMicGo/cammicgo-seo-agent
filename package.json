@@ -13,7 +13,8 @@
     "local:doctor": "node scripts/local-mcp.mjs doctor",
     "agent:setup": "node scripts/setup-agent.mjs",
     "install:local": "node scripts/install-local.mjs",
-    "remote:doctor": "node scripts/remote-doctor.mjs"
+    "remote:doctor": "node scripts/remote-doctor.mjs",
+    "oauth:desktop": "node scripts/import-desktop-oauth.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",
