@@ -2,9 +2,9 @@ import {NextResponse} from 'next/server';
 export const dynamic='force-dynamic';
 export function GET(){
  const origin=process.env.APP_BASE_URL||'https://seo.cammicgo.com';
- const issuer=process.env.MCP_OAUTH_ISSUER;
+ const issuer=process.env.MCP_OAUTH_ISSUER||'https://vfngxjsryklqldarkxhy.supabase.co/auth/v1';
  // Do not advertise a non-operational authorization server.
- if(!issuer||process.env.ENABLE_MCP_OAUTH!=='true')return NextResponse.json({error:'MCP OAuth is not configured',status:'not_ready'},{status:503,headers:{'Cache-Control':'no-store'}});
+ if(process.env.ENABLE_SUPABASE_MCP_AUTH!=='true')return NextResponse.json({error:'MCP OAuth is not configured',status:'not_ready'},{status:503,headers:{'Cache-Control':'no-store'}});
  try{
   const resource=new URL('/api/mcp',origin).href;
   const auth=new URL(issuer);
