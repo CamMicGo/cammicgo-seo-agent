@@ -92,3 +92,5 @@
  .atlas-inner{background:rgba(16,39,80,.53)}
  .atlas-photo{filter:brightness(1.35) saturate(1.1)}
 }
+
+.atlas-language-picker select{max-width:115px;min-height:42px;border-radius:11px;border:1px solid #ffffff80;padding:8px 7px;color:#fff;background:#183b70;font:inherit;font-size:13px}.atlas-controls{display:flex;align-items:center;flex-wrap:wrap;justify-content:flex-end}@media(max-width:750px){.atlas-language-picker select{max-width:98px}.atlas-controls button{padding:8px 11px}.atlas-top{align-items:flex-start}.atlas-country-picker select{max-width:45vw}}
