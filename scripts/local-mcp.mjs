@@ -88,7 +88,17 @@ async function stdio(){
   if(!(calendars.items||[]).some(c=>c.id===calendarId)&&calendarId!=='primary')return asText({error:'Calendar not accessible'});
   return asText(await google('https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(calendarId)+'/events?singleEvents=true&orderBy=startTime&timeMin='+encodeURIComponent(new Date().toISOString())+'&maxResults='+maxResults));
  });
- m.registerTool('service_info',{description:'Show local MCP capabilities and security limits',inputSchema:z.object({})},async()=>asText({name:'CamMicGo SEO Agent Local',mode:'stdio',remoteDependency:false,googleReadOnly:true,tools:['list_search_sites','search_performance','seo_keyword_opportunities','list_ga4_properties','ga4_top_pages','ga4_countries','youtube_my_channels','youtube_my_videos','youtube_video_metrics','calendar_list','calendar_upcoming_events'],adsCampaignWrites:false,calendar:true,youtube:true}));
+ m.registerTool('find_google_properties',{description:'Resolve a user-mentioned website or brand to authorized Search Console sites and GA4 properties. If there are multiple matches, ask the user to choose an exact site/property; never guess. Use returned exact identifiers in subsequent tools.',inputSchema:z.object({search:z.string().min(2).max(200)})},async({search})=>{
+  const [sites,analytics]=await Promise.allSettled([google('https://www.googleapis.com/webmasters/v3/sites'),google('https://analyticsadmin.googleapis.com/v1beta/accountSummaries?pageSize=200')]);
+  const q=search.toLocaleLowerCase().replace(/^https?:\/\//,'').replace(/^www\./,'').replace(/\/$/,'').trim();
+  const allSites=sites.status==='fulfilled'?(sites.value.siteEntry||[]):[];
+  const allProperties=analytics.status==='fulfilled'?(analytics.value.accountSummaries||[]).flatMap(a=>a.propertySummaries||[]):[];
+  const matchingSites=allSites.filter(s=>s.siteUrl.toLowerCase().includes(q)).map(s=>({siteUrl:s.siteUrl,permissionLevel:s.permissionLevel}));
+  const matchingProperties=allProperties.filter(p=>(p.displayName||'').toLowerCase().includes(q)||p.property.toLowerCase().includes(q)).map(p=>({property:p.property,displayName:p.displayName}));
+  const matches=matchingSites.length+matchingProperties.length;
+  return asText({query:search,searchConsole:matchingSites,analytics:matchingProperties,ambiguous:matchingSites.length>1||matchingProperties.length>1,note:matches===0?'No matching authorized properties. Ask the user for the exact domain or Google account.':matches>2?'Several properties match. Ask user to select exact identifiers and never infer GA4/Search Console pairing.':'Use the exact siteUrl/property from these results. A GA4 property and a Search Console site are NOT automatically linked.'});
+ });
+ m.registerTool('service_info',{description:'Show local MCP capabilities and security limits',inputSchema:z.object({})},async()=>asText({name:'CamMicGo SEO Agent Local',mode:'stdio',remoteDependency:false,googleReadOnly:true,tools:['find_google_properties','list_search_sites','search_performance','seo_keyword_opportunities','list_ga4_properties','ga4_top_pages','ga4_countries','youtube_my_channels','youtube_my_videos','youtube_video_metrics','calendar_list','calendar_upcoming_events'],adsCampaignWrites:false,calendar:true,youtube:true}));
  await m.connect(new StdioServerTransport());
 }
 async function doctor(){credentials();console.log('Google OAuth credentials: configured');if(existsSync(secretsPath)){await token();console.log('Encrypted Google token: valid');}else console.log('Encrypted Google token: missing; run npm run local:login');console.log('This local MCP supports read-only GSC, GA4, YouTube and Calendar; no ads spending. If you previously signed in, run npm run local:login to grant new scopes.')}
