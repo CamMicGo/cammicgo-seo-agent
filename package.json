@@ -24,7 +24,8 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-svg-worldmap": "2.0.2",
-    "zod": "^4.2.0"
+    "zod": "^4.2.0",
+    "@supabase/supabase-js": "^2.57.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
