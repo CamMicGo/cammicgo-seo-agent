@@ -14,7 +14,7 @@ export async function POST(req:NextRequest){
  const pending:Pending&{mcpUserId:string}={state,verifier,credentials,issuedAt:Date.now(),mcpUserId:user.id};
  const challenge=createHash('sha256').update(verifier).digest('base64url');
  const url=new URL('https://accounts.google.com/o/oauth2/v2/auth');
- url.search=new URLSearchParams({client_id:clientId,redirect_uri:googleOAuthCallback(),response_type:'code',scope:'https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/analytics.readonly',access_type:'offline',prompt:'consent',state,code_challenge:challenge,code_challenge_method:'S256'}).toString();
+ url.search=new URLSearchParams({client_id:clientId,redirect_uri:googleOAuthCallback(),response_type:'code',scope:'https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/analytics.readonly https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/calendar.readonly',access_type:'offline',prompt:'consent',state,code_challenge:challenge,code_challenge_method:'S256'}).toString();
  const result=NextResponse.json({url:url.toString()});
  result.cookies.set(STATE_COOKIE,encrypt(pending),{...cookieOptions,maxAge:600});
  return result;
