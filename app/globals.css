@@ -94,3 +94,19 @@
 }
 
 .atlas-language-picker select{max-width:115px;min-height:42px;border-radius:11px;border:1px solid #ffffff80;padding:8px 7px;color:#fff;background:#183b70;font:inherit;font-size:13px}.atlas-controls{display:flex;align-items:center;flex-wrap:wrap;justify-content:flex-end}@media(max-width:750px){.atlas-language-picker select{max-width:98px}.atlas-controls button{padding:8px 11px}.atlas-top{align-items:flex-start}.atlas-country-picker select{max-width:45vw}}
+
+/* Mobile tables: page names scroll away, with no oversized frozen first column. */
+@media(max-width:750px){
+ .scroll-table{width:100%;max-width:100%;overflow-x:auto;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y}
+ .scroll-table table{width:max-content;min-width:540px}
+ .scroll-table :is(th,td):first-child,.scroll-table thead th:first-child,.scroll-table tbody tr:nth-child(even) td:first-child{position:static!important;left:auto!important;min-width:145px;max-width:235px;box-shadow:none!important}
+ .scroll-table thead th{position:static!important}
+ .scroll-table td:first-child{overflow-wrap:anywhere}
+}
+.atlas-country-menu{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;margin:16px 0 8px;border:1px solid #91b5e4;border-radius:15px;background:rgba(238,246,255,.94);color:#1a3761}
+.atlas-country-menu label{font-weight:750;white-space:nowrap}
+.atlas-country-menu select{flex:1;min-width:150px;max-width:380px;padding:10px 12px;border-radius:10px;border:1px solid #9cb9e4;background:white;color:#173d74;font-size:16px}
+.atlas-voice{border:1px solid #7ca0d6;border-radius:10px;background:#235ca5;color:white;padding:10px 14px;cursor:pointer;font:inherit}
+.atlas-voice:focus-visible,.atlas-country-menu select:focus-visible,.atlas-language-picker select:focus-visible{outline:3px solid #ffd365;outline-offset:3px}
+.atlas-language-picker{display:flex;gap:8px;align-items:center;color:#fff;font-weight:650}
+@media(max-width:750px){.atlas-country-menu{margin:12px 0;gap:10px}.atlas-country-menu select{max-width:100%}.atlas-language-label{font-size:12px}.atlas-country{padding-top:18px!important}.atlas-space{min-height:65px!important;height:65px!important}}
