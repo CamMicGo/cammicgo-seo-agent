@@ -73,6 +73,22 @@ npm run dev
 
 Open http://localhost:3000. The OAuth callback now follows the server-controlled `APP_BASE_URL`; set it to `http://localhost:3000` and register `http://localhost:3000/api/auth/google/callback` in the **same GCP project whose client ID and secret you use**. Never redirect local OAuth codes to a hosted third-party installation.
 
+### Installation locale simplifiée — assistant interactif
+
+Inspiré de l'approche de [gum](https://github.com/ehmo/gum) (installation guidée puis connexion OAuth), CamMicGo propose maintenant un assistant de configuration pour le **tableau de bord local** :
+
+```bash
+git clone https://github.com/CamMicGo/cammicgo-seo-agent.git
+cd cammicgo-seo-agent
+npm install
+npm run setup:local
+npm run dev
+```
+
+L'assistant affiche l'adresse de redirection à enregistrer dans Google Cloud, demande le **Client ID** et le **Client Secret**, génère automatiquement une clé locale de chiffrement, et crée `.env.local`. L'utilisateur n'a **pas** besoin de copier un access token ou un refresh token : Google fournit ces jetons lors du consentement dans le navigateur. **Ne partagez pas votre écran pendant la saisie du secret** (l'entrée terminal est visible) et ne versionnez jamais `.env.local` ni `.env.local.backup`.
+
+**Limite actuelle :** la procédure facilite l'authentification Google du tableau de bord Next.js en local, mais **ne constitue pas encore un serveur MCP stdio local opérationnel**. Contrairement à gum, CamMicGo ne fournit pas encore de binaire `mcp --stdio`, de stockage des jetons dans le trousseau du système, ni de configuration automatique des clients Claude/Codex/Gemini. Ces capacités restent à implémenter et tester.
+
 ### Local Google Cloud OAuth (BYO project and project-level quota)
 
 **This works for the local Next.js browser dashboard, not yet for a standalone local `stdio` MCP client.** A local `npm run dev` process is an HTTP Next.js app. The private MCP endpoint is not yet installable/authorized by ChatGPT, Claude or Gemini; do not enable `ENABLE_MCP_BETA` as a shortcut.
