@@ -126,7 +126,7 @@ OAuth scopes: `https://www.googleapis.com/auth/webmasters.readonly` and `https:/
 **Local versus hosted AI apps:** Local `stdio` can be used in Claude Desktop, Gemini CLI, and Cursor after running `npm run agent:setup -- claude` (or `gemini` / `cursor`). **ChatGPT on Android/web and hosted Claude connectors require a remotely accessible HTTPS MCP with delegated OAuth**, not a localhost stdio command. The production endpoint currently does not offer authenticated private Google MCP tools. An easy public installable ChatGPT app is therefore **not ready**; avoid giving your Google client secret, access token or refresh token directly to any AI chat.
 
 **Google Ads API:** According to the current official Google Ads API policy, Explorer can support ordinary account reporting (`GoogleAdsService.Search` and `SearchStream`) with OAuth and account access, but the Keyword Planner services remain unavailable until Basic/Standard. Neither reporting nor planning is implemented yet in this local MCP. No campaigns are created and no Google Ads account is modified.
-A **working local stdio process is now included in source** at `scripts/local-mcp.mjs`. It runs on your machine rather than on CamMicGo's Vercel deployment. It exposes `service_info`, `list_search_sites`, `search_performance`, `seo_keyword_opportunities`, `list_ga4_properties`, `ga4_top_pages`, and `ga4_countries`. Google access is read-only; the local executable also provides `youtube_my_channels`, `youtube_my_videos`, `youtube_video_metrics`, `calendar_list`, `calendar_upcoming_events`, and `find_google_properties`. **No Google Ads API integration or campaign writes are implemented.** This is a source-based Node.js CLI, **not a packaged Windows/macOS/Linux installer**.
+A **working local stdio process is now included in source** at `scripts/local-mcp.mjs`. It runs on your machine rather than on CamMicGo's Vercel deployment. It exposes `service_info`, `find_google_properties`, `list_search_sites`, `search_performance`, `seo_keyword_opportunities`, `list_ga4_properties`, `ga4_top_pages`, and `ga4_countries`. Google access is read-only; the local executable also provides `youtube_my_channels`, `youtube_my_videos`, `youtube_video_metrics`, `calendar_list`, `calendar_upcoming_events`, and `find_google_properties`. **No Google Ads API integration or campaign writes are implemented.** This is a source-based Node.js CLI, **not a packaged Windows/macOS/Linux installer**.
 
 1. Install Node.js 22+, clone this repository and run `npm install`.
 2. In your own Google Cloud project enable **Search Console API**, **Google Analytics Data API** and **Google Analytics Admin API**. Configure OAuth consent and add yourself as a test user when in Testing.
@@ -277,11 +277,31 @@ Next gates: functioning production CI; standards-based MCP protected resource me
 
 ## Local MCP: GSC, GA4, YouTube and Calendar (read-only)
 
-The source-based **local stdio MCP** has 12 registered tools: `service_info`, `list_search_sites`, `search_performance`, `seo_keyword_opportunities`, `list_ga4_properties`, `ga4_top_pages`, `ga4_countries`, `youtube_my_channels`, `youtube_my_videos`, `youtube_video_metrics`, `calendar_list`, and `calendar_upcoming_events`. The latest YouTube and Calendar tools require **YouTube Data API v3** and **Google Calendar API** to be enabled in the user's own GCP project, and a **new** `npm run local:login` to consent to the read-only `youtube.readonly` and `calendar.readonly` scopes. They have been coded but are **not yet verified against an authenticated YouTube/Calendar account**. A YouTube channel can be missing, and an API may refuse access until properly configured.
+The source-based **local stdio MCP** has 13 registered tools: `service_info`, `list_search_sites`, `search_performance`, `seo_keyword_opportunities`, `list_ga4_properties`, `ga4_top_pages`, `ga4_countries`, `youtube_my_channels`, `youtube_my_videos`, `youtube_video_metrics`, `calendar_list`, and `calendar_upcoming_events`. The latest YouTube and Calendar tools require **YouTube Data API v3** and **Google Calendar API** to be enabled in the user's own GCP project, and a **new** `npm run local:login` to consent to the read-only `youtube.readonly` and `calendar.readonly` scopes. They have been coded but are **not yet verified against an authenticated YouTube/Calendar account**. A YouTube channel can be missing, and an API may refuse access until properly configured.
 
 From the repository directory, use `npm install` and `npm run install:local` for guided GCP credentials, browser OAuth and optional Claude Desktop / Gemini CLI / Cursor configuration. Alternatively, after credentials exist, run `npm run local:login`, `npm run local:doctor`, and `npm run mcp:local` to use the stdio server. The Google access/refresh tokens stay on this computer in an encrypted file under `~/.cammicgo-seo-agent` with owner-only file permissions, **not** in an OS keychain; the encryption key is stored separately on disk and should not be mistaken for hardware-backed storage. Agent config does not contain tokens. This local MCP does not use hosted CamMicGo Vercel or Supabase data-request quotas, but all Google API quotas still apply.
 
 Unlike gum's dynamically searched API catalog and its 29 startup MCP tools (9 meta-tools), **CamMicGo does not currently provide generic API search/describe/call, Workspace-wide operations, write/mutation tools or a comparable catalog**. Google Ads Keyword Planner is not implemented; its access requirements are distinct from GSC keyword reports. No campaign charges or calendar modifications are performed. This local version is a developer preview: do not claim 29 equivalent Gum tools or full Google coverage.
+
+## Installation en cinq étapes — MCP local (Windows / macOS / Linux)
+
+**Prérequis :** Node.js 22 ou plus récent et Git. Cette version s'exécute depuis le code source, sans installateur graphique ni compte CamMicGo hébergé.
+
+1. Créez votre projet [Google Cloud](https://console.cloud.google.com/), activez **Search Console API**, **Google Analytics Data API**, **Google Analytics Admin API**, ainsi que **YouTube Data API v3** et **Google Calendar API** si vous souhaitez ces fonctions.
+2. Google Auth Platform → **Audience** : ajoutez votre compte comme testeur si l'application est en mode Testing. Dans **Clients**, créez un client **Application Web** et enregistrez exactement `http://127.0.0.1:38271/oauth/callback`. Pour le dashboard web local, ajoutez aussi `http://localhost:3000/api/auth/google/callback`.
+3. Dans un terminal, installez puis lancez l'assistant :
+
+   ```bash
+   git clone https://github.com/CamMicGo/cammicgo-seo-agent.git
+   cd cammicgo-seo-agent
+   npm install
+   npm run install:local
+   ```
+
+4. L'assistant vous demandera **Client ID** et **Client Secret** de votre propre projet Google Cloud. Il ouvrira ensuite votre navigateur pour obtenir le consentement Google et enregistrera les jetons chiffrés sur votre ordinateur. Ne collez **jamais** ces secrets dans un chat ou un dépôt GitHub. La saisie du secret reste visible dans le terminal : protégez votre écran pendant la configuration.
+5. Sélectionnez **claude**, **gemini** ou **cursor** ; le programme écrit la connexion MCP dans la configuration de cet agent (en réalisant une sauvegarde si le fichier existe). Redémarrez l'agent et demandez : « Liste mes sites Search Console et mes propriétés Analytics ». Pour diagnostiquer : `npm run local:doctor`.
+
+Le MCP local ne dépend pas du quota de la plateforme CamMicGo ; il reste soumis aux quotas et droits Google de votre propre projet et compte. **Google Ads Keyword Planner, écritures Google Ads et YouTube Analytics détaillé ne sont pas inclus.** Les outils YouTube/Calendar ont été implémentés en lecture seule mais nécessitent encore un essai réel sur des comptes autorisés ; ils peuvent déclencher une vérification OAuth Google selon les scopes et le statut du projet.
 
 ## Which site will my AI agent use? How are quotas protected?
 
