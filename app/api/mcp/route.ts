@@ -70,3 +70,7 @@ async function handler(req:NextRequest){
 }
 export const GET=handler;
 export const POST=handler;
+
+// Some remote connector validators probe HEAD before negotiating MCP over POST.
+// This confirms route existence only; it does not imply OAuth or private Google tools are enabled.
+export function HEAD(){return new NextResponse(null,{status:200,headers:{'Cache-Control':'no-store','Allow':'HEAD, POST, GET'}})}
