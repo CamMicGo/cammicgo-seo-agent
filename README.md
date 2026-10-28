@@ -118,6 +118,39 @@ OAuth scopes: `https://www.googleapis.com/auth/webmasters.readonly` and `https:/
 
 **Security note:** Current session credentials, including BYO client secrets and refresh tokens, are encrypted client-side in an HTTP-only cookie, not kept in a database; browser cookie size and session revocation limitations mean this needs further security review before a large public release. A database-backed per-account session is recommended. Do not put credentials in prompts, logs or GitHub issues.
 
+## Local MCP server (read-only preview)
+
+A **working local stdio process is now included in source** at `scripts/local-mcp.mjs`. It runs on your machine rather than on CamMicGo's Vercel deployment. It exposes `list_search_sites`, `search_performance`, `list_ga4_properties`, and `ga4_top_pages`. Google access is read-only; there are **no Ads writes**, Calendar or YouTube tools in this executable yet. This is a source-based Node.js CLI, **not a packaged Windows/macOS/Linux installer**.
+
+1. Install Node.js 22+, clone this repository and run `npm install`.
+2. In your own Google Cloud project enable **Search Console API**, **Google Analytics Data API** and **Google Analytics Admin API**. Configure OAuth consent and add yourself as a test user when in Testing.
+3. Create an OAuth **Web application** client with **both** authorized redirect URIs: `http://localhost:3000/api/auth/google/callback` (local dashboard) and `http://127.0.0.1:38271/oauth/callback` (local MCP login). This second URL is an intentional **loopback callback** bound to your own machine, not to CamMicGo's website.
+4. Run `npm run setup:local` to create the untracked `.env.local` with your OAuth client ID/secret and a new local encryption key.
+5. Run `npm run local:login`: a Google browser consent screen will open; approve the read-only scopes. No access or refresh token is pasted into a terminal. The encrypted token and its separately stored local key are created under `~/.cammicgo-seo-agent` (filesystem permissions restricted when supported). **This is not OS keychain-grade protection**; only run it on a trusted computer, with an encrypted user disk.
+6. Run `npm run local:doctor` to verify that your OAuth credentials and tokens are present.
+7. Configure an MCP stdio client with the absolute path to Node.js and the absolute path to the script (example below), then restart the agent. Avoid relative paths that depend on the agent's current working directory. `npm run mcp:local` runs the same stdio process for manual testing.
+
+Example agent configuration (replace the paths):
+
+```json
+{
+  "mcpServers": {
+    "cammicgo-seo-local": {
+      "command": "/absolute/path/to/node",
+      "args": ["/absolute/path/to/cammicgo-seo-agent/scripts/local-mcp.mjs"],
+      "env": {
+        "GOOGLE_CLIENT_ID": "your-oauth-client-id.apps.googleusercontent.com",
+        "GOOGLE_CLIENT_SECRET": "your-oauth-client-secret"
+      }
+    }
+  }
+}
+```
+
+**Important:** This raw example exposes a client secret in the agent's config file. Prefer launching the process with a private environment already configured, e.g. from a locally installed wrapper script, instead of pasting secrets into agent configuration. A dedicated installer that securely resolves the local application directory and registers client configurations is still planned. Alternatively configure your agent to launch `npm run mcp:local` in the repository root so the server reads `.env.local`, but only if your client supports an explicit working directory. For the shown absolute-script example, the process must receive the credentials via private environment variables, because the current script locates `.env.local` relative to the working directory. **Do not share agent config files containing client secrets.**
+
+**Google quota:** Local Google API calls use credentials associated with your own GCP project, subject to Google's separate property/user quotas. This bypasses the hosted CamMicGo *application* quota, not Google's limits. Local storage and Google token refresh are user-managed. The hosted remote MCP at `https://seo.cammicgo.com/api/mcp` has a **different** authentication model; it still requires a complete OAuth MCP authorization server and persistent quota enforcement before private access can be enabled safely.
+
 ## MCP
 
 The public production MCP remains unavailable for private account data until secure client OAuth and durable usage limits are enabled. A feature-gated 15-minute property-scoped test path has been implemented for controlled testing but must stay disabled until its security requirements are met. You can test discovery with any Streamable HTTP compatible MCP inspector. This is **not** a usable authenticated SEO MCP yet.
