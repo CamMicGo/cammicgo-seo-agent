@@ -4,9 +4,9 @@ const APIs=[
 {name:'Search Console',id:'webmasters.googleapis.com',state:'live',detail:'Search queries, clicks, CTR, impressions and positions.',logo:'/google-search-console.svg'},
 {name:'Google Analytics 4',id:'analyticsdata.googleapis.com',state:'live',detail:'Traffic, countries and top pages. Also enable the Analytics Admin API.',logo:'/api/assets/google-analytics'},
 {name:'Google Analytics Admin',id:'analyticsadmin.googleapis.com',state:'live',detail:'List the Analytics properties you are allowed to access.',logo:'/api/assets/google-analytics'},
-{name:'Google Ads',id:'googleads.googleapis.com',state:'planned',detail:'Campaign API integration is not yet live. Keyword Planner requires Basic or Standard access.',logo:null},
-{name:'Google Calendar',id:'calendar-json.googleapis.com',state:'planned',detail:'Calendar MCP tools are planned, not yet implemented.',logo:null},
-{name:'YouTube Data',id:'youtube.googleapis.com',state:'planned',detail:'YouTube MCP tools are planned, not yet implemented.',logo:null}
+{name:'Google Ads',id:'googleads.googleapis.com',state:'planned',detail:'Campaign API integration is not yet live. Keyword Planner requires Basic or Standard access.',logo:'https://www.google.com/s2/favicons?domain=ads.google.com&sz=64'},
+{name:'Google Calendar',id:'calendar-json.googleapis.com',state:'planned',detail:'Calendar MCP tools are planned, not yet implemented.',logo:'https://www.google.com/s2/favicons?domain=calendar.google.com&sz=64'},
+{name:'YouTube Data',id:'youtube.googleapis.com',state:'planned',detail:'YouTube MCP tools are planned, not yet implemented.',logo:'https://www.google.com/s2/favicons?domain=youtube.com&sz=64'}
 ] as const;
 export default function SetupGoogle(){
 return <main className="setup-guide">
