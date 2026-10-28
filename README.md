@@ -347,3 +347,13 @@ Pour un parcours plus guidé, `npm run install:local` orchestre ces étapes et p
 
 **Différence Web / Desktop :** `npm run dev` lance le tableau de bord Web, dont le flux OAuth utilise un client **Web** et un autre callback. Un client OAuth **Bureau** est prévu pour `npm run local:login` et `npm run mcp:local`. Ne mélangez pas les deux pour un même parcours OAuth.
 
+
+### Verified local MCP protocol smoke test
+
+The source-based local `stdio` MCP implementation registers **13 tools**: `service_info`, `find_google_properties`, `list_search_sites`, `search_performance`, `seo_keyword_opportunities`, `list_ga4_properties`, `ga4_top_pages`, `ga4_countries`, `youtube_my_channels`, `youtube_my_videos`, `youtube_video_metrics`, `calendar_list`, and `calendar_upcoming_events`.
+
+```bash
+npm run test:mcp:local
+```
+
+This automated test runs a separate local MCP process with **throwaway, fake credentials** and checks the JSON-RPC initialization handshake, tool list and `service_info` call. It **does not** call Google or verify a real OAuth login; users must still complete `npm run install:local` and check that their Google account grants the required scopes. Calendar and YouTube are read-only and depend on each user's API permissions. No real Ads Keyword Planner or Ads campaign creation is exposed in the local tools. Running the tests does not automatically deploy Vercel or authorize the remote MCP endpoint.
