@@ -1,6 +1,6 @@
 # Connect your AI agent — CamMicGo SEO Agent
 
-> Status: **planning + technical preview**. The remote MCP at https://seo.cammicgo.com/api/mcp currently exposes only a public `service_info` tool. It **cannot yet retrieve your private Search Console or GA4 data**. Browser dashboard OAuth is a separate login and does not authenticate the remote MCP client. Do not present any of these instructions as a working private-data connector until OAuth for MCP and tools are deployed.
+> Status: **planning + technical preview**. The remote MCP at https://seo.cammicgo.com/api/mcp exposes only a public `service_info` tool until proper OAuth authentication and durable quotas are deployed. It **cannot yet retrieve your private Search Console or GA4 data**. Browser dashboard OAuth is a separate login and does not authenticate the remote MCP client. Do not present any of these instructions as a working private-data connector until OAuth for MCP and tools are deployed.
 
 ## Why two OAuth connections?
 
@@ -40,22 +40,34 @@ Gemini CLI supports Streamable HTTP. A basic example for `~/.gemini/settings.jso
 ```
 This currently discovers only `service_info`. Authenticated user data requires MCP OAuth implementation and an appropriate client configuration. Check the current Gemini CLI documentation for its supported OAuth configuration.
 
-### Claude Desktop / Gemini CLI / coding agents (local)
+### Claude Desktop, Gemini CLI and Cursor — local stdio (source CLI now available)
 
-A locally installed MCP server can run over **stdio**, e.g. agent configuration:
+The local server is now shipped as a Node.js source script (`scripts/local-mcp.mjs`) with read-only Search Console and GA4 tools. There is **no prebuilt executable installer** yet.
+
+```bash
+npm install
+npm run setup:local
+npm run local:login
+npm run local:doctor
+npm run agent:setup -- claude   # or gemini / cursor
+```
+
+Create your own OAuth **Web application** client in Google Cloud and register BOTH local redirect URIs: `http://localhost:3000/api/auth/google/callback` (web dashboard) and `http://127.0.0.1:38271/oauth/callback` (stdio login). The second is the actual loopback callback used by `local:login`. Restart the chosen agent afterward. The setup command writes its local server registration to the agent's configuration **without writing Google tokens or client secrets to that configuration**.
+
+Agent JSON (when using a client that accepts this format):
+
 ```json
 {
   "mcpServers": {
     "cammicgo-seo-local": {
-      "command": "cammicgo-seo",
-      "args": ["mcp", "--stdio"]
+      "command": "/absolute/path/to/node",
+      "args": ["/absolute/path/to/cammicgo-seo-agent/scripts/local-mcp.mjs", "stdio"]
     }
   }
 }
 ```
-**This command is a proposed future executable**, not an existing release. Our Next.js `npm run dev` is a web server and does not implement an authenticated stdio MCP binary.
 
-Future local distribution: signed/reproducible releases for Windows/macOS/Linux, installer and package-manager options, one-command setup, desktop OAuth browser authorization, OS keychain storage of Google tokens, `doctor` diagnostics, a small tool catalog loaded on demand, and a permissions report. Local installs use the user's machine; no CamMicGo Vercel invocations for local data tools.
+The source CLI stores an encrypted Google token on the computer, using a key stored in the same private user directory; that is **not equivalent to native OS keychain security**. Signed packaged installers, native keychain integration and full cross-platform acceptance tests remain to be developed. This local MCP sends Google requests directly, not through CamMicGo Vercel.
 
 ## Security commitments
 
