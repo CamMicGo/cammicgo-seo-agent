@@ -120,6 +120,8 @@ OAuth scopes: `https://www.googleapis.com/auth/webmasters.readonly` and `https:/
 
 ## Local MCP server (read-only preview)
 
+**Simplest installation:** after cloning the repo and running `npm install`, start `npm run install:local`. This interactive wizard guides your Google Cloud OAuth setup, opens Google sign-in, verifies local credentials, and registers the stdio server with Claude Desktop, Gemini CLI, or Cursor. It does not create the Google Cloud OAuth client automatically; you must do that once in your own Google Cloud Console. No Google access tokens need to be pasted into the terminal or agent configuration.
+
 A **working local stdio process is now included in source** at `scripts/local-mcp.mjs`. It runs on your machine rather than on CamMicGo's Vercel deployment. It exposes `service_info`, `list_search_sites`, `search_performance`, `seo_keyword_opportunities`, `list_ga4_properties`, `ga4_top_pages`, and `ga4_countries`. Google access is read-only; there are **no Ads writes**, Calendar or YouTube tools in this executable yet. This is a source-based Node.js CLI, **not a packaged Windows/macOS/Linux installer**.
 
 1. Install Node.js 22+, clone this repository and run `npm install`.
