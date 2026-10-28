@@ -12,7 +12,8 @@
     "mcp:local": "node scripts/local-mcp.mjs stdio",
     "local:doctor": "node scripts/local-mcp.mjs doctor",
     "agent:setup": "node scripts/setup-agent.mjs",
-    "install:local": "node scripts/install-local.mjs"
+    "install:local": "node scripts/install-local.mjs",
+    "remote:doctor": "node scripts/remote-doctor.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",
