@@ -71,3 +71,7 @@ Future local distribution: signed/reproducible releases for Windows/macOS/Linux,
 - [Claude custom connectors](https://support.claude.com/en/articles/11176164-use-connectors-to-extend-claude-s-capabilities)
 - [ChatGPT custom MCP servers](https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt)
 - [Gemini CLI MCP servers](https://google-gemini.github.io/gemini-cli/docs/tools/mcp-server.html)
+
+## Bring your own Google Cloud project for local development
+
+For a local Next.js browser dashboard (currently supported), follow the [README local Google Cloud OAuth setup](../README.md#local-google-cloud-oauth-byo-project-and-project-level-quota). Register `http://localhost:3000/api/auth/google/callback` in your own Google OAuth **Web application** client, set `APP_BASE_URL=http://localhost:3000`, and set Google client credentials and a separate session encryption key in `.env.local` (never commit them). Google calls use the local client's Google Cloud project for relevant project quotas, while Google's per-user/per-property restrictions continue to apply. This does **not** magically enable an authenticated local stdio MCP server; one is still not shipped. Hosted agent OAuth will be a distinct flow. Do not use the remote CamMicGo callback for a localhost project.
