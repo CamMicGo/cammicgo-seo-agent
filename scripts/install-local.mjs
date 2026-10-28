@@ -14,15 +14,14 @@ try{
  console.log('Configuration requise (une seule fois) dans votre propre Google Cloud :');
  console.log('  https://console.cloud.google.com/apis/dashboard');
  console.log('  Activez Search Console API, Analytics Data API, Analytics Admin API, YouTube Data API v3 et Calendar API.');
- console.log('  OAuth Web client — ajoutez ces deux URI autorisées :');
- console.log('  http://localhost:3000/api/auth/google/callback');
- console.log('  http://127.0.0.1:38271/oauth/callback');
+ console.log('  OAuth Desktop client — téléchargez son fichier JSON depuis Google Cloud.');
+ console.log('  Le flux local utilise le navigateur et une redirection loopback automatique.');
  console.log('  Ajoutez votre compte Google comme testeur si le consentement est en mode Testing.\n');
  const ack=(await ask('Ces étapes Google Cloud sont-elles terminées ? (o/N) : ')).trim().toLowerCase();
  if(!['o','oui','y','yes'].includes(ack)){console.log('Vous pourrez relancer npm run install:local une fois Google Cloud configuré.');process.exitCode=0}
  else{
   if(existsSync(join(root,'.env.local')))console.log('Identifiants locaux existants conservés ; utiliser setup:local pour les remplacer volontairement.');
-  else await run('setup-local.mjs');
+  else await run('import-desktop-oauth.mjs');
   await run('local-mcp.mjs',['login']);
   await run('local-mcp.mjs',['doctor']);
   const target=(await ask('Quel agent souhaitez-vous configurer ? (claude/gemini/cursor/aucun) : ')).trim().toLowerCase();
