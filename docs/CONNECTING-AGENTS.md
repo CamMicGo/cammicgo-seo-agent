@@ -93,3 +93,21 @@ For a local Next.js browser dashboard (currently supported), follow the [README 
 **Do not change the shared Supabase project's global Authentication → URL Configuration → Site URL to `https://seo.cammicgo.com` without auditing CamMicGo Community's existing login and redirects.** Supabase constructs the OAuth consent page from its *global Site URL* plus the configured Authorization Path. The current shared project's site URL may point to `https://www.cammicgo.com` with `/oauth/consent`, while this SEO app is served on `https://seo.cammicgo.com`; these are not interchangeable. Supabase does **not** generate a consent page. A real frontend must implement authenticated `getAuthorizationDetails`, explicit approve/deny, and redirect using Supabase Auth's OAuth server APIs. Keep dynamic OAuth application registration disabled until that UI, redirect validation, user-to-Google-account linking and shared quotas are complete and tested. Consider a dedicated Supabase Auth project for SEO if the main CamMicGo Site URL needs to remain independent. The `cmg_private` SQL data schema can remain isolated in the existing database; where the OAuth issuer lives is a separate deployment decision.
 
 Official guidance: https://supabase.com/docs/guides/auth/oauth-server/getting-started
+
+## Acceptance tests — October 2026: what can be tested today
+
+**Local PC, with your own Google project:** install Node.js 22+, clone the repo, `npm install`, `npm run setup:local`, `npm run local:login`, `npm run local:doctor`, then `npm run agent:setup -- claude` (or `gemini` / `cursor`), and restart the desktop app. In the agent, ask it to list your authorized Search Console sites or GA4 properties. Google permissions are read-only. Never paste OAuth credentials into an AI chat. If setup reports missing Google Cloud redirect URIs, register both exact loopback callbacks described above.
+
+**Claude Desktop:** local stdio connection on the computer. Look under Settings → Desktop app → Extensions (or the developer/local MCP section); the local script is **not** an `.mcpb` desktop extension. The local tool process and its private credential files remain on the same computer. [Anthropic local MCP guidance](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop).
+
+**Gemini:** these commands target **Gemini CLI on a computer**, not the ordinary Gemini Android app. Install Gemini CLI separately and confirm `gemini` is available on PATH before running `npm run agent:setup -- gemini`.
+
+**Cursor:** install Cursor on a computer and use `npm run agent:setup -- cursor`; inspect its MCP settings after restarting. Verify tool discovery before trusting analytics responses.
+
+**ChatGPT:** the consumer Android app cannot add a local stdio MCP. Custom remote MCP integration is through eligible web workspaces, and requires our remote MCP OAuth authorization server and quota enforcement, **not yet complete**. See [OpenAI's current MCP connection requirements](https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt).
+
+**Claude mobile:** a successfully authenticated **remote** connector may work through Claude mobile, but a local `stdio` tool installed on a computer is not available in Claude mobile. The remote private Google connector is **not ready**.
+
+**Remote MCP smoke test:** `npm run remote:doctor` checks reachability/transport only; it is not evidence that remote private Search Console/GA4 tools are authorized.
+
+**Storage readiness:** `cmg_private` is installed in a Supabase project. The latest schema includes an optional `supabase_user_id` link and fields for encrypted Google credentials. Installing tables is not equivalent to completing consent/account linking: avoid enabling `ENABLE_SUPABASE_MCP_AUTH` for private Google tools until the linking, scoped authorization, encryption key rotation and atomic quotas have been tested.
