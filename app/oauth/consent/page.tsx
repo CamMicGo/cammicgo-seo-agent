@@ -35,6 +35,7 @@ export default function OAuthConsent(){
   setBusy(false);
   setError(err?err.message:'Check your email for a secure sign-in link, then return to this page.');
  }
+ async function connectGoogle(){try{const {data}=await getSupabase().auth.getSession();if(!data.session)throw Error('Sign in first');const response=await fetch('/api/mcp/google/start',{method:'POST',headers:{Authorization:'Bearer '+data.session.access_token}});const result=await response.json();if(!response.ok||!result.url)throw Error(result.error||'Google OAuth failed');window.location.assign(result.url)}catch(e){setError(e instanceof Error?e.message:'Google connection failed')}}
  async function decide(approve:boolean){
   if(!id||busy)return;
   setBusy(true);setError('');
@@ -58,7 +59,7 @@ export default function OAuthConsent(){
    <label>Email address<input type="email" value={email} onChange={e=>setEmail(e.target.value)} autoComplete="email" required/></label>
    <button className="primary connect-button" type="button" disabled={busy||!email.includes('@')} onClick={()=>void sendLink()}>Send sign-in link</button>
   </section>}
-  {loggedIn&&details&&<div className="connect-card"><button className="primary connect-button" disabled={busy} onClick={()=>void decide(true)}>Authorize access</button>
+  {loggedIn&&details&&<div className="connect-card"><button type="button" disabled={busy} onClick={()=>void connectGoogle()}>Connect Google</button><button className="primary connect-button" disabled={busy} onClick={()=>void decide(true)}>Authorize access</button>
    <button type="button" disabled={busy} onClick={()=>void decide(false)}>Deny access</button></div>}
   <p className="privacy">You can revoke access in your account. Never share your Google OAuth client secret with an agent.</p>
  </div></main>;
