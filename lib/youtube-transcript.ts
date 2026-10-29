@@ -28,14 +28,21 @@ function playerConfig(html:string):{apiKey?:string;visitorData?:string;clientVer
  const config=(embeddedJson(html,'ytcfg.set(')??{}) as {INNERTUBE_API_KEY?:string;VISITOR_DATA?:string;INNERTUBE_CLIENT_VERSION?:string};
  return {apiKey:config.INNERTUBE_API_KEY,visitorData:config.VISITOR_DATA,clientVersion:config.INNERTUBE_CLIENT_VERSION};
 }
-/** One bounded public player request; no cookies, OAuth tokens, proxies or browser impersonation. */
-async function fallbackPlayer(videoId:string,html:string,signal:AbortSignal):Promise<Player|null>{
+type FallbackDiagnostic={stage:'config'|'request'|'response'|'parse'|'player';sent:boolean;httpStatus?:number;contentType?:string;reason?:string;playabilityStatus?:string|null;playabilityReason?:string|null;captionTrackCount?:number};
+async function fallbackPlayer(videoId:string,html:string,signal:AbortSignal):Promise<{player:Player|null;diagnostic:FallbackDiagnostic}>{
  const cfg=playerConfig(html);
- if(!cfg.apiKey||!cfg.clientVersion||!/^[a-zA-Z0-9_-]+$/.test(cfg.apiKey))return null;
+ if(!cfg.apiKey||!cfg.clientVersion)return {player:null,diagnostic:{stage:'config',sent:false,reason:!cfg.apiKey?'missing_innertube_api_key':'missing_client_version'}};
+ if(!/^[a-zA-Z0-9_-]+$/.test(cfg.apiKey))return {player:null,diagnostic:{stage:'config',sent:false,reason:'invalid_api_key_format'}};
  const endpoint=new URL('https://www.youtube.com/youtubei/v1/player');endpoint.searchParams.set('key',cfg.apiKey);
- const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json','Origin':'https://www.youtube.com','Referer':'https://www.youtube.com/'},body:JSON.stringify({videoId,context:{client:{clientName:'WEB',clientVersion:cfg.clientVersion,hl:'en',gl:'US',visitorData:cfg.visitorData}}}),signal,cache:'no-store'});
- if(!response.ok)return null;
- return await response.json() as Player;
+ let response:Response;
+ try{
+  response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json','Origin':'https://www.youtube.com','Referer':'https://www.youtube.com/'},body:JSON.stringify({videoId,context:{client:{clientName:'WEB',clientVersion:cfg.clientVersion,hl:'en',gl:'US',visitorData:cfg.visitorData}}}),signal,cache:'no-store'});
+ }catch(e){return {player:null,diagnostic:{stage:'request',sent:true,reason:e instanceof Error?e.name:'request_failed'}}}
+ const base={sent:true,httpStatus:response.status,contentType:response.headers.get('content-type')?.split(';')[0]??'unknown'};
+ if(!response.ok)return {player:null,diagnostic:{...base,stage:'response',reason:'http_error'}};
+ let player:Player;
+ try{player=await response.json() as Player}catch{return {player:null,diagnostic:{...base,stage:'parse',reason:'invalid_json'}}}
+ return {player,diagnostic:{...base,stage:'player',playabilityStatus:player?.playabilityStatus?.status??null,playabilityReason:player?.playabilityStatus?.reason?.slice(0,180)??null,captionTrackCount:tracksOf(player).length}};
 }
 function nameOf(t:Track){return t.name?.simpleText??t.name?.runs?.map(x=>x.text).join('')??t.languageCode}
 export async function getYouTubeTranscript(input:string,language='en'){
@@ -49,11 +56,11 @@ export async function getYouTubeTranscript(input:string,language='en'){
   const player=(embeddedJson(html,'var ytInitialPlayerResponse = ')??embeddedJson(html,'ytInitialPlayerResponse = ')) as Player|null;
   let tracks=tracksOf(player);
   let method='watch-page';
-  let fallbackStatus:string|null=null;
+  let fallbackDiagnostic:FallbackDiagnostic|null=null;
   if(!tracks.length){
-   try{const alternative=await fallbackPlayer(videoId,html,controller.signal);tracks=tracksOf(alternative);fallbackStatus=alternative?.playabilityStatus?.status??null;if(tracks.length)method='player-api';}catch{/* Keep the primary diagnostic. */}
+   const fallback=await fallbackPlayer(videoId,html,controller.signal);tracks=tracksOf(fallback.player);fallbackDiagnostic=fallback.diagnostic;if(tracks.length)method='player-api';
   }
-  if(!tracks.length)return {videoId,error:'No accessible caption tracks from YouTube',playabilityStatus:player?.playabilityStatus?.status??null,fallbackPlayabilityStatus:fallbackStatus,attemptedMethods:['watch-page','player-api'],hint:'YouTube may restrict cloud requests; Google OAuth does not grant access to public player captions.'};
+  if(!tracks.length)return {videoId,error:'No accessible caption tracks from YouTube',playabilityStatus:player?.playabilityStatus?.status??null,fallbackPlayabilityStatus:fallbackDiagnostic?.playabilityStatus??null,fallbackDiagnostic,attemptedMethods:['watch-page',...(fallbackDiagnostic?.sent?['player-api']:[])],hint:'YouTube may restrict cloud requests; Google OAuth does not grant access to public player captions.'};
   const requested=language.toLowerCase();const track=tracks.find(t=>t.languageCode.toLowerCase()===requested&&!t.kind)??tracks.find(t=>t.languageCode.toLowerCase()===requested)??tracks.find(t=>t.languageCode.toLowerCase().split('-')[0]===requested.split('-')[0])??tracks[0];
   const url=new URL(track.baseUrl);
   if(url.protocol!=='https:'||!['www.youtube.com','youtube.com'].includes(url.hostname)||!url.pathname.startsWith('/api/timedtext'))return {videoId,error:'Unexpected caption endpoint'};
