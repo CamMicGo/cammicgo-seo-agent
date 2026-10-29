@@ -105,7 +105,7 @@ yt-dlp --version
 node scripts/local-youtube-transcript.mjs Lxkb4gd041I
 ```
 
-This invokes a local extractor and prints time-coded JSON if captions are available. It may fail when YouTube restricts the video or subtitle tracks. Google OAuth does not bypass YouTube anti-bot restrictions. The local MCP tool `youtube_get_transcript` is in a **separate pending PR** until merged; check the installed version before relying on it.
+This invokes a local extractor and prints time-coded JSON if captions are available. It may fail when YouTube restricts the video or subtitle tracks. Google OAuth does not bypass YouTube anti-bot restrictions. The local MCP exposes `youtube_get_transcript` to connected AI clients. It accepts a YouTube URL or 11-character video ID and a language such as `en` or `fr`. It uses local `yt-dlp`, does not use YouTube Data API quota, and may fail for unavailable captions.
 
 ## 7. Verify and update
 
@@ -119,3 +119,7 @@ npm install
 For a manual MCP stdio launch, run `npm run mcp:local`. It stays attached to stdin/stdout and is normally launched by your AI client rather than kept open in a terminal.
 
 Do not share `.env.local`, OAuth client JSON, local token files or refresh tokens. For supported tools and limitations see [the repository README](../README.md).
+
+### Android and remote YouTube transcript experiments
+
+The website does **not** offer a downloadable Android APK or a published browser extension yet. Chrome on Android does not support ordinary desktop Chrome extensions. An Android companion would need an explicit, user-authorized pairing with the remote MCP account, secure short-lived credentials, a device-side caption extractor, and an audited relay. Do not expose the local MCP stdio process to the public internet or share Google OAuth refresh tokens. Local Windows/Linux/macOS MCP with `yt-dlp` is the supported test path.
