@@ -35,6 +35,7 @@ async function handler(req:NextRequest){
    });
    server.registerTool('read_operation',{title:'Execute a supported read-only Google API operation',description:'Execute cataloged read-only Calendar, YouTube or Search Console operations. No arbitrary URLs, mutations or write methods.',inputSchema:z.object({operationId:z.string().max(140),args:z.record(z.string(),z.unknown()).default({})})},async input=>{
     const op=gumCatalog.find(op=>op.id===input.operationId);
+    if(op?.service==='youtube'){const denied=await youtubeAuthorized();if(denied)return asText(denied);}
     if(!op||op.risk!=='read'||!['calendar','youtube','searchconsole'].includes(op.service)||!('path' in op)||typeof op.path!=='string'||!['GET','POST'].includes(op.method||''))return asText({error:'Operation not supported for remote execution',operationId:input.operationId});
     const base:Record<string,string>={calendar:'https://www.googleapis.com',youtube:'https://www.googleapis.com',searchconsole:'https://searchconsole.googleapis.com'};
     let path:string=op.path;
@@ -54,6 +55,16 @@ async function handler(req:NextRequest){
       const response=await googleFetch(url.toString(),token,init);const result=await response.json().catch(()=>({}));return asText(response.ok?{operationId:op.id,result}:{operationId:op.id,error:'Google API request failed',status:response.status,details:result});
     }catch(e){return asText({error:e instanceof Error?e.message:'Google API error'})}
    });
+   // Shared CamMicGo Google Cloud quota is reserved for the configured owner.
+   // All other users must link their own Google Cloud OAuth client (BYO).
+   const youtubeAuthorized=async()=>{
+    const session=await readGoogle(user.id);
+    if(!session)return {error:'Connect Google first'};
+    if(session.credentials?.mode==='byo')return null;
+    const owner=process.env.CAMMICGO_YOUTUBE_OWNER_USER_ID;
+    if(owner&&user.id===owner)return null;
+    return {error:'Hosted YouTube API access requires your own Google Cloud OAuth client and quota. Shared CamMicGo YouTube quota is owner-only.',code:'YOUTUBE_BYO_REQUIRED'};
+   };
    // Google tools are registered for every authenticated user; access is checked per call.
    const googleRequest=async(url:string,init?:RequestInit)=>{
     const session=await readGoogle(user.id);if(!session)return {error:'Connect Google first'};
@@ -63,15 +74,29 @@ async function handler(req:NextRequest){
     const body=await response.json().catch(()=>({}));
     return response.ok?body:{error:'Google API request failed',status:response.status,details:body};
    };
-   server.registerTool('youtube_channel',{title:'YouTube channel information',description:'Read the authenticated Google account YouTube channel metadata and statistics.',inputSchema:z.object({})},async()=>asText(await googleRequest('https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,contentDetails&mine=true')));
+   server.registerTool('youtube_channel',{title:'YouTube channel information',description:'Read the authenticated Google account YouTube channel metadata and statistics.',inputSchema:z.object({})},async()=>{const denied=await youtubeAuthorized();return asText(denied??await googleRequest('https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,contentDetails&mine=true'));});
    server.registerTool('youtube_search_videos',{title:'Search YouTube videos',description:'Search publicly available YouTube videos or videos from a channel by channel ID. Returns titles, channel, publication time and video IDs; transcripts are not guaranteed by the official API.',inputSchema:z.object({query:z.string().min(1).max(150).optional(),channelId:z.string().min(1).max(100).optional(),maxResults:z.number().int().min(1).max(25).default(10),publishedAfter:z.string().datetime().optional()})},async args=>{
+    const denied=await youtubeAuthorized();if(denied)return asText(denied);
     if(!args.query&&!args.channelId)return asText({error:'Provide query or channelId'});
     const params=new URLSearchParams({part:'snippet',type:'video',maxResults:String(args.maxResults),order:'date'});
     if(args.query)params.set('q',args.query);if(args.channelId)params.set('channelId',args.channelId);if(args.publishedAfter)params.set('publishedAfter',args.publishedAfter);
     return asText(await googleRequest('https://www.googleapis.com/youtube/v3/search?'+params));
    });
-   server.registerTool('youtube_video_details',{title:'YouTube video details',description:'Get metadata, descriptions and statistics for YouTube videos by ID. Does not provide arbitrary video transcripts.',inputSchema:z.object({videoIds:z.array(z.string().min(1).max(30)).min(1).max(25)})},async args=>asText(await googleRequest('https://www.googleapis.com/youtube/v3/videos?'+new URLSearchParams({part:'snippet,statistics,contentDetails',id:args.videoIds.join(',')}))));
-   server.registerTool('youtube_get_transcript',{title:'Read timestamped YouTube captions (experimental)',description:'Retrieve public auto-generated or manual YouTube caption segments with timestamps using the player timedtext endpoint, not the YouTube Data API. This unofficial method can fail on cloud IPs, unavailable captions or YouTube changes. Read-only, no Google API quota used.',inputSchema:z.object({videoId:z.string().min(1).max(200),language:z.string().max(30).default('en')})},async args=>asText(await getYouTubeTranscript(args.videoId,args.language)));
+   server.registerTool('youtube_video_details',{title:'YouTube video details',description:'Get metadata, descriptions and statistics for YouTube videos by ID. Does not provide arbitrary video transcripts.',inputSchema:z.object({videoIds:z.array(z.string().min(1).max(30)).min(1).max(25)})},async args=>{const denied=await youtubeAuthorized();return asText(denied??await googleRequest('https://www.googleapis.com/youtube/v3/videos?'+new URLSearchParams({part:'snippet,statistics,contentDetails',id:args.videoIds.join(',')})));});
+   server.registerTool('youtube_get_transcript',{title:'Read timestamped YouTube captions (experimental)',description:'Retrieve public auto-generated or manual YouTube caption segments with timestamps using the player timedtext endpoint, not the YouTube Data API. This unofficial method can fail on cloud IPs, unavailable captions or YouTube changes. Read-only, no Google API quota used.',inputSchema:z.object({videoId:z.string().min(1).max(200),language:z.string().max(30).default('en')})},async()=>asText({error:'Public YouTube transcript extraction is available only in the locally installed CamMicGo MCP server. The hosted MCP does not fetch captions.',code:'LOCAL_MCP_REQUIRED'}));
+   server.registerTool('youtube_channel_latest',{title:'Latest videos from an exact YouTube channel (low quota)',description:'Read latest uploads from an exact channel ID via channels.list + playlistItems.list + videos.list (approximately 3 YouTube quota units). No broad 100-unit search.',inputSchema:z.object({channelId:z.string().regex(/^UC[A-Za-z0-9_-]{22}$/),maxResults:z.number().int().min(1).max(25).default(5)})},async args=>{
+    const denied=await youtubeAuthorized();if(denied)return asText(denied);
+    const channel=await googleRequest('https://www.googleapis.com/youtube/v3/channels?part=snippet,contentDetails&id='+encodeURIComponent(args.channelId)) as {items?:Array<{snippet?:{title?:string};contentDetails?:{relatedPlaylists?:{uploads?:string}}}>;error?:string};
+    if(channel.error)return asText(channel);
+    const uploads=channel.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
+    if(!uploads)return asText({error:'Channel not found or uploads unavailable'});
+    const items=await googleRequest('https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId='+encodeURIComponent(uploads)+'&maxResults='+args.maxResults) as {items?:Array<{contentDetails?:{videoId?:string}}> ;error?:string};
+    if(items.error)return asText(items);
+    const ids=(items.items||[]).map(item=>item.contentDetails?.videoId).filter((id):id is string=>!!id&&/^[A-Za-z0-9_-]{11}$/.test(id));
+    if(!ids.length)return asText({channelId:args.channelId,videos:[]});
+    const videos=await googleRequest('https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails&id='+ids.join(','));
+    return asText({channelId:args.channelId,channelTitle:channel.items?.[0]?.snippet?.title,videos,estimatedQuotaUnits:3});
+   });
    server.registerTool('calendar_list',{title:'List Google Calendars',description:'List calendars accessible to the linked Google account (read-only).',inputSchema:z.object({})},async()=>asText(await googleRequest('https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=100')));
    server.registerTool('calendar_events',{title:'Find Google Calendar events',description:'List or search events, including past appointments, in a specific calendar. Requires calendar.readonly.',inputSchema:z.object({calendarId:z.string().min(1).max(300).default('primary'),query:z.string().max(200).optional(),timeMin:z.string().datetime().optional(),timeMax:z.string().datetime().optional(),maxResults:z.number().int().min(1).max(100).default(25)})},async args=>{
     const params=new URLSearchParams({maxResults:String(args.maxResults),singleEvents:'true',orderBy:'startTime'});
