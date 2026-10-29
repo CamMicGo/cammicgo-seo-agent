@@ -30,10 +30,11 @@ public class MainActivity extends Activity {
   static String unescape(String s){return s.replace("\\u0026","&").replace("\\/","/");}
   static String transcript(String video) throws Exception {
     String html=read("https://www.youtube.com/watch?v="+video);
-    int start=html.indexOf("ytInitialPlayerResponse = ");
-    if(start<0)start=html.indexOf("ytInitialPlayerResponse=");
+    Matcher playerMarker=Pattern.compile("(?:var\\s+)?ytInitialPlayerResponse\\s*=").matcher(html);
+    int start=playerMarker.find()?playerMarker.end():-1;
     if(start<0)throw new IOException("YouTube player metadata unavailable");
     int brace=html.indexOf('{',start),depth=0,end=-1;boolean quote=false,escape=false;
+    if(brace<0 || brace-start>20)throw new IOException("Réponse YouTube non disponible.");
     for(int i=brace;i<html.length();i++){char ch=html.charAt(i);if(quote){if(escape)escape=false;else if(ch=='\\')escape=true;else if(ch=='"')quote=false;}else{if(ch=='"')quote=true;else if(ch=='{')depth++;else if(ch=='}'&&--depth==0){end=i+1;break;}}}
     if(end<0)throw new IOException("Invalid player metadata");
     JSONObject root=new JSONObject(html.substring(brace,end));
@@ -58,7 +59,7 @@ public class MainActivity extends Activity {
     Button copy=new Button(this);copy.setText("Copier le résultat");l.addView(copy);
     output=new TextView(this);output.setTextColor(Color.BLACK);output.setTextIsSelectable(true);output.setMovementMethod(new ScrollingMovementMethod());ScrollView scroll=new ScrollView(this);scroll.addView(output);l.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));setContentView(l);
     if(Intent.ACTION_SEND.equals(getIntent().getAction())&&"text/plain".equals(getIntent().getType()))input.setText(getIntent().getStringExtra(Intent.EXTRA_TEXT));
-    run.setOnClickListener(v->{String video=id(input.getText().toString());if(video==null){output.setText("URL YouTube invalide");return;}run.setEnabled(false);output.setText("Extraction en cours...");Executors.newSingleThreadExecutor().execute(()->{String result;try{result=transcript(video);}catch(Exception e){result="Extraction impossible : "+e.getMessage();}final String text=result;runOnUiThread(()->{output.setText(text);run.setEnabled(true);});});});
+    run.setOnClickListener(v->{String video=id(input.getText().toString());if(video==null){output.setText("URL YouTube invalide");return;}run.setEnabled(false);output.setText("Extraction en cours...");Executors.newSingleThreadExecutor().execute(()->{String result;try{result=transcript(video);}catch(Exception e){result="Impossible de récupérer les sous-titres de cette vidéo. YouTube peut limiter l’accès depuis Android, ou la vidéo ne possède pas de sous-titres accessibles. Réessayez avec une autre vidéo."; }final String text=result;runOnUiThread(()->{output.setText(text);run.setEnabled(true);});});});
     copy.setOnClickListener(v->{android.content.ClipboardManager cm=(android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE);cm.setPrimaryClip(android.content.ClipData.newPlainText("YouTube transcript",output.getText()));Toast.makeText(this,"Copié",Toast.LENGTH_SHORT).show();});
   }
 }
