@@ -19,7 +19,56 @@
 
 ---
 
-**CAMMICGO SEO Agent** is the official display name for the proposed MCP plugin / AI connector. Read the [French and English plugin description](./docs/PLUGIN-DESCRIPTION.md) for supported services, privacy details and feature availability. This is a **technical preview**, not yet a published ChatGPT app/plugin.\n\n## Remote MCP OAuth (Claude and other compatible agents) — current preview
+**CAMMICGO SEO Agent** is the official display name for the proposed MCP plugin / AI connector. Read the [French and English plugin description](./docs/PLUGIN-DESCRIPTION.md) for supported services, privacy details and feature availability. This is a **technical preview**, not yet a published ChatGPT app/plugin.\n\n
+## Install local MCP — Windows, Linux, macOS
+
+[**Step-by-step installation (all operating systems)**](./docs/LOCAL-MCP-INSTALL.md) · [**Visual website guide**](https://seo.cammicgo.com/setup/local) · [**Google Cloud API catalog**](https://seo.cammicgo.com/setup/google-cloud)
+
+Verify prerequisites in PowerShell, Bash or macOS Terminal:
+
+```bash
+git --version
+node --version
+npm --version
+yt-dlp --version
+```
+
+Requires Node.js **22+**. Install missing prerequisites:
+
+**Windows PowerShell** (restart terminal afterward):
+```powershell
+winget install --id Git.Git -e
+winget install --id OpenJS.NodeJS.LTS -e
+winget install --id yt-dlp.yt-dlp -e
+```
+
+**Ubuntu/Debian Bash** (install Node.js 22+ separately from [nodejs.org](https://nodejs.org/en/download) or a version manager):
+```bash
+sudo apt update
+sudo apt install -y git python3 pipx
+pipx ensurepath
+pipx install yt-dlp
+```
+
+**macOS Terminal** (after installing [Homebrew](https://brew.sh/)):
+```bash
+brew install git node@22 yt-dlp
+```
+
+Then, on all three platforms:
+```bash
+git clone https://github.com/CamMicGo/cammicgo-seo-agent.git
+cd cammicgo-seo-agent
+npm install
+npm run install:local
+npm run local:doctor
+```
+
+The guided installer uses a **Google OAuth Desktop client JSON** from your own [Google Cloud project](https://console.cloud.google.com/projectcreate). Enable only the APIs you need; use [Google Auth Platform → Clients](https://console.cloud.google.com/auth/clients) to create a Desktop OAuth client. Your GCP project owner and the Google account you authorize can be different. For Claude Desktop, Cursor and Gemini CLI, the wizard can configure local MCP; ChatGPT support depends on the client's local MCP capabilities. See the [full guide](./docs/LOCAL-MCP-INSTALL.md) for every API link, troubleshooting and transcript extraction.
+
+---
+
+## Remote MCP OAuth (Claude and other compatible agents) — current preview
 
 1. In your MCP client, add the remote server URL `https://seo.cammicgo.com/api/mcp` and choose automatic OAuth registration when supported.
 2. Sign in to CamMicGo through the Supabase consent page. The AI agent is authorized separately from Google.
