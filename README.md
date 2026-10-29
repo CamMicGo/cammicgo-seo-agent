@@ -19,7 +19,17 @@
 
 ---
 
-**CAMMICGO SEO Agent** is the official display name for the proposed MCP plugin / AI connector. Read the [French and English plugin description](./docs/PLUGIN-DESCRIPTION.md) for supported services, privacy details and feature availability. This is a **technical preview**, not yet a published ChatGPT app/plugin.\n\n## What is this?
+**CAMMICGO SEO Agent** is the official display name for the proposed MCP plugin / AI connector. Read the [French and English plugin description](./docs/PLUGIN-DESCRIPTION.md) for supported services, privacy details and feature availability. This is a **technical preview**, not yet a published ChatGPT app/plugin.\n\n## Remote MCP OAuth (Claude and other compatible agents) — current preview
+
+1. In your MCP client, add the remote server URL `https://seo.cammicgo.com/api/mcp` and choose automatic OAuth registration when supported.
+2. Sign in to CamMicGo through the Supabase consent page. The AI agent is authorized separately from Google.
+3. Under **Google Cloud quota source**, choose **CamMicGo shared project** or **Use my own Google Cloud project**.
+4. For your own project, create a **Web application** OAuth client in Google Cloud, enable the APIs you intend to use, and add exactly `https://seo.cammicgo.com/api/auth/google/callback` to its authorized redirect URIs. Enter your Client ID and Client Secret **on the CamMicGo HTTPS consent page only**, never in an AI chat. Your credentials and refresh token are encrypted at rest in the Supabase-linked connection record. This hosted Web OAuth client differs from GUM's local Desktop OAuth client.
+5. Select the requested Google APIs, click **Continue with Google**, accept Google's consent screen, then **Authorize agent**. Refresh the MCP tool list.
+
+**Current limitations:** the hosted server offers a searchable 228-operation GUM-derived metadata catalog, but does **not** implement all 228 operations. `search_apis` and `describe_operation` distinguish discovery from executable operations. `read_operation` is restricted to supported read-only Calendar, YouTube and Search Console REST operations. Other dedicated tools cover GA4. Write, destructive, Google Ads and transcript-plugin operations are **not** implemented in this remote dispatcher. Per-user application quota is still shared and not yet differentiated between BYO and shared users; Google project quota attribution follows the OAuth client/project subject to Google's rules. Do not assume connecting an account grants access to every Google API.
+
+## What is this?
 
 CamMicGo SEO Agent is a **free, open-source alternative to GSC Wizard**, focused on Google Search Console, Google Analytics 4 and SEO insights for AI assistants. It is an independently developed project with a secure browser-based Google OAuth flow and a hosted Next.js endpoint. Our goal is to offer transparent, extensible SEO analytics with both remote MCP and local agent support.
 
