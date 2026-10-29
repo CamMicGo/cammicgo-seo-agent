@@ -1,0 +1,2 @@
+Trigger a new deployment from main after merging the Android APK download route.
+Target: https://seo.cammicgo.com/download/android
