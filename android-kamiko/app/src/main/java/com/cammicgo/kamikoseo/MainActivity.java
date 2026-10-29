@@ -51,7 +51,7 @@ public class MainActivity extends Activity {
     return result.toString();
   }
   @Override public void onCreate(Bundle b){super.onCreate(b);LinearLayout l=new LinearLayout(this);l.setOrientation(1);l.setPadding(24,32,24,24);l.setBackgroundColor(Color.WHITE);
-    TextView title=new TextView(this);title.setText("Kamiko SEO MCP — YouTube captions");title.setTextSize(22);title.setTextColor(Color.BLACK);l.addView(title);
+    TextView title=new TextView(this);title.setText("CamMicGo SEO MCP — YouTube captions");title.setTextSize(22);title.setTextColor(Color.BLACK);l.addView(title);
     TextView note=new TextView(this);note.setText("Prototype local : collez ou partagez une URL YouTube. L'extraction peut échouer si YouTube bloque les sous-titres. Aucune synchronisation MCP distante n'est encore active.");note.setTextColor(Color.DKGRAY);l.addView(note);
     input=new EditText(this);input.setHint("https://www.youtube.com/watch?v=...");input.setSingleLine(true);l.addView(input);
     run=new Button(this);run.setText("Extraire les sous-titres");l.addView(run);
