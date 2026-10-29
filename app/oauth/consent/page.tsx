@@ -21,7 +21,23 @@ export default function OAuthConsent(){
  const [clientId,setClientId]=useState('');
  const [clientSecret,setClientSecret]=useState('');
  const [selectedScopes,setSelectedScopes]=useState<string[]>(['https://www.googleapis.com/auth/webmasters.readonly','https://www.googleapis.com/auth/analytics.readonly']);
+ const [preferencesReady,setPreferencesReady]=useState(false);
  const apiOptions=[{label:'Gmail',scope:'https://www.googleapis.com/auth/gmail.readonly'},{label:'Google Drive',scope:'https://www.googleapis.com/auth/drive.readonly'},{label:'Google Docs',scope:'https://www.googleapis.com/auth/documents.readonly'},{label:'Google Sheets',scope:'https://www.googleapis.com/auth/spreadsheets.readonly'},{label:'Google Tasks',scope:'https://www.googleapis.com/auth/tasks.readonly'},{label:'Google Slides',scope:'https://www.googleapis.com/auth/presentations.readonly'},{label:'Google Contacts',scope:'https://www.googleapis.com/auth/contacts.readonly'},{label:'Google Classroom',scope:'https://www.googleapis.com/auth/classroom.courses.readonly'},{label:'Google Chat',scope:'https://www.googleapis.com/auth/chat.spaces.readonly'},{label:'Apps Script',scope:'https://www.googleapis.com/auth/script.projects.readonly'},{label:'Search Console',scope:'https://www.googleapis.com/auth/webmasters.readonly'},{label:'Google Analytics 4',scope:'https://www.googleapis.com/auth/analytics.readonly'},{label:'YouTube',scope:'https://www.googleapis.com/auth/youtube.readonly'},{label:'Google Calendar',scope:'https://www.googleapis.com/auth/calendar.readonly'}];
+ useEffect(()=>{
+  try{
+   const saved=sessionStorage.getItem('cammicgo-google-consent-preferences');
+   if(saved){const parsed=JSON.parse(saved) as {scopes?:unknown;mode?:unknown};
+    const allowed=new Set(apiOptions.map(option=>option.scope));
+    if(Array.isArray(parsed.scopes))setSelectedScopes(parsed.scopes.filter((scope):scope is string=>typeof scope==='string'&&allowed.has(scope)));
+    if(parsed.mode==='shared'||parsed.mode==='byo')setGoogleMode(parsed.mode);
+   }
+  }catch{/* Browser storage may be unavailable; use defaults. */}
+  setPreferencesReady(true);
+ },[]);
+ useEffect(()=>{
+  if(!preferencesReady)return;
+  try{sessionStorage.setItem('cammicgo-google-consent-preferences',JSON.stringify({scopes:selectedScopes,mode:googleMode}));}catch{/* Consent form still works without browser storage. */}
+ },[preferencesReady,selectedScopes,googleMode]);
  useEffect(()=>{
   const authorizationId=new URLSearchParams(window.location.search).get('authorization_id')||'';
   setId(authorizationId);
@@ -81,6 +97,7 @@ export default function OAuthConsent(){
      </div>}
     </fieldset>
     <fieldset style={{border:'1px solid #e2e8f0',borderRadius:12,padding:16,display:'grid',gap:10}}><legend style={{fontWeight:700,padding:'0 6px'}}>Google APIs to authorize</legend>
+     <label style={{display:'flex',gap:10,alignItems:'center',fontWeight:600,paddingBottom:8,borderBottom:'1px solid #e2e8f0'}}><input type="checkbox" aria-label="Select or deselect all Google APIs" checked={selectedScopes.length===apiOptions.length} ref={input=>{if(input)input.indeterminate=selectedScopes.length>0&&selectedScopes.length<apiOptions.length}} onChange={e=>setSelectedScopes(e.target.checked?apiOptions.map(option=>option.scope):[])}/> Select all / Deselect all</label>
      {apiOptions.map(option=><label key={option.scope} style={{display:'flex',gap:10,alignItems:'center'}}><input type="checkbox" checked={selectedScopes.includes(option.scope)} onChange={e=>setSelectedScopes(current=>e.target.checked?[...current,option.scope]:current.filter(scope=>scope!==option.scope))}/>{option.label}</label>)}
     </fieldset>
     {googleConnected&&<p role="status" style={{margin:0,color:'#166534',fontWeight:600}}>✓ Google account connected</p>}
