@@ -6,7 +6,7 @@ import {verifyMcpAccess} from '@/lib/mcp-access';
 import {authorizedAccessToken,googleFetch} from '@/lib/google-session';
 export const runtime='nodejs';
 const asText=(value:unknown)=>({content:[{type:'text' as const,text:JSON.stringify(value)}]});
-function unauthorized(){return NextResponse.json({error:'MCP access required',setup:'Connect Google at https://seo.cammicgo.com/connect and issue a scoped temporary token in your dashboard'},{status:401,headers:{'Cache-Control':'no-store','WWW-Authenticate':'Bearer realm="CamMicGo SEO Agent", resource_metadata="https://seo.cammicgo.com/.well-known/oauth-protected-resource"'}})}
+function unauthorized(){return NextResponse.json({error:'invalid_token',error_description:'OAuth authorization required. Sign in through Supabase OAuth to access this MCP server.'},{status:401,headers:{'Cache-Control':'no-store','WWW-Authenticate':'Bearer realm="CamMicGo SEO Agent", resource_metadata="https://seo.cammicgo.com/.well-known/oauth-protected-resource/api/mcp"'}})}
 async function handler(req:NextRequest){
  if(process.env.ENABLE_SUPABASE_MCP_AUTH==='true'){
   const {verifySupabaseMcpUser}=await import('@/lib/supabase-mcp-auth');
