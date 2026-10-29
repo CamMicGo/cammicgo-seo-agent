@@ -43,7 +43,7 @@ async function handler(req:NextRequest){
     }}
     if(path.includes('{'))return asText({error:'Unresolved path parameter'});
     const url=new URL(path,base[op.service]);if(url.origin!==base[op.service]&&!(op.service==='searchconsole'&&url.origin==='https://www.googleapis.com'))return asText({error:'API host not allowed'});
-    const allowed=new Set((('fields' in op ? op.fields : [])).filter(f=>f.location==='query').map(f=>f.name));
+    const allowed: Set<string>=new Set((('fields' in op ? op.fields : [])).filter(f=>f.location==='query').map(f=>f.name));
     for(const [key,value] of Object.entries(input.args)){if(!allowed.has(key))continue;if(typeof value==='string'||typeof value==='number'||typeof value==='boolean')url.searchParams.set(key,String(value));else if(Array.isArray(value)&&value.every(v=>typeof v==='string'))url.searchParams.set(key,value.join(','));}
     const session=await readGoogle(user.id);if(!session)return asText({error:'Connect Google first'});
     if(!await consumeQuota(user.id))return asText({error:'Daily quota exceeded'});
