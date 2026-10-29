@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import DownloadButton from './download-button';
 
 export const metadata: Metadata = {
   title: 'Télécharger CamMicGo SEO MCP pour Android',
@@ -22,9 +23,7 @@ export default function AndroidDownloadPage() {
         </div>
         <h1>CamMicGo sur <span>Android</span></h1>
         <p className="lead">Application Android de test pour extraire les transcriptions YouTube à partir de l’URL d’une vidéo. Collez ou partagez un lien pour tester les sous-titres disponibles, puis consultez et copiez le résultat.</p>
-        <div className="actions" style={{ marginTop: 34 }}>
-          <a className="primary" href="/download/android/apk" download="CamMicGo-SEO-MCP-Android-test.apk" style={{ display: 'inline-block', padding: '18px 30px' }}>↓ Télécharger l’APK Android</a>
-        </div>
+        <DownloadButton />
         <p className="notice">Le téléchargement commence uniquement après avoir appuyé sur le bouton. Il peut être nécessaire d’autoriser l’installation d’applications depuis votre navigateur Android.</p>
       </section>
       <section className="bottom">
