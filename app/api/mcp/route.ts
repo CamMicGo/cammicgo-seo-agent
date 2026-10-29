@@ -45,6 +45,7 @@ async function handler(req:NextRequest){
     const url=new URL(path,base[op.service]);if(url.origin!==base[op.service]&&!(op.service==='searchconsole'&&url.origin==='https://www.googleapis.com'))return asText({error:'API host not allowed'});
     const allowed: Set<string>=new Set((('fields' in op ? op.fields : [])).filter(f=>f.location==='query').map(f=>f.name));
     for(const [key,value] of Object.entries(input.args)){if(!allowed.has(key))continue;if(typeof value==='string'||typeof value==='number'||typeof value==='boolean')url.searchParams.set(key,String(value));else if(Array.isArray(value)&&value.every(v=>typeof v==='string'))url.searchParams.set(key,value.join(','));}
+    if(op.service==='calendar'&&op.id==='calendar.events.list'){if(!url.searchParams.has('maxResults'))url.searchParams.set('maxResults','25');if(!url.searchParams.has('timeMin')&&!url.searchParams.has('timeMax'))url.searchParams.set('timeMin',new Date(Date.now()-7*24*60*60*1000).toISOString());}
     const session=await readGoogle(user.id);if(!session)return asText({error:'Connect Google first'});
     if(!await consumeQuota(user.id))return asText({error:'Daily quota exceeded'});
     try{const {token}=await authorizedAccessToken(session);
@@ -75,7 +76,7 @@ async function handler(req:NextRequest){
     if(args.query)params.set('q',args.query);if(args.timeMin)params.set('timeMin',args.timeMin);if(args.timeMax)params.set('timeMax',args.timeMax);
     return asText(await googleRequest('https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(args.calendarId)+'/events?'+params));
    });
-   server.registerTool('search_console_report',{title:'Google Search Console report',description:'Read clicks, impressions, CTR and positions by country, date or query for a verified site.',inputSchema:z.object({siteUrl:z.string().min(1).max(300),startDate:z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/),endDate:z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/),dimensions:z.array(z.enum(['country','date','query','page','device'])).min(1).max(3).default(['country']),rowLimit:z.number().int().min(1).max(1000).default(100)})},async args=>{
+   server.registerTool('search_console_report',{title:'Google Search Console report',description:'Read clicks, impressions, CTR and positions by country, date or query for a verified site.',inputSchema:z.object({siteUrl:z.string().min(1).max(300),startDate:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),endDate:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),dimensions:z.array(z.enum(['country','date','query','page','device'])).min(1).max(3).default(['country']),rowLimit:z.number().int().min(1).max(1000).default(100)})},async args=>{
     const sites=await googleRequest('https://www.googleapis.com/webmasters/v3/sites') as {siteEntry?:Array<{siteUrl:string}>;error?:string};
     if(sites.error)return asText(sites);if(!(sites.siteEntry||[]).some(site=>site.siteUrl===args.siteUrl))return asText({error:'Site not authorized'});
     return asText(await googleRequest('https://www.googleapis.com/webmasters/v3/sites/'+encodeURIComponent(args.siteUrl)+'/searchAnalytics/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({startDate:args.startDate,endDate:args.endDate,dimensions:args.dimensions,rowLimit:args.rowLimit})}));
