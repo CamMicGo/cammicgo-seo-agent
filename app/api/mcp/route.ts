@@ -24,6 +24,39 @@ async function handler(req:NextRequest){
      return asText({gsc:gsc.ok?await gsc.json():{error:gsc.status},ga4:ga4.ok?await ga4.json():{error:ga4.status}});
     }catch(e){return asText({error:e instanceof Error?e.message:'Google error'})}
    });
+     // Google tools are registered for every authenticated user; access is checked per call.
+   const googleRequest=async(url:string,init?:RequestInit)=>{
+    const session=await readGoogle(user.id);if(!session)return {error:'Connect Google first'};
+    if(!await consumeQuota(user.id))return {error:'Daily quota exceeded'};
+    const {token}=await authorizedAccessToken(session);
+    const response=await googleFetch(url,token,init);
+    const body=await response.json().catch(()=>({}));
+    return response.ok?body:{error:'Google API request failed',status:response.status,details:body};
+   };
+   server.registerTool('youtube_channel',{title:'YouTube channel information',description:'Read the authenticated Google account YouTube channel metadata and statistics.',inputSchema:z.object({})},async()=>asText(await googleRequest('https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,contentDetails&mine=true')));
+   server.registerTool('youtube_search_videos',{title:'Search YouTube videos',description:'Search publicly available YouTube videos or videos from a channel by channel ID. Returns titles, channel, publication time and video IDs; transcripts are not guaranteed by the official API.',inputSchema:z.object({query:z.string().min(1).max(150).optional(),channelId:z.string().min(1).max(100).optional(),maxResults:z.number().int().min(1).max(25).default(10),publishedAfter:z.string().datetime().optional()})},async args=>{
+    if(!args.query&&!args.channelId)return asText({error:'Provide query or channelId'});
+    const params=new URLSearchParams({part:'snippet',type:'video',maxResults:String(args.maxResults),order:'date'});
+    if(args.query)params.set('q',args.query);if(args.channelId)params.set('channelId',args.channelId);if(args.publishedAfter)params.set('publishedAfter',args.publishedAfter);
+    return asText(await googleRequest('https://www.googleapis.com/youtube/v3/search?'+params));
+   });
+   server.registerTool('youtube_video_details',{title:'YouTube video details',description:'Get metadata, descriptions and statistics for YouTube videos by ID. Does not provide arbitrary video transcripts.',inputSchema:z.object({videoIds:z.array(z.string().min(1).max(30)).min(1).max(25)})},async args=>asText(await googleRequest('https://www.googleapis.com/youtube/v3/videos?'+new URLSearchParams({part:'snippet,statistics,contentDetails',id:args.videoIds.join(',')}))));
+   server.registerTool('calendar_list',{title:'List Google Calendars',description:'List calendars accessible to the linked Google account (read-only).',inputSchema:z.object({})},async()=>asText(await googleRequest('https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=100')));
+   server.registerTool('calendar_events',{title:'Find Google Calendar events',description:'List or search events, including past appointments, in a specific calendar. Requires calendar.readonly.',inputSchema:z.object({calendarId:z.string().min(1).max(300).default('primary'),query:z.string().max(200).optional(),timeMin:z.string().datetime().optional(),timeMax:z.string().datetime().optional(),maxResults:z.number().int().min(1).max(100).default(25)})},async args=>{
+    const params=new URLSearchParams({maxResults:String(args.maxResults),singleEvents:'true',orderBy:'startTime'});
+    if(args.query)params.set('q',args.query);if(args.timeMin)params.set('timeMin',args.timeMin);if(args.timeMax)params.set('timeMax',args.timeMax);
+    return asText(await googleRequest('https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(args.calendarId)+'/events?'+params));
+   });
+   server.registerTool('search_console_report',{title:'Google Search Console report',description:'Read clicks, impressions, CTR and positions by country, date or query for a verified site.',inputSchema:z.object({siteUrl:z.string().min(1).max(300),startDate:z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/),endDate:z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/),dimensions:z.array(z.enum(['country','date','query','page','device'])).min(1).max(3).default(['country']),rowLimit:z.number().int().min(1).max(1000).default(100)})},async args=>{
+    const sites=await googleRequest('https://www.googleapis.com/webmasters/v3/sites') as {siteEntry?:Array<{siteUrl:string}>;error?:string};
+    if(sites.error)return asText(sites);if(!(sites.siteEntry||[]).some(site=>site.siteUrl===args.siteUrl))return asText({error:'Site not authorized'});
+    return asText(await googleRequest('https://www.googleapis.com/webmasters/v3/sites/'+encodeURIComponent(args.siteUrl)+'/searchAnalytics/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({startDate:args.startDate,endDate:args.endDate,dimensions:args.dimensions,rowLimit:args.rowLimit})}));
+   });
+   server.registerTool('ga4_report',{title:'Google Analytics 4 report',description:'Read sessions and active users by country, countryId or date for an authorized GA4 property.',inputSchema:z.object({property:z.string().regex(/^properties\\/\\d+$/),days:z.number().int().min(1).max(90).default(28),dimensions:z.array(z.enum(['country','countryId','date','pagePath'])).min(1).max(2).default(['country']),metrics:z.array(z.enum(['sessions','activeUsers','screenPageViews'])).min(1).max(3).default(['sessions','activeUsers'])})},async args=>{
+    const accounts=await googleRequest('https://analyticsadmin.googleapis.com/v1beta/accountSummaries?pageSize=100') as {accountSummaries?:Array<{propertySummaries?:Array<{property:string}>}>;error?:string};
+    if(accounts.error)return asText(accounts);if(!(accounts.accountSummaries||[]).some(account=>(account.propertySummaries||[]).some(p=>p.property===args.property)))return asText({error:'Property not authorized'});
+    return asText(await googleRequest('https://analyticsdata.googleapis.com/v1beta/'+args.property+':runReport',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dateRanges:[{startDate:(args.days-1)+'daysAgo',endDate:'yesterday'}],dimensions:args.dimensions.map(name=>({name})),metrics:args.metrics.map(name=>({name})),limit:100,returnPropertyQuota:true})}));
+   });
   });
   return protectedMcp(req);
  }
