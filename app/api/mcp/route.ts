@@ -2,6 +2,7 @@ import {createMcpHandler} from 'mcp-handler';
 import {z} from 'zod';
 import {NextRequest,NextResponse} from 'next/server';
 import {makeCampaignDraft} from '@/lib/ads-campaign';
+import {gumCatalog} from '@/lib/gum-operation-catalog';
 import {verifyMcpAccess} from '@/lib/mcp-access';
 import {authorizedAccessToken,googleFetch} from '@/lib/google-session';
 export const runtime='nodejs';
@@ -24,7 +25,34 @@ async function handler(req:NextRequest){
      return asText({gsc:gsc.ok?await gsc.json():{error:gsc.status},ga4:ga4.ok?await ga4.json():{error:ga4.status}});
     }catch(e){return asText({error:e instanceof Error?e.message:'Google error'})}
    });
-     // Google tools are registered for every authenticated user; access is checked per call.
+     server.registerTool('search_apis',{title:'Search GUM-compatible Google API catalog',description:'Discover operations from the GUM 228-operation catalog. Discovery does not imply execution support.',inputSchema:z.object({query:z.string().max(120).default(''),service:z.string().max(60).optional(),limit:z.number().int().min(1).max(30).default(15)})},async args=>{
+    const q=args.query.toLowerCase();const matches=gumCatalog.filter(op=>(!args.service||op.service===args.service)&&(!q||(op.id+' '+op.title+' '+op.summary+' '+op.service).toLowerCase().includes(q)));
+    return asText({total:matches.length,operations:matches.slice(0,args.limit).map(op=>({id:op.id,title:op.title,service:op.service,risk:op.risk,executable:op.risk==='read'&&['calendar','youtube','searchconsole'].includes(op.service)&&!!op.path&&['GET','POST'].includes(op.method||'')}))});
+   });
+   server.registerTool('describe_operation',{title:'Describe a Google API operation',description:'Inspect GUM-compatible operation metadata, parameters and current remote execution support.',inputSchema:z.object({operationId:z.string().max(140)})},async args=>{
+    const op=gumCatalog.find(op=>op.id===args.operationId);return asText(op?{...op,executable:op.risk==='read'&&['calendar','youtube','searchconsole'].includes(op.service)&&!!op.path&&['GET','POST'].includes(op.method||''),note:'Remote read execution requires an authorized Google account and matching scopes; write and destructive operations are not enabled.'}:{error:'Unknown operation'});
+   });
+   server.registerTool('read_operation',{title:'Execute a supported read-only Google API operation',description:'Execute cataloged read-only Calendar, YouTube or Search Console operations. No arbitrary URLs, mutations or write methods.',inputSchema:z.object({operationId:z.string().max(140),args:z.record(z.string(),z.unknown()).default({})})},async input=>{
+    const op=gumCatalog.find(op=>op.id===input.operationId);
+    if(!op||op.risk!=='read'||!['calendar','youtube','searchconsole'].includes(op.service)||!op.path||!['GET','POST'].includes(op.method||''))return asText({error:'Operation not supported for remote execution',operationId:input.operationId});
+    const base:Record<string,string>={calendar:'https://www.googleapis.com',youtube:'https://www.googleapis.com',searchconsole:'https://searchconsole.googleapis.com'};
+    let path:string=op.path;
+    for(const field of op.fields||[]){if(field.location==='path'){
+      const value=input.args[field.name];if(typeof value!=='string'||!value||value.length>500)return asText({error:'Missing or invalid path parameter',parameter:field.name});
+      path=path.replace('{'+field.name+'}',encodeURIComponent(value));
+    }}
+    if(path.includes('{'))return asText({error:'Unresolved path parameter'});
+    const url=new URL(path,base[op.service]);if(url.origin!==base[op.service]&&!(op.service==='searchconsole'&&url.origin==='https://www.googleapis.com'))return asText({error:'API host not allowed'});
+    const allowed=new Set((op.fields||[]).filter(f=>f.location==='query').map(f=>f.name));
+    for(const [key,value] of Object.entries(input.args)){if(!allowed.has(key))continue;if(typeof value==='string'||typeof value==='number'||typeof value==='boolean')url.searchParams.set(key,String(value));else if(Array.isArray(value)&&value.every(v=>typeof v==='string'))url.searchParams.set(key,value.join(','));}
+    const session=await readGoogle(user.id);if(!session)return asText({error:'Connect Google first'});
+    if(!await consumeQuota(user.id))return asText({error:'Daily quota exceeded'});
+    try{const {token}=await authorizedAccessToken(session);
+      const body=input.args.body;const init:RequestInit=op.method==='POST'?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body??{})}:{method:'GET'};
+      const response=await googleFetch(url.toString(),token,init);const result=await response.json().catch(()=>({}));return asText(response.ok?{operationId:op.id,result}:{operationId:op.id,error:'Google API request failed',status:response.status,details:result});
+    }catch(e){return asText({error:e instanceof Error?e.message:'Google API error'})}
+   });
+   // Google tools are registered for every authenticated user; access is checked per call.
    const googleRequest=async(url:string,init?:RequestInit)=>{
     const session=await readGoogle(user.id);if(!session)return {error:'Connect Google first'};
     if(!await consumeQuota(user.id))return {error:'Daily quota exceeded'};
