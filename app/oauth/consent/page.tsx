@@ -16,6 +16,7 @@ export default function OAuthConsent(){
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState('');
  const [loggedIn,setLoggedIn]=useState(false);
+ const [googleConnected,setGoogleConnected]=useState(false);
  useEffect(()=>{
   const authorizationId=new URLSearchParams(window.location.search).get('authorization_id')||'';
   setId(authorizationId);
@@ -24,6 +25,7 @@ export default function OAuthConsent(){
    if(!publicKey){setError('Supabase connection is not configured.');return;}
    const {data:{user}}=await getSupabase().auth.getUser();
    setLoggedIn(!!user);
+   if(user){try{const {data:{session}}=await getSupabase().auth.getSession();if(session){const status=await fetch('/api/mcp/google/status',{headers:{Authorization:'Bearer '+session.access_token},cache:'no-store'});if(status.ok){const body=await status.json() as {connected?:boolean};setGoogleConnected(body.connected===true);}}}catch{/* Google linking remains optional. */}}
    const {data,error:err}=await getSupabase().auth.oauth.getAuthorizationDetails(authorizationId);
    if(err){setError(err.message);return;}
    setDetails(data as Details);
@@ -59,8 +61,25 @@ export default function OAuthConsent(){
    <label>Email address<input type="email" value={email} onChange={e=>setEmail(e.target.value)} autoComplete="email" required/></label>
    <button className="primary connect-button" type="button" disabled={busy||!email.includes('@')} onClick={()=>void sendLink()}>Send sign-in link</button>
   </section>}
-  {loggedIn&&details&&<div className="connect-card"><button type="button" disabled={busy} onClick={()=>void connectGoogle()}>Connect Google</button><button className="primary connect-button" disabled={busy} onClick={()=>void decide(true)}>Authorize access</button>
-   <button type="button" disabled={busy} onClick={()=>void decide(false)}>Deny access</button></div>}
+  {loggedIn&&details&&<section className="connect-card" aria-label="Authorization steps" style={{display:'grid',gap:24}}>
+   <div style={{display:'grid',gap:12}}>
+    <h2 style={{margin:0,fontSize:'1.2rem'}}>Step 1 · Connect your Google account <span style={{fontSize:'.85rem',fontWeight:400,color:'#64748b'}}>(optional)</span></h2>
+    <p style={{margin:0,color:'#64748b'}}>Allow CamMicGo to read your Google Search Console and Analytics data. Google authorization is separate from granting your AI agent access.</p>
+    {googleConnected&&<p role="status" style={{margin:0,color:'#166534',fontWeight:600}}>✓ Google account connected</p>}
+    <button type="button" disabled={busy} onClick={()=>void connectGoogle()} style={{display:'inline-flex',alignItems:'center',justifyContent:'center',gap:12,width:'fit-content',minHeight:48,padding:'10px 20px',borderRadius:12,border:'1px solid #d1d5db',background:'#fff',color:'#202124',fontSize:'1rem',fontWeight:600,cursor:busy?'wait':'pointer',boxShadow:'0 2px 8px rgba(15,23,42,.06)'}}>
+     <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6C44.4 38.03 46.98 31.87 46.98 24.55z"/><path fill="#FBBC05" d="M10.53 28.59A14.41 14.41 0 0 1 9.75 24c0-1.59.27-3.13.76-4.59l-7.98-6.2A23.9 23.9 0 0 0 0 24c0 3.87.93 7.52 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.9-5.8l-7.73-6c-2.15 1.45-4.92 2.3-8.17 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.97 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+     {googleConnected?'Reconnect Google':'Continue with Google'}
+    </button>
+   </div>
+   <div style={{borderTop:'1px solid #e2e8f0',paddingTop:20,display:'grid',gap:12}}>
+    <h2 style={{margin:0,fontSize:'1.2rem'}}>Step 2 · Authorize {details.client?.name||details.client?.client_name||'your AI agent'}</h2>
+    <p style={{margin:0,color:'#64748b'}}>Grant this agent access to your CamMicGo account. You can authorize the agent without connecting Google, but Google reports will remain unavailable.</p>
+    <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:12}}>
+     <button className="primary connect-button" type="button" disabled={busy} onClick={()=>void decide(true)} style={{minHeight:48,borderRadius:12,padding:'12px 22px',fontWeight:700}}>✓ Authorize agent</button>
+     <button type="button" disabled={busy} onClick={()=>void decide(false)} style={{minHeight:48,borderRadius:12,padding:'12px 20px',border:'1px solid #cbd5e1',background:'#f8fafc',color:'#334155',fontWeight:600,cursor:busy?'wait':'pointer'}}>Deny access</button>
+    </div>
+   </div>
+  </section>}
   <p className="privacy">You can revoke access in your account. Never share your Google OAuth client secret with an agent.</p>
  </div></main>;
 }
