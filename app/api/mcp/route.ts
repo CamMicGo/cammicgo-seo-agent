@@ -34,7 +34,7 @@ async function handler(req:NextRequest){
    });
    server.registerTool('read_operation',{title:'Execute a supported read-only Google API operation',description:'Execute cataloged read-only Calendar, YouTube or Search Console operations. No arbitrary URLs, mutations or write methods.',inputSchema:z.object({operationId:z.string().max(140),args:z.record(z.string(),z.unknown()).default({})})},async input=>{
     const op=gumCatalog.find(op=>op.id===input.operationId);
-    if(!op||op.risk!=='read'||!['calendar','youtube','searchconsole'].includes(op.service)||!op.path||!['GET','POST'].includes(op.method||''))return asText({error:'Operation not supported for remote execution',operationId:input.operationId});
+    if(!op||op.risk!=='read'||!['calendar','youtube','searchconsole'].includes(op.service)||!('path' in op)||typeof op.path!=='string'||!['GET','POST'].includes(op.method||''))return asText({error:'Operation not supported for remote execution',operationId:input.operationId});
     const base:Record<string,string>={calendar:'https://www.googleapis.com',youtube:'https://www.googleapis.com',searchconsole:'https://searchconsole.googleapis.com'};
     let path:string=op.path;
     for(const field of op.fields||[]){if(field.location==='path'){
