@@ -3,6 +3,7 @@ import {z} from 'zod';
 import {NextRequest,NextResponse} from 'next/server';
 import {makeCampaignDraft} from '@/lib/ads-campaign';
 import {gumCatalog} from '@/lib/gum-operation-catalog';
+import {getYouTubeTranscript} from '@/lib/youtube-transcript';
 import {verifyMcpAccess} from '@/lib/mcp-access';
 import {authorizedAccessToken,googleFetch} from '@/lib/google-session';
 export const runtime='nodejs';
@@ -70,6 +71,7 @@ async function handler(req:NextRequest){
     return asText(await googleRequest('https://www.googleapis.com/youtube/v3/search?'+params));
    });
    server.registerTool('youtube_video_details',{title:'YouTube video details',description:'Get metadata, descriptions and statistics for YouTube videos by ID. Does not provide arbitrary video transcripts.',inputSchema:z.object({videoIds:z.array(z.string().min(1).max(30)).min(1).max(25)})},async args=>asText(await googleRequest('https://www.googleapis.com/youtube/v3/videos?'+new URLSearchParams({part:'snippet,statistics,contentDetails',id:args.videoIds.join(',')}))));
+   server.registerTool('youtube_get_transcript',{title:'Read timestamped YouTube captions (experimental)',description:'Retrieve public auto-generated or manual YouTube caption segments with timestamps using the player timedtext endpoint, not the YouTube Data API. This unofficial method can fail on cloud IPs, unavailable captions or YouTube changes. Read-only, no Google API quota used.',inputSchema:z.object({videoId:z.string().min(1).max(200),language:z.string().max(30).default('en')})},async args=>asText(await getYouTubeTranscript(args.videoId,args.language)));
    server.registerTool('calendar_list',{title:'List Google Calendars',description:'List calendars accessible to the linked Google account (read-only).',inputSchema:z.object({})},async()=>asText(await googleRequest('https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=100')));
    server.registerTool('calendar_events',{title:'Find Google Calendar events',description:'List or search events, including past appointments, in a specific calendar. Requires calendar.readonly.',inputSchema:z.object({calendarId:z.string().min(1).max(300).default('primary'),query:z.string().max(200).optional(),timeMin:z.string().datetime().optional(),timeMax:z.string().datetime().optional(),maxResults:z.number().int().min(1).max(100).default(25)})},async args=>{
     const params=new URLSearchParams({maxResults:String(args.maxResults),singleEvents:'true',orderBy:'startTime'});
