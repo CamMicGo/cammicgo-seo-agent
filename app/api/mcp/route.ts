@@ -15,7 +15,7 @@ async function handler(req:NextRequest){
   if(!user)return unauthorized();
   const {readGoogle,consumeQuota}=await import('@/lib/mcp-google-store');
   const protectedMcp=createMcpHandler(server=>{
-   server.registerTool('service_info',{title:'Authenticated MCP status',description:'Check connected Google account.',inputSchema:z.object({})},async()=>asText({authenticated:true,googleConnected:!!(await readGoogle(user.id))}));
+   server.registerTool('service_info',{title:'Authenticated MCP status',description:'Check connected Google account.',inputSchema:z.object({})},async()=>asText({authenticated:true,googleConnected:!!(await readGoogle(user.id)),build:process.env.VERCEL_GIT_COMMIT_SHA?.slice(0,7)??null}));
    server.registerTool('list_google_properties',{title:'Google Search Console and GA4 properties',description:'List properties accessible to the linked Google account.',inputSchema:z.object({})},async()=>{
     try{
      const session=await readGoogle(user.id);if(!session)return asText({error:'Connect Google first'});
