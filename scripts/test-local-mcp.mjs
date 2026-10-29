@@ -26,7 +26,7 @@ try{
   child.stdin.write(JSON.stringify({jsonrpc:'2.0',method:'notifications/initialized'})+'\n');
   const tools=(await rpc('tools/list',{})).result?.tools||[];
   const names=new Set(tools.map(t=>t.name));
-  for(const required of ['service_info','list_search_sites','search_performance','seo_keyword_opportunities','list_ga4_properties','ga4_top_pages','ga4_countries','youtube_my_channels','youtube_my_videos','youtube_video_metrics','calendar_list','calendar_upcoming_events','find_google_properties']){
+  for(const required of ['service_info','list_search_sites','search_performance','seo_keyword_opportunities','list_ga4_properties','ga4_top_pages','ga4_countries','youtube_my_channels','youtube_my_videos','youtube_video_metrics','youtube_get_transcript','calendar_list','calendar_upcoming_events','find_google_properties']){
    if(!names.has(required))throw new Error('MCP tool missing: '+required);
   }
   const result=await rpc('tools/call',{name:'service_info',arguments:{}});
