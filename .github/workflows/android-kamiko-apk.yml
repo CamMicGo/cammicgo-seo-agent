@@ -1,4 +1,4 @@
-name: Build Kamiko Android APK
+name: Build CamMicGo Android APK
 on:
   workflow_dispatch:
   push:
@@ -16,9 +16,13 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
-      - name: Install Android SDK
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      # Ubuntu runners include the Android command-line SDK; avoid setup-android@v3
+      # which currently attempts to install the removed 'tools' SDK package.
+      - name: Install Android SDK packages
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-35" "build-tools;35.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
@@ -27,6 +31,6 @@ jobs:
         run: gradle :app:assembleDebug --no-daemon
       - uses: actions/upload-artifact@v4
         with:
-          name: kamiko-seo-android-debug-apk
+          name: cammicgo-seo-android-debug-apk
           path: android-kamiko/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
