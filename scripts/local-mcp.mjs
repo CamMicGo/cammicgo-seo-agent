@@ -10,7 +10,9 @@ import {fileURLToPath} from 'node:url';
 import {homedir} from 'node:os';
 import {createServer} from 'node:http';
 import {createHash,randomBytes,createCipheriv,createDecipheriv} from 'node:crypto';
-import {spawn} from 'node:child_process';
+import {spawn,execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+const execFileAsync=promisify(execFile);
 import {McpServer} from '@modelcontextprotocol/server';
 import {StdioServerTransport} from '@modelcontextprotocol/server/stdio';
 import {z} from 'zod';
@@ -74,6 +76,13 @@ async function stdio(){
   const all=await google('https://analyticsadmin.googleapis.com/v1beta/accountSummaries?pageSize=200');
   if(!(all.accountSummaries||[]).some(x=>(x.propertySummaries||[]).some(p=>p.property===property)))return asText({error:'Property not authorized'});
   return asText(await google('https://analyticsdata.googleapis.com/v1beta/'+property+':runReport',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dateRanges:[{startDate:'28daysAgo',endDate:'yesterday'}],dimensions:[{name:'country'},{name:'countryId'}],metrics:[{name:'sessions'},{name:'activeUsers'}],limit:100,returnPropertyQuota:true})}))
+ });
+ m.registerTool('youtube_get_transcript',{description:'Local-only YouTube caption extraction via installed yt-dlp, using the local machine network. No Vercel call or Google Data API quota. May fail when captions are unavailable or blocked.',inputSchema:z.object({videoId:z.string().regex(/^[A-Za-z0-9_-]{11}$/),language:z.string().regex(/^[a-z]{2,3}(?:-[a-zA-Z0-9]{2,8})?$/).default('en')})},async({videoId,language})=>{
+  try{
+   const script=resolve(dirname(fileURLToPath(import.meta.url)),'local-youtube-transcript.mjs');
+   const {stdout}=await execFileAsync(process.execPath,[script,videoId],{timeout:45000,maxBuffer:4*1024*1024,env:{...process.env,CAMMICGO_TRANSCRIPT_LANG:language}});
+   return asText(JSON.parse(stdout));
+  }catch(error){return asText({videoId,error:'Local caption extraction failed',detail:String(error.message||error).slice(0,350),hint:'Install yt-dlp and verify the video has accessible captions.'})}
  });
  m.registerTool('youtube_my_channels',{description:'List channels owned by the signed-in YouTube account (read-only)',inputSchema:z.object({})},async()=>asText(await google('https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,contentDetails&mine=true&maxResults=50')));
  m.registerTool('youtube_my_videos',{description:'List videos from your own YouTube channel uploads playlist (read-only)',inputSchema:z.object({maxResults:z.number().int().min(1).max(50).default(20)})},async({maxResults})=>{
