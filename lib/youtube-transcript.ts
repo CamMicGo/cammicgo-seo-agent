@@ -31,15 +31,18 @@ function playerConfig(html:string):{apiKey?:string;visitorData?:string;clientVer
 type FallbackDiagnostic={stage:'config'|'request'|'response'|'parse'|'player';sent:boolean;httpStatus?:number;contentType?:string;reason?:string;playabilityStatus?:string|null;playabilityReason?:string|null;captionTrackCount?:number};
 async function fallbackPlayer(videoId:string,html:string,signal:AbortSignal):Promise<{player:Player|null;diagnostic:FallbackDiagnostic}>{
  const cfg=playerConfig(html);
- if(!cfg.apiKey||!cfg.clientVersion)return {player:null,diagnostic:{stage:'config',sent:false,reason:!cfg.apiKey?'missing_innertube_api_key':'missing_client_version'}};
- if(!/^[a-zA-Z0-9_-]+$/.test(cfg.apiKey))return {player:null,diagnostic:{stage:'config',sent:false,reason:'invalid_api_key_format'}};
- const endpoint=new URL('https://www.youtube.com/youtubei/v1/player');endpoint.searchParams.set('key',cfg.apiKey);
+ // The player request must not depend on the watch page supplying ytcfg.
+ // A key can be configured explicitly; otherwise try the public endpoint without one.
+ const apiKey=process.env.YOUTUBE_INNERTUBE_API_KEY?.trim()||cfg.apiKey;
+ const clientVersion=process.env.YOUTUBE_INNERTUBE_CLIENT_VERSION?.trim()||cfg.clientVersion||'2.20261001.00.00';
+ if(apiKey&&!/^[a-zA-Z0-9_-]+$/.test(apiKey))return {player:null,diagnostic:{stage:'config',sent:false,reason:'invalid_api_key_format'}};
+ const endpoint=new URL('https://www.youtube.com/youtubei/v1/player');if(apiKey)endpoint.searchParams.set('key',apiKey);
  let response:Response;
  try{
-  response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json','Origin':'https://www.youtube.com','Referer':'https://www.youtube.com/'},body:JSON.stringify({videoId,context:{client:{clientName:'WEB',clientVersion:cfg.clientVersion,hl:'en',gl:'US',visitorData:cfg.visitorData}}}),signal,cache:'no-store'});
+  response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json','Origin':'https://www.youtube.com','Referer':'https://www.youtube.com/'},body:JSON.stringify({videoId,context:{client:{clientName:'WEB',clientVersion,hl:'en',gl:'US',visitorData:cfg.visitorData}}}),signal,cache:'no-store'});
  }catch(e){return {player:null,diagnostic:{stage:'request',sent:true,reason:e instanceof Error?e.name:'request_failed'}}}
  const base={sent:true,httpStatus:response.status,contentType:response.headers.get('content-type')?.split(';')[0]??'unknown'};
- if(!response.ok)return {player:null,diagnostic:{...base,stage:'response',reason:'http_error'}};
+ if(!response.ok)return {player:null,diagnostic:{...base,stage:'response',reason:apiKey?'http_error_with_key':'http_error_without_key'}};
  let player:Player;
  try{player=await response.json() as Player}catch{return {player:null,diagnostic:{...base,stage:'parse',reason:'invalid_json'}}}
  return {player,diagnostic:{...base,stage:'player',playabilityStatus:player?.playabilityStatus?.status??null,playabilityReason:player?.playabilityStatus?.reason?.slice(0,180)??null,captionTrackCount:tracksOf(player).length}};
