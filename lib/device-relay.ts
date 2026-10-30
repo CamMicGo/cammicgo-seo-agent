@@ -24,7 +24,7 @@ export function formatTranscript(result:unknown,format:'text'|'segments'){
 }
 
 function headers(extra?:Record<string,string>){const key=process.env.SUPABASE_SECRET_KEY;if(!key)throw Error('SUPABASE_SECRET_KEY missing');return {apikey:key,Authorization:'Bearer '+key,'Content-Type':'application/json',...extra};}
-async function sb<T=unknown>(path:string,init?:RequestInit&{prefer?:string}):Promise<T>{
+export async function sb<T=unknown>(path:string,init?:RequestInit&{prefer?:string}):Promise<T>{
  const r=await fetch(url+path,{...init,headers:headers(init?.prefer?{Prefer:init.prefer}:undefined),cache:'no-store',signal:AbortSignal.timeout(8000)});
  if(!r.ok){const text=await r.text().catch(()=>'');throw Error('Relay storage error '+r.status+(text.includes('does not exist')?' (apply the device relay migration)':''));}
  if(r.status===204)return undefined as T;
@@ -80,8 +80,8 @@ export async function cachedTranscript(videoId:string,language:string){
  const rows=await sb<Array<{result:unknown}>>('/rest/v1/cmg_transcript_jobs?video_id=eq.'+videoId+'&status=eq.done&completed_at=gt.'+encodeURIComponent(since)+'&or='+encodeURIComponent('(result->>language.eq.'+language+',result->>language.like.'+base+'-*)')+'&select=result&order=completed_at.desc&limit=1');
  return rows[0]?.result??null;
 }
-export async function createJob(userId:string,videoId:string,language:string){
- const rows=await sb<Job[]>('/rest/v1/cmg_transcript_jobs',{method:'POST',body:JSON.stringify({user_id:userId,video_id:videoId,language}),prefer:'return=representation'});
+export async function createJob(userId:string,videoId:string,language:string,ttlMinutes=10){
+ const rows=await sb<Job[]>('/rest/v1/cmg_transcript_jobs',{method:'POST',body:JSON.stringify({user_id:userId,video_id:videoId,language,expires_at:new Date(Date.now()+ttlMinutes*60_000).toISOString()}),prefer:'return=representation'});
  return rows[0];
 }
 export async function getJob(userId:string,jobId:string){

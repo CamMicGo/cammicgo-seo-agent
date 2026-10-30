@@ -13,7 +13,8 @@ const SERVER_INSTRUCTIONS=[
  'YouTube transcripts: YouTube blocks cloud servers, so transcripts are fetched by the user\'s own device running the CamMicGo app (Android today) paired to this account.',
  'Pairing: when the user asks to pair/link/connect the app ("code d\'appairage", "appairer", "pairing code"), call device_pairing_code and show the code exactly, with messageForUser translated into the user\'s language. youtube_get_transcript also returns a pairingCode by itself when no device is reachable.',
  'Always remind the user to keep the app open in "Mode connecté" and the device awake while you fetch transcripts.',
- 'youtube_get_transcript returns the original spoken language by default: translate it yourself. To find a person\'s main channel, search videos and compare channel titles; several channels can share a name, ask the user if unsure.',
+ 'youtube_get_transcript returns the original spoken language by default (compact [mm:ss] text): translate it yourself. To find a person\'s main channel use youtube_find_channels; several channels can share a name, ask the user if unsure.',
+ 'Whole channels: youtube_channel_batch builds ONE document (details + full transcripts of every video) with a stable URL, ideal as a single NotebookLM source; follow it with youtube_batch_status. Never paste whole documents into the chat.',
 ].join(' ');
 
 const asText=(value:unknown)=>({content:[{type:'text' as const,text:JSON.stringify(value)}]});
@@ -112,6 +113,42 @@ async function handler(req:NextRequest){
       messageForUser:'YouTube blocks cloud servers, so I fetch transcripts through your own device. Here is your CamMicGo pairing code: '+code+' (valid 10 minutes). Install the CamMicGo app (Android: https://seo.cammicgo.com/download), open "Connexion à votre assistant IA", enter the code and tap "Appairer". Keep the app open in "Mode connecté" and the phone awake while I fetch transcripts, otherwise the request cannot be completed. Tell me when it is done.',
       instructions:'Relay messageForUser to the user in their language, showing the code exactly. After they confirm, call youtube_get_transcript again.'});
     }catch(e){return asText({videoId,error:e instanceof Error?e.message:'Transcript relay unavailable'})}
+   });
+   server.registerTool('youtube_find_channels',{title:'Find YouTube channels by name',description:'Find channels matching a person or brand name, with subscribers and video counts, sorted by subscribers. Several channels often share a name (main channel, clips, shorts, vlog): show the list and ask the user which one if it is not obvious. Costs about 100 YouTube Data API units.',inputSchema:z.object({query:z.string().min(2).max(100),maxResults:z.number().int().min(1).max(10).default(6)})},async args=>{
+    const found=await googleRequest('https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&maxResults='+args.maxResults+'&q='+encodeURIComponent(args.query)) as {items?:Array<{id?:{channelId?:string}}>;error?:unknown};
+    if(found.error)return asText(found);
+    const ids=(found.items??[]).map(i=>i.id?.channelId).filter(Boolean);if(!ids.length)return asText({query:args.query,channels:[]});
+    const details=await googleRequest('https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id='+ids.join(',')) as {items?:Array<{id:string;snippet?:{title?:string;customUrl?:string;description?:string};statistics?:{subscriberCount?:string;videoCount?:string;hiddenSubscriberCount?:boolean}}>;error?:unknown};
+    if(details.error)return asText(details);
+    const channels=(details.items??[]).map(c=>({channelId:c.id,title:c.snippet?.title,handle:c.snippet?.customUrl,subscribers:c.statistics?.hiddenSubscriberCount?null:Number(c.statistics?.subscriberCount??0),videos:Number(c.statistics?.videoCount??0),description:(c.snippet?.description??'').slice(0,160)})).sort((a,b)=>(b.subscribers??0)-(a.subscribers??0));
+    return asText({query:args.query,channels,hint:'The channel with the most subscribers is usually the main one. Ask the user if several look relevant.'});
+   });
+   server.registerTool('youtube_channel_batch',{title:'Batch transcripts of a YouTube channel (one document)',description:'Collect the latest videos of a channel (details + full timestamped transcripts, original language by default) into ONE Markdown document with a stable URL, e.g. to add as a single NotebookLM source instead of hundreds. Transcripts are fetched one by one by the user\'s paired device: it must stay in "Mode connecté" and awake (about 3-6 seconds per video). Re-run it later with the same channel to add new videos; the URL stays the same. Then use youtube_batch_status.',inputSchema:z.object({channel:z.string().min(3).max(200).describe('Channel ID (UC…), @handle or channel URL'),maxVideos:z.number().int().min(1).max(100).default(25),publishedAfter:z.string().datetime().optional(),language:z.string().max(12).default('original')})},async args=>{
+    try{
+     const {resolveChannel,listUploads,runBatch,exportUrl}=await import('@/lib/channel-export');
+     const get=(u:string)=>googleRequest(u);
+     const ch=await resolveChannel(args.channel,get);if('error' in ch)return asText(ch);
+     const videos=await listUploads(ch.uploads,args.maxVideos,args.publishedAfter,get);
+     const {exp,ready,queued}=await runBatch(user.id,ch,videos,relay.normalizeLanguage(args.language));
+     const devices=await relay.listDevices(user.id);const online=devices.filter(relay.isOnline);
+     let pairing:{code:string;expiresAt:string}|null=null;if(queued&&!online.length)pairing=await relay.createPairingCode(user.id);
+     const url=exportUrl(exp.id);
+     return asText({exportId:exp.id,channel:ch.title,videos:videos.length,ready,queued,documentUrl:url,downloadUrl:url+'&download=1',deviceOnline:online.length>0,pairingCode:pairing?.code,
+      estimatedMinutes:Math.ceil(queued*5/60),
+      messageForUser:(queued?(online.length?'Your phone is now fetching '+queued+' transcripts (about '+Math.max(1,Math.ceil(queued*5/60))+' min). Keep the CamMicGo app in "Mode connecté" and the phone awake until it finishes. ':'Your CamMicGo app is not reachable: open it in "Mode connecté"'+(pairing?' or pair it with code '+pairing.code+' (valid 10 minutes)':'')+', keep it awake, and the '+queued+' transcripts will be fetched (requests stay valid 2 hours). '):'All transcripts are ready. ')
+       +'The single document for NotebookLM is here: '+url+' (add it as a website source, or download it with &download=1 and upload the .md file). Re-run the batch later to add new videos: the link stays the same.',
+      instructions:'Relay messageForUser in the user\'s language. Call youtube_batch_status with exportId to follow progress; do not paste the whole document into the chat.'});
+    }catch(e){return asText({error:e instanceof Error?e.message:'Batch unavailable'})}
+   });
+   server.registerTool('youtube_batch_status',{title:'Progress of a channel transcript batch',description:'Progress of youtube_channel_batch (ready / queued / failed per video) and the document URL. Set retryFailed to requeue failed or missing transcripts.',inputSchema:z.object({exportId:z.string().max(40),retryFailed:z.boolean().default(false)})},async args=>{
+    try{
+     const {readExport,exportStatus,retryMissing,exportUrl}=await import('@/lib/channel-export');
+     const exp=await readExport(args.exportId,user.id);if(!exp)return asText({error:'Unknown exportId'});
+     const requeued=args.retryFailed?await retryMissing(exp):0;
+     const {counts,failures}=await exportStatus(exp);
+     const devices=await relay.listDevices(user.id);
+     return asText({exportId:exp.id,channel:exp.channel_title,videos:exp.videos.length,...counts,requeued,failures,deviceOnline:devices.some(relay.isOnline),documentUrl:exportUrl(exp.id),updatedAt:exp.updated_at});
+    }catch(e){return asText({error:e instanceof Error?e.message:'Status unavailable'})}
    });
    server.registerTool('youtube_transcript_status',{title:'Check a relayed YouTube transcript',description:'Read the result of a transcript job returned as pending by youtube_get_transcript.',inputSchema:z.object({jobId:z.string().max(40)})},async({jobId})=>{
     try{const job=await relay.getJob(user.id,jobId);if(!job)return asText({error:'Unknown job'});
