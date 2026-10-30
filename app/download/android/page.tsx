@@ -12,17 +12,17 @@ export default function AndroidDownloadPage() {
       <header className="header">
         <a className="brand" href="/">
           <img src="https://avatars.githubusercontent.com/u/322584442?v=4" alt="Logo CamMicGo" width="46" height="46" />
-          <span>CamMicGo <b>SEO MCP</b></span>
+          <span>CamMicGo <b>SEO Agent</b></span>
         </a>
         <a href="/" style={{ color: '#285bd9', fontWeight: 700 }}>← Accueil</a>
       </header>
       <section className="hero" style={{ paddingTop: 60, paddingBottom: 55 }}>
         <span className="eyebrow">🤖 ANDROID · APK EXPÉRIMENTALE</span>
         <div className="hero-logo">
-          <img src="https://avatars.githubusercontent.com/u/322584442?v=4" alt="CamMicGo" width="112" height="112" />
+          <img src="/branding/cammicgo-seo-mcp-apk-icon.png" alt="Icône de l’application CamMicGo SEO MCP" width="112" height="112" style={{ borderRadius: 24 }} />
         </div>
         <h1>CamMicGo sur <span>Android</span></h1>
-        <p className="lead">Application Android de test pour extraire les transcriptions YouTube à partir de l’URL d’une vidéo. Collez ou partagez un lien pour tester les sous-titres disponibles, puis consultez et copiez le résultat.</p>
+        <p className="lead">Application Android de test pour extraire les transcriptions YouTube à partir de l’URL d’une vidéo. Partagez une vidéo depuis l’app YouTube ou collez son lien : la transcription horodatée est récupérée depuis votre téléphone, puis vous pouvez la copier, l’exporter en JSON ou la partager.</p>
         <DownloadButton />
         <p className="notice">Le téléchargement commence uniquement après avoir appuyé sur le bouton. Il peut être nécessaire d’autoriser l’installation d’applications depuis votre navigateur Android.</p>
       </section>

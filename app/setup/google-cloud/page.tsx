@@ -1,20 +1,20 @@
 import type {Metadata} from 'next';
 export const metadata:Metadata={title:'Google Cloud setup | Kamiko SEO MCP',description:'Configure your own Google OAuth client and quotas for Kamiko SEO MCP, hosted or local.'};
 const APIs=[
-{name:'Gmail API',id:'gmail.googleapis.com',state:'planned',detail:'Gmail access requires explicit scopes; dedicated remote MCP operations are not yet available.',logo:'/google-logos/gmail.svg'},
-{name:'Google Drive API',id:'drive.googleapis.com',state:'planned',detail:'Enable only if you need Drive access; dedicated MCP tools are not yet available.',logo:'https://www.google.com/s2/favicons?domain=drive.google.com&sz=64'},
-{name:'Google Sheets API',id:'sheets.googleapis.com',state:'planned',detail:'Spreadsheet access planned; enabling the API alone does not add tools.',logo:'https://www.google.com/s2/favicons?domain=sheets.google.com&sz=64'},
-{name:'Google Docs API',id:'docs.googleapis.com',state:'planned',detail:'Document access planned; dedicated MCP tools are not yet available.',logo:'https://www.google.com/s2/favicons?domain=docs.google.com&sz=64'},
+{name:'Gmail API',id:'gmail.googleapis.com',state:'planned',detail:'Gmail access requires explicit scopes; dedicated remote MCP operations are not yet available.',logo:'/google-logos/gmail.png'},
+{name:'Google Drive API',id:'drive.googleapis.com',state:'planned',detail:'Enable only if you need Drive access; dedicated MCP tools are not yet available.',logo:'/google-logos/drive.svg'},
+{name:'Google Sheets API',id:'sheets.googleapis.com',state:'planned',detail:'Spreadsheet access planned; enabling the API alone does not add tools.',logo:'/google-logos/sheets.png'},
+{name:'Google Docs API',id:'docs.googleapis.com',state:'planned',detail:'Document access planned; dedicated MCP tools are not yet available.',logo:'/google-logos/docs.png'},
 {name:'Search Console',id:'webmasters.googleapis.com',state:'live',detail:'Search queries, clicks, CTR, impressions and positions.',logo:'/google-search-console.svg'},
 {name:'Google Analytics 4',id:'analyticsdata.googleapis.com',state:'live',detail:'Traffic, countries and top pages. Also enable the Analytics Admin API.',logo:'/api/assets/google-analytics'},
 {name:'Google Analytics Admin',id:'analyticsadmin.googleapis.com',state:'live',detail:'List the Analytics properties you are allowed to access.',logo:'/api/assets/google-analytics'},
-{name:'Google Ads',id:'googleads.googleapis.com',state:'planned',detail:'Campaign API integration is not yet live. Keyword Planner requires Basic or Standard access.',logo:'https://www.google.com/s2/favicons?domain=ads.google.com&sz=64'},
-{name:'Google Calendar',id:'calendar-json.googleapis.com',state:'live',detail:'Read-only Calendar MCP operations are available.',logo:'https://www.google.com/s2/favicons?domain=calendar.google.com&sz=64'},
-{name:'YouTube Data',id:'youtube.googleapis.com',state:'live',detail:'YouTube metadata tools: hosted owner or BYO GCP quota. Transcripts require local MCP.',logo:'https://www.google.com/s2/favicons?domain=youtube.com&sz=64'}
+{name:'Google Ads',id:'googleads.googleapis.com',state:'planned',detail:'Campaign API integration is not yet live. Keyword Planner requires Basic or Standard access.',logo:'/google-logos/google-ads.png'},
+{name:'Google Calendar',id:'calendar-json.googleapis.com',state:'live',detail:'Read-only Calendar MCP operations are available.',logo:'/google-logos/calendar.png'},
+{name:'YouTube Data',id:'youtube.googleapis.com',state:'live',detail:'YouTube metadata tools: hosted owner or BYO GCP quota. Transcripts require local MCP.',logo:'/google-logos/youtube.svg'}
 ] as const;
 export default function SetupGoogle(){
 return <main className="setup-guide">
- <header className="setup-top"><a className="brand" href="/"><img src="https://avatars.githubusercontent.com/u/322584442?v=4" width="42" height="42" alt="CamMicGo"/><span>Kamiko <b>SEO MCP</b></span></a><a href="/connect">Connect Google ↗</a></header>
+ <header className="setup-top"><a className="brand" href="/"><img src="https://avatars.githubusercontent.com/u/322584442?v=4" width="42" height="42" alt="CamMicGo"/><span>CamMicGo <b>SEO Agent</b></span></a><a href="/connect">Connect Google ↗</a></header>
  <span className="kicker">STEP-BY-STEP GUIDE</span><h1>Use your own Google Cloud project</h1>
  <p className="lead">Connect the web dashboard or run a development instance on your own computer, using your own Google OAuth client and the applicable Google API project quotas. You do not have to generate or paste access tokens manually.</p>
  <div className="setup-alert"><strong>Know the difference:</strong> The hosted dashboard and local Next.js browser dashboard support Google OAuth for Search Console and GA4. A local MCP <code>stdio</code> server and guided installer are available in the repository. For YouTube, use your own Google Cloud quota; local captions require yt-dlp.</div>
