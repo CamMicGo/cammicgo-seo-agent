@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import DownloadButton from './android/download-button';
+import { RelayFlow, RelayLimits, RelaySteps } from '../relay-explainer';
 
 export const metadata: Metadata = {
   title: 'Télécharger | CamMicGo SEO Agent',
@@ -10,7 +11,7 @@ const LOGO = 'https://avatars.githubusercontent.com/u/322584442?v=4';
 
 const platforms = [
   { name: 'Android', icon: '🤖', desc: 'Téléphones et tablettes · Android 8+', state: 'Disponible (test)', href: '/download/android', available: true },
-  { name: 'Windows', icon: '⊞', desc: 'Serveur MCP local (Node.js)', state: "Guide d'installation", href: '/setup/local', available: true },
+  { name: 'Windows', icon: '⊞', desc: 'Serveur MCP local (Node.js), transcriptions incluses', state: "Guide d'installation", href: '/setup/local', available: true },
   { name: 'macOS', icon: '⌘', desc: 'Serveur MCP local (Node.js)', state: "Guide d'installation", href: '/setup/local', available: true },
   { name: 'Linux', icon: '🐧', desc: 'Serveur MCP local (Node.js)', state: "Guide d'installation", href: '/setup/local', available: true },
   { name: 'iOS / iPadOS', icon: '●', desc: 'iPhone et iPad', state: 'Non disponible', href: '', available: false },
@@ -44,28 +45,21 @@ export default function DownloadPage() {
         </p>
       </section>
 
-      <section className="feature-section" aria-labelledby="how-title">
-        <span className="kicker">COMMENT ÇA MARCHE</span>
-        <h2 id="how-title">Trois étapes</h2>
-        <ol className="local-steps">
-          <li><h3>Partagez une vidéo</h3><p>Depuis l’app YouTube, appuyez sur Partager puis choisissez « CamMicGo SEO MCP », ou collez simplement le lien de la vidéo dans l’application.</p></li>
-          <li><h3>L’application récupère les sous-titres</h3><p>La requête part de votre téléphone, pas d’un serveur cloud. La langue par défaut est l’anglais ; vous pouvez en choisir une autre.</p></li>
-          <li><h3>Copiez, exportez ou partagez</h3><p>Le résultat s’affiche avec les horodatages <code>[mm:ss]</code>. Le bouton JSON produit le même format que l’outil MCP <code>youtube_get_transcript</code>.</p></li>
-        </ol>
-        <p className="notice">
-          <strong>Nouveau : synchronisation avec le serveur MCP distant.</strong> Votre assistant IA (Claude, ChatGPT…) connecté au serveur CamMicGo peut demander une transcription : elle est récupérée par votre téléphone, puis renvoyée à l’assistant.
-        </p>
-      </section>
-
       <section className="feature-section" aria-labelledby="sync-title">
         <span className="kicker">SYNCHRONISATION AVEC VOTRE ASSISTANT IA</span>
-        <h2 id="sync-title">Relier l’application au serveur MCP</h2>
-        <ol className="local-steps">
-          <li><h3>Demandez un code à votre assistant</h3><p>Dans Claude ou ChatGPT connecté au serveur CamMicGo, demandez « donne-moi un code d’appairage CamMicGo ». L’assistant utilise l’outil <code>device_pairing_code</code> et affiche un code comme <code>ABCD-2345</code>, valable 10 minutes.</p></li>
-          <li><h3>Saisissez-le dans l’application</h3><p>Dans « Connexion au serveur MCP », tapez le code puis « Appairer ». Le mode connecté s’active : une notification indique que l’application attend des demandes.</p></li>
-          <li><h3>Demandez vos transcriptions</h3><p>Demandez par exemple « récupère la transcription de cette vidéo ». Le serveur envoie la demande à votre téléphone, qui la traite en quelques secondes. Laissez l’application en mode connecté pendant ce temps.</p></li>
-        </ol>
-        <p className="notice">Une transcription déjà récupérée est gardée en cache 30 jours. Vous pouvez dissocier le téléphone dans l’application ou demander à l’assistant de le révoquer (outil <code>device_revoke</code>).</p>
+        <h2 id="sync-title">Comment la transcription arrive jusqu’à votre assistant</h2>
+        <p className="lead">Le serveur MCP distant ne peut pas joindre YouTube lui-même. Il confie la demande à votre téléphone appairé, qui la traite avec votre connexion et renvoie le résultat.</p>
+        <RelayFlow />
+        <h2 style={{ marginTop: 56 }}>Mise en route en 4 étapes</h2>
+        <RelaySteps />
+        <RelayLimits />
+        <p className="notice">Vous pouvez dissocier le téléphone à tout moment dans l’application (« Dissocier ») ou demander à votre assistant de le révoquer (outil <code>device_revoke</code>). L’application ne reçoit que des identifiants de vidéos YouTube, jamais de commandes.</p>
+      </section>
+
+      <section className="feature-section" aria-labelledby="manual-title">
+        <span className="kicker">SANS ASSISTANT IA</span>
+        <h2 id="manual-title">Utilisation directe dans l’application</h2>
+        <p className="lead">Partagez une vidéo depuis l’app YouTube vers « CamMicGo SEO MCP », ou collez son lien. La transcription s’affiche avec des horodatages <code>[mm:ss]</code> : copiez-la, exportez-la en JSON ou partagez-la. L’anglais est choisi par défaut ; à défaut, la langue d’origine de la vidéo.</p>
       </section>
 
       <section className="feature-section" aria-labelledby="platforms-title">

@@ -131,3 +131,44 @@
 .android-cta-arrow{font-size:24px;font-weight:700;margin-left:6px;transition:transform .18s ease}
 .android-cta:hover .android-cta-arrow{transform:translateX(4px)}
 @media(prefers-reduced-motion:reduce){.android-cta,.android-cta-arrow{transition:none}}
+
+/* ---------- Transcript relay explainer (download, Android, MCP connect) ---------- */
+.relay-flow{list-style:none;padding:0;margin:30px auto 10px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:22px;max-width:1040px;text-align:center}
+.relay-node{position:relative;display:flex;flex-direction:column;align-items:center;gap:8px;background:#fff;border:1px solid #dfe8f7;border-radius:22px;padding:24px 16px;box-shadow:0 8px 26px #263e720a}
+.relay-node strong{font-size:15px;color:#17234a}
+.relay-node span:not(.relay-node-icon):not(.relay-arrow){font-size:13px;line-height:1.6;color:#63728d}
+.relay-node-icon{display:grid;place-items:center;width:54px;height:54px;border-radius:16px;font-size:26px;background:linear-gradient(135deg,#e3f7fd,#e6edff 55%,#efe8ff)}
+.relay-node:nth-child(3){border-color:#a9cafa;box-shadow:0 12px 30px #3567dc26}
+.relay-arrow{position:absolute;right:-19px;top:50%;transform:translateY(-50%);z-index:1;width:22px;height:22px;display:grid;place-items:center;border-radius:50%;background:linear-gradient(115deg,#2565dd,#5944d8);color:#fff;font-size:12px;font-weight:800}
+.relay-steps{list-style:none;padding:0;margin:30px auto 0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;max-width:1040px;text-align:left}
+.relay-steps li{background:#fff;border:1px solid #dfe8f7;border-radius:20px;padding:22px 20px;box-shadow:0 8px 26px #263e720a}
+.relay-steps h3{margin:12px 0 6px;font-size:16px;color:#17234a}
+.relay-steps p{margin:0;font-size:13.5px;line-height:1.65;color:#63728d}
+.relay-step-num{display:grid;place-items:center;width:34px;height:34px;border-radius:11px;color:#fff;font-weight:800;background:linear-gradient(135deg,#11c7e6,#1f7bff 55%,#7a35ff)}
+.relay-limits{margin:46px auto 0;max-width:1040px;text-align:center}
+.relay-limits h2{font-size:clamp(24px,3vw,32px);letter-spacing:-.8px;margin:10px 0 22px}
+.relay-limit-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;text-align:left}
+.relay-limit-card{background:#fff;border:1px solid #f1dcae;border-radius:22px;padding:24px;box-shadow:0 8px 26px #8a5a0010}
+.relay-limit-head{display:flex;align-items:center;gap:14px}
+.relay-limit-head h3{margin:0;font-size:17px;color:#17234a}
+.relay-limit-icon{flex:none;display:grid;place-items:center;width:46px;height:46px;border-radius:14px;font-size:22px;background:#fff6e2}
+.relay-limit-card>p{color:#5c6c89;font-size:14px;line-height:1.7;margin:14px 0}
+.relay-limit-tips{background:#f4f8ff;border:1px solid #dce6f5;border-radius:14px;padding:14px 16px}
+.relay-limit-tips strong{font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:#2764df}
+.relay-limit-tips ul{margin:8px 0 0;padding-left:18px;color:#3d4d6d;font-size:13.5px;line-height:1.65}
+.relay-limit-tips li+li{margin-top:4px}
+.relay-limit-note{font-size:13px;color:#5c6c89;margin:18px auto 0;max-width:640px}
+@media(max-width:900px){.relay-flow,.relay-steps{grid-template-columns:repeat(2,minmax(0,1fr))}.relay-node:nth-child(2) .relay-arrow{display:none}}
+@media(max-width:640px){.relay-flow,.relay-steps,.relay-limit-grid{grid-template-columns:1fr}.relay-arrow{right:50%;top:auto;bottom:-19px;transform:translateX(50%) rotate(90deg)}.relay-node:nth-child(2) .relay-arrow{display:grid}}
+.connect-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;max-width:1040px;margin:26px auto 0;text-align:left}
+.connect-grid .connect-card,.connect-tools .connect-card{margin-top:0}
+.connect-card h3{margin:0 0 8px;font-size:18px;color:#17234a}
+.connect-card-accent{border-color:#a9cafa;background:linear-gradient(180deg,#f4f8ff,#fff 60%);box-shadow:0 12px 30px #3567dc1f}
+.connect-url{display:inline-block;max-width:100%;overflow-wrap:anywhere;background:#eef4ff;color:#2854ae;border-radius:8px;padding:4px 8px;font-size:12.5px}
+.connect-pre{margin:0;background:#152d52;color:#f1f6ff;border-radius:14px;padding:16px;font-size:12.5px;line-height:1.6;overflow-x:auto;white-space:pre}
+.connect-tools{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;max-width:1040px;margin:26px auto 0;text-align:left}
+.connect-tools .google-service-head{display:flex;align-items:center;gap:12px}
+.connect-tools .google-service-head h3{margin:0}
+.relay-steps a,.connect-card a{color:#285fd0}
+@media(max-width:900px){.connect-tools{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){.connect-grid,.connect-tools{grid-template-columns:1fr}}

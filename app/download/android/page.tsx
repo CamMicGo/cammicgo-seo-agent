@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import DownloadButton from './download-button';
+import { RelayLimits } from '../../relay-explainer';
 
 export const metadata: Metadata = {
   title: 'Télécharger CamMicGo SEO MCP pour Android',
@@ -22,17 +23,20 @@ export default function AndroidDownloadPage() {
           <img src="/branding/cammicgo-seo-mcp-apk-icon.png" alt="Icône de l’application CamMicGo SEO MCP" width="112" height="112" style={{ borderRadius: 24 }} />
         </div>
         <h1>CamMicGo sur <span>Android</span></h1>
-        <p className="lead">Application Android de test pour extraire les transcriptions YouTube à partir de l’URL d’une vidéo. Partagez une vidéo depuis l’app YouTube ou collez son lien : la transcription horodatée est récupérée depuis votre téléphone, puis vous pouvez la copier, l’exporter en JSON ou la partager.</p>
+        <p className="lead">Application Android pour récupérer les transcriptions YouTube depuis votre téléphone, seule ou pour votre assistant IA. Partagez une vidéo depuis l’app YouTube ou collez son lien : la transcription horodatée est récupérée depuis votre téléphone, puis vous pouvez la copier, l’exporter en JSON ou la partager.</p>
         <DownloadButton />
         <p className="notice">Le téléchargement commence uniquement après avoir appuyé sur le bouton. Il peut être nécessaire d’autoriser l’installation d’applications depuis votre navigateur Android.</p>
       </section>
       <section className="bottom">
         <div>
-          <span className="kicker">À SAVOIR AVANT LE TEST</span>
-          <h2>Test local aujourd’hui, synchronisation MCP ensuite</h2>
-          <p>Phase actuelle : saisir une URL YouTube dans l’application pour vérifier que l’extraction fonctionne sur Android. Phase suivante (non disponible actuellement) : appairer l’application au serveur MCP distant, qui pourra lui transmettre automatiquement une URL demandée par Claude ou ChatGPT et récupérer la transcription en retour, sans copier-coller. Certaines vidéos YouTube peuvent bloquer les sous-titres.</p>
-          <p>Installez uniquement un APK provenant d’une source en laquelle vous avez confiance.</p>
+          <span className="kicker">À SAVOIR AVANT L’INSTALLATION</span>
+          <h2>Utilisable seule ou synchronisée avec votre assistant IA</h2>
+          <p>Seule, l’application extrait la transcription d’une vidéo que vous partagez ou collez. Appairée au serveur MCP distant (code donné par votre assistant), elle récupère automatiquement les transcriptions demandées par Claude ou ChatGPT. Certaines vidéos n’ont pas de sous-titres. <a href="/download">Guide complet de synchronisation ↗</a></p>
+          <p>Version de test signée en mode debug : installez uniquement un APK provenant d’une source en laquelle vous avez confiance.</p>
         </div>
+      </section>
+      <section className="feature-section" style={{ paddingTop: 0 }}>
+        <RelayLimits />
       </section>
     </main>
   );

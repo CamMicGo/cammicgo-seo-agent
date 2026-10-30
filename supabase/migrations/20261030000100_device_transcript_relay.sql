@@ -42,6 +42,7 @@ create table if not exists public.cmg_transcript_jobs (
 );
 create index if not exists cmg_transcript_jobs_queue_idx on public.cmg_transcript_jobs(user_id, status, created_at);
 create index if not exists cmg_transcript_jobs_cache_idx on public.cmg_transcript_jobs(video_id, language, completed_at desc) where status = 'done';
+create index if not exists cmg_transcript_jobs_device_idx on public.cmg_transcript_jobs(device_id);
 
 alter table public.cmg_pairing_codes   enable row level security;
 alter table public.cmg_devices         enable row level security;
