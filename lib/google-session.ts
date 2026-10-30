@@ -3,7 +3,7 @@ import {cookies} from 'next/headers';
 export const SESSION_COOKIE='cmg_google_session';
 export const STATE_COOKIE='cmg_oauth_pending';
 export type Credentials={clientId:string;clientSecret:string;mode:'shared'|'byo'};
-export type GoogleSession={credentials:Credentials;accessToken:string;refreshToken?:string;expiresAt:number};
+export type GoogleSession={credentials:Credentials;accessToken:string;refreshToken?:string;expiresAt:number;scopes?:string[]};
 export type Pending={state:string;verifier:string;credentials:Credentials;issuedAt:number};
 function key(){const raw=process.env.SESSION_ENCRYPTION_KEY;if(!raw)throw new Error('SESSION_ENCRYPTION_KEY not configured');const v=Buffer.from(raw,'base64');if(v.length!==32)throw new Error('Invalid SESSION_ENCRYPTION_KEY');return v}
 export function encrypt(payload:object){const iv=randomBytes(12);const cipher=createCipheriv('aes-256-gcm',key(),iv);const encrypted=Buffer.concat([cipher.update(JSON.stringify(payload),'utf8'),cipher.final()]);return [iv,cipher.getAuthTag(),encrypted].map(b=>b.toString('base64url')).join('.')}

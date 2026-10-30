@@ -25,12 +25,14 @@ export default function OAuthConsent(){
  useEffect(()=>{
   const authorizationId=new URLSearchParams(window.location.search).get('authorization_id')||'';
   setId(authorizationId);
-  if(!authorizationId){setError('Missing authorization request. Start again from ChatGPT.');return;}
+  const reauth=new URLSearchParams(window.location.search).get('reauth')==='google';
+  if(!authorizationId&&!reauth){setError('Missing authorization request. Start again from your AI assistant.');return;}
   void (async()=>{
    if(!publicKey){setError('Supabase connection is not configured.');return;}
    const {data:{user}}=await getSupabase().auth.getUser();
    setLoggedIn(!!user);
    if(user){try{const {data:{session}}=await getSupabase().auth.getSession();if(session){const status=await fetch('/api/mcp/google/status',{headers:{Authorization:'Bearer '+session.access_token},cache:'no-store'});if(status.ok){const body=await status.json() as {connected?:boolean};setGoogleConnected(body.connected===true);}}}catch{/* Google linking remains optional. */}}
+   if(!authorizationId)return;
    const {data,error:err}=await getSupabase().auth.oauth.getAuthorizationDetails(authorizationId);
    if(err){setError(err.message);return;}
    setDetails(data as Details);
@@ -89,14 +91,14 @@ export default function OAuthConsent(){
      {googleConnected?'Reconnect Google':'Continue with Google'}
     </button>
    </div>
-   <div style={{borderTop:'1px solid #e2e8f0',paddingTop:20,display:'grid',gap:12}}>
+   {id?<div style={{borderTop:'1px solid #e2e8f0',paddingTop:20,display:'grid',gap:12}}>
     <h2 style={{margin:0,fontSize:'1.2rem'}}>Step 2 · Authorize {details.client?.name||details.client?.client_name||'your AI agent'}</h2>
     <p style={{margin:0,color:'#64748b'}}>Grant this agent access to your CamMicGo account. You can authorize the agent without connecting Google, but Google reports will remain unavailable.</p>
     <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:12}}>
      <button className="primary connect-button" type="button" disabled={busy} onClick={()=>void decide(true)} style={{minHeight:48,borderRadius:12,padding:'12px 22px',fontWeight:700}}>✓ Authorize agent</button>
      <button type="button" disabled={busy} onClick={()=>void decide(false)} style={{minHeight:48,borderRadius:12,padding:'12px 20px',border:'1px solid #cbd5e1',background:'#f8fafc',color:'#334155',fontWeight:600,cursor:busy?'wait':'pointer'}}>Deny access</button>
     </div>
-   </div>
+   </div>:<p role="status" style={{margin:0,color:'#334155'}}>Reconnecting Google only: your AI assistants keep their current access. You can close this page once Google is connected.</p>}
   </section>}
   <p className="privacy">You can revoke access in your account. Never share your Google OAuth client secret with an agent.</p>
  </div></main>;

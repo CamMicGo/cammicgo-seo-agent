@@ -8,6 +8,7 @@ import {verifyMcpAccess} from '@/lib/mcp-access';
 import {authorizedAccessToken,googleFetch} from '@/lib/google-session';
 export const runtime='nodejs';
 export const maxDuration=60;
+const REAUTH_URL='https://seo.cammicgo.com/oauth/consent?reauth=google';
 const SERVER_INSTRUCTIONS=[
  'CamMicGo SEO Agent: read-only Google Search Console, GA4, YouTube Data API and Calendar for the signed-in user, plus YouTube transcripts.',
  'YouTube transcripts: YouTube blocks cloud servers, so transcripts are fetched by the user\'s own device running the CamMicGo app (Android today) paired to this account.',
@@ -28,7 +29,7 @@ async function handler(req:NextRequest){
   const relay=await import('@/lib/device-relay');
   const quotaLimit=(session:{credentials:{mode:string}})=>session.credentials.mode==='byo'?2000:150;
   const protectedMcp=createMcpHandler(server=>{
-   server.registerTool('service_info',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Authenticated MCP status',description:'Check connected Google account.',inputSchema:z.object({})},async()=>{const session=await readGoogle(user.id);let devices:Array<{name:string;online:boolean}>|string=[];try{devices=(await relay.listDevices(user.id)).map(d=>({name:d.name,online:relay.isOnline(d)}))}catch(e){devices=e instanceof Error?e.message:'unavailable'}return asText({authenticated:true,googleConnected:!!session,googleQuota:session?(session.credentials.mode==='byo'?'own Google Cloud project':'shared CamMicGo project'):null,transcriptDevices:devices,build:process.env.VERCEL_GIT_COMMIT_SHA?.slice(0,7)??null})});
+   server.registerTool('service_info',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Authenticated MCP status',description:'Check connected Google account.',inputSchema:z.object({})},async()=>{const session=await readGoogle(user.id);let devices:Array<{name:string;online:boolean}>|string=[];try{devices=(await relay.listDevices(user.id)).map(d=>({name:d.name,online:relay.isOnline(d)}))}catch(e){devices=e instanceof Error?e.message:'unavailable'}return asText({authenticated:true,googleConnected:!!session,googleQuota:session?(session.credentials.mode==='byo'?'own Google Cloud project':'shared CamMicGo project'):null,googleScopes:session?.scopes?session.scopes.filter(x=>x.includes('googleapis.com/auth/')).map(x=>x.split('/auth/')[1]):'unknown (connected before scope tracking)',reauthorizeGoogle:REAUTH_URL,transcriptDevices:devices,build:process.env.VERCEL_GIT_COMMIT_SHA?.slice(0,7)??null})});
    server.registerTool('list_google_properties',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Google Search Console and GA4 properties',description:'List properties accessible to the linked Google account.',inputSchema:z.object({})},async()=>{
     try{
      const session=await readGoogle(user.id);if(!session)return asText({error:'Connect Google first'});
@@ -73,6 +74,12 @@ async function handler(req:NextRequest){
     const {token}=await authorizedAccessToken(session);
     const response=await googleFetch(url,token,init);
     const body=await response.json().catch(()=>({}));
+    if(response.status===403&&JSON.stringify(body).includes('SCOPE_INSUFFICIENT')){
+     const api=url.includes('youtube')?'YouTube':url.includes('calendar')?'Google Calendar':url.includes('analytics')?'Google Analytics':url.includes('webmasters')||url.includes('searchconsole')?'Search Console':'this Google API';
+     return {error:'missing_google_permission',api,reauthorizeUrl:REAUTH_URL,
+      messageForUser:'Your Google authorization does not include '+api+'. Open '+REAUTH_URL+' , sign in, keep '+api+' checked and click "Reconnect Google". Then ask me again (no need to reconnect the assistant).',
+      instructions:'Relay messageForUser to the user in their language with the link.'};
+    }
     return response.ok?body:{error:'Google API request failed',status:response.status,details:body};
    };
    server.registerTool('youtube_channel',{annotations:{readOnlyHint:true,openWorldHint:true},title:'YouTube channel information',description:'Read the authenticated Google account YouTube channel metadata and statistics.',inputSchema:z.object({})},async()=>asText(await googleRequest('https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,contentDetails&mine=true')));
