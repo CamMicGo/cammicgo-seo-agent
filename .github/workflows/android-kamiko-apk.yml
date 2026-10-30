@@ -26,6 +26,19 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: Generate Android launcher icons from the official CamMicGo SVG
+        run: |
+          python -m pip install --disable-pip-version-check cairosvg
+          python - <<'PY'
+          from pathlib import Path
+          import cairosvg
+          source = Path("public/logo.svg").read_bytes()
+          root = Path("android-kamiko/app/src/main/res")
+          for density, size in [("mdpi",48),("hdpi",72),("xhdpi",96),("xxhdpi",144),("xxxhdpi",192)]:
+              target = root / ("mipmap-" + density) / "ic_launcher.png"
+              target.parent.mkdir(parents=True, exist_ok=True)
+              cairosvg.svg2png(bytestring=source, write_to=str(target), output_width=size, output_height=size)
+          PY
       - name: Build debug APK
         working-directory: android-kamiko
         run: gradle :app:assembleDebug --no-daemon
