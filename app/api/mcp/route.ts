@@ -8,6 +8,14 @@ import {verifyMcpAccess} from '@/lib/mcp-access';
 import {authorizedAccessToken,googleFetch} from '@/lib/google-session';
 export const runtime='nodejs';
 export const maxDuration=60;
+const SERVER_INSTRUCTIONS=[
+ 'CamMicGo SEO Agent: read-only Google Search Console, GA4, YouTube Data API and Calendar for the signed-in user, plus YouTube transcripts.',
+ 'YouTube transcripts: YouTube blocks cloud servers, so transcripts are fetched by the user\'s own device running the CamMicGo app (Android today) paired to this account.',
+ 'Pairing: when the user asks to pair/link/connect the app ("code d\'appairage", "appairer", "pairing code"), call device_pairing_code and show the code exactly, with messageForUser translated into the user\'s language. youtube_get_transcript also returns a pairingCode by itself when no device is reachable.',
+ 'Always remind the user to keep the app open in "Mode connecté" and the device awake while you fetch transcripts.',
+ 'youtube_get_transcript returns the original spoken language by default: translate it yourself. To find a person\'s main channel, search videos and compare channel titles; several channels can share a name, ask the user if unsure.',
+].join(' ');
+
 const asText=(value:unknown)=>({content:[{type:'text' as const,text:JSON.stringify(value)}]});
 function unauthorized(){return NextResponse.json({error:'invalid_token',error_description:'OAuth authorization required. Sign in through Supabase OAuth to access this MCP server.'},{status:401,headers:{'Cache-Control':'no-store','WWW-Authenticate':'Bearer realm="CamMicGo SEO Agent", resource_metadata="https://seo.cammicgo.com/.well-known/oauth-protected-resource/api/mcp"'}})}
 async function handler(req:NextRequest){
@@ -95,10 +103,10 @@ async function handler(req:NextRequest){
      }
      const direct=await getYouTubeTranscript(videoId,language==='original'?'en':language) as {segments?:unknown};
      if(direct.segments)return asText(direct);
-     if(devices.length)return asText({videoId,status:'device_offline',devicesPaired:devices.map(d=>({name:d.name,lastSeen:d.last_seen_at})),
-      messageForUser:'To fetch this transcript I use your CamMicGo app ('+devices.map(d=>d.name).join(', ')+'), but it is not reachable right now. Open the app, turn on "Mode connecté" and keep the phone awake (screen on or charging) while I fetch the transcript, then tell me to retry.',
-      instructions:'Relay messageForUser to the user in their language, then call youtube_get_transcript again once they confirm.'});
      const {code,expiresAt}=await relay.createPairingCode(user.id);
+     if(devices.length)return asText({videoId,status:'device_offline',devicesPaired:devices.map(d=>({name:d.name,lastSeen:d.last_seen_at})),pairingCode:code,expiresAt,
+      messageForUser:'To fetch this transcript I use your CamMicGo app ('+devices.map(d=>d.name).join(', ')+'), but it is not reachable right now. Open the app, turn on "Mode connecté" and keep the device awake (screen on or charging) while I fetch the transcript. If you reinstalled the app or use another device, pair it with this code: '+code+' (valid 10 minutes). Then tell me to retry.',
+      instructions:'Relay messageForUser to the user in their language, showing the code exactly, then call youtube_get_transcript again once they confirm.'});
      return asText({videoId,status:'pairing_required',pairingCode:code,expiresAt,
       messageForUser:'YouTube blocks cloud servers, so I fetch transcripts through your own device. Here is your CamMicGo pairing code: '+code+' (valid 10 minutes). Install the CamMicGo app (Android: https://seo.cammicgo.com/download), open "Connexion à votre assistant IA", enter the code and tap "Appairer". Keep the app open in "Mode connecté" and the phone awake while I fetch transcripts, otherwise the request cannot be completed. Tell me when it is done.',
       instructions:'Relay messageForUser to the user in their language, showing the code exactly. After they confirm, call youtube_get_transcript again.'});
@@ -112,7 +120,7 @@ async function handler(req:NextRequest){
      return asText({videoId:job.video_id,status:job.status,hint:'Still waiting for the paired device; retry in a few seconds.'});
     }catch(e){return asText({error:e instanceof Error?e.message:'Transcript relay unavailable'})}
    });
-   server.registerTool('device_pairing_code',{title:'Pair the CamMicGo Android app',description:'Create a one-time 10-minute code that the user types in the CamMicGo Android app to link it to this account, so YouTube transcripts can be fetched from their phone. Also lists already paired devices. Show the code to the user exactly as returned, with messageForUser translated into their language.',inputSchema:z.object({})},async()=>{
+   server.registerTool('device_pairing_code',{title:'Get a pairing code for the CamMicGo app (code d’appairage)',description:'Pairing / appairage / link / connect the CamMicGo Android or desktop app. Create a one-time 10-minute code that the user types in the CamMicGo Android app to link it to this account, so YouTube transcripts can be fetched from their phone. Also lists already paired devices. Show the code to the user exactly as returned, with messageForUser translated into their language.',inputSchema:z.object({})},async()=>{
     try{const {code,expiresAt}=await relay.createPairingCode(user.id);const devices=await relay.listDevices(user.id);
      return asText({code,expiresAt,messageForUser:'Your CamMicGo pairing code is '+code+' (valid 10 minutes). In the CamMicGo app, open "Connexion à votre assistant IA", enter the code and tap "Appairer". To fetch transcripts, keep the app in "Mode connecté" and the device awake while I work.',steps:['Install the app: https://seo.cammicgo.com/download','Open it, enter this code under "Connexion au serveur MCP" and tap "Appairer"','Turn on "Mode connecté" and keep the app running while transcripts are requested'],pairedDevices:devices.map(d=>({id:d.id,name:d.name,online:relay.isOnline(d),lastSeen:d.last_seen_at}))});
     }catch(e){return asText({error:e instanceof Error?e.message:'Pairing unavailable'})}
@@ -136,7 +144,7 @@ async function handler(req:NextRequest){
     if(accounts.error)return asText(accounts);if(!(accounts.accountSummaries||[]).some(account=>(account.propertySummaries||[]).some(p=>p.property===args.property)))return asText({error:'Property not authorized'});
     return asText(await googleRequest('https://analyticsdata.googleapis.com/v1beta/'+args.property+':runReport',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dateRanges:[{startDate:(args.days-1)+'daysAgo',endDate:'yesterday'}],dimensions:args.dimensions.map(name=>({name})),metrics:args.metrics.map(name=>({name})),limit:100,returnPropertyQuota:true})}));
    });
-  });
+  },{instructions:SERVER_INSTRUCTIONS,serverInfo:{name:'CamMicGo SEO Agent',version:'1.2.0'}});
   return protectedMcp(req);
  }
 
