@@ -1,4 +1,4 @@
-# CamMicGo SEO MCP Android — experimental APK (v0.3.0)
+# CamMicGo SEO MCP Android — experimental APK (v0.3.1)
 
 On-device YouTube transcript extraction. The request leaves the phone, from its residential IP, which avoids the `LOGIN_REQUIRED` / "confirm you're not a bot" block YouTube applies to cloud servers such as Vercel. Since v0.3.0 it can also be **paired with the remote MCP** so AI assistants get transcripts through the phone (see below).
 
@@ -25,3 +25,7 @@ The launcher icons in `app/src/main/res/mipmap-*` are generated from the dedicat
 4. The MCP tool `youtube_get_transcript` queues a job when a device was seen in the last 90 s, waits up to 40 s, otherwise returns a `jobId` for `youtube_transcript_status`. Results are cached 30 days per video and language.
 
 Limits: Android may pause network access in deep sleep (Doze) and caps `dataSync` services at about 6 hours a day on Android 15. The device only ever receives validated 11-character video IDs, never URLs or commands. Revoke with `device_revoke` or "Dissocier". Server side: `lib/device-relay.ts`, `app/api/devices/*`, migration `supabase/migrations/20261030000100_device_transcript_relay.sql`.
+
+## Language and signing (v0.3.1)
+- Language: `original` (default) returns the spoken language's track. A requested code returns that track, otherwise YouTube translates the best source track (`&tlang=`) and the result carries `translatedFrom`. The remote MCP resolves the original language with the YouTube Data API (`snippet.defaultAudioLanguage`).
+- Signing: builds use one fixed test key (`signing/cammicgo-test.jks`) so new versions install over old ones. For a public release, provide `CMG_KEYSTORE_FILE`, `CMG_KEYSTORE_PASSWORD`, `CMG_KEY_ALIAS`, `CMG_KEY_PASSWORD` from GitHub secrets.

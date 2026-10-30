@@ -79,11 +79,11 @@ public class MainActivity extends Activity {
     LinearLayout langRow = new LinearLayout(this);
     langRow.setGravity(Gravity.CENTER_VERTICAL);
     TextView langLabel = new TextView(this);
-    langLabel.setText("Langue préférée : ");
+    langLabel.setText("Langue : ");
     langLabel.setTextColor(Color.DKGRAY);
     langRow.addView(langLabel);
     langInput = new EditText(this);
-    langInput.setText("en");
+    langInput.setHint("originale");
     langInput.setSingleLine(true);
     langInput.setEms(4);
     langRow.addView(langInput);

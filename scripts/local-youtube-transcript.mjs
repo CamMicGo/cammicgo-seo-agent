@@ -24,7 +24,7 @@ function videoId(value) {
 }
 const id = videoId(input);
 if (!id) { console.error('Invalid YouTube video ID or URL'); process.exit(2); }
-const language = process.argv[3] || process.env.CAMMICGO_TRANSCRIPT_LANG || 'en';
+const language = process.argv[3] || process.env.CAMMICGO_TRANSCRIPT_LANG || 'original';
 let builtinError = null;
 try {
   const result = await fetchYouTubeCaptions(id, language);
@@ -36,7 +36,7 @@ try {
 const dir = await mkdtemp(join(tmpdir(), 'cammicgo-transcript-'));
 const url = 'https://www.youtube.com/watch?v=' + id;
 try {
-  const args = ['--skip-download','--no-playlist','--write-auto-subs','--write-subs','--sub-langs',language+'.*','--sub-format','vtt','-o',join(dir,'%(id)s.%(ext)s'),url];
+  const args = ['--skip-download','--no-playlist','--write-auto-subs','--write-subs','--sub-langs',(language==='original'?'en':language)+'.*','--sub-format','vtt','-o',join(dir,'%(id)s.%(ext)s'),url];
   const result = await new Promise((resolve,reject) => {
     const child = spawn('yt-dlp',args,{stdio:['ignore','ignore','pipe'],windowsHide:true});
     let stderr = '';

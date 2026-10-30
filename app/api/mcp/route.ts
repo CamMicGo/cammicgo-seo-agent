@@ -74,11 +74,13 @@ async function handler(req:NextRequest){
     return asText(await googleRequest('https://www.googleapis.com/youtube/v3/search?'+params));
    });
    server.registerTool('youtube_video_details',{title:'YouTube video details',description:'Get metadata, descriptions and statistics for YouTube videos by ID. Does not provide arbitrary video transcripts.',inputSchema:z.object({videoIds:z.array(z.string().min(1).max(30)).min(1).max(25)})},async args=>asText(await googleRequest('https://www.googleapis.com/youtube/v3/videos?'+new URLSearchParams({part:'snippet,statistics,contentDetails',id:args.videoIds.join(',')}))));
-   server.registerTool('youtube_get_transcript',{title:'Read timestamped YouTube captions',description:'Retrieve timestamped YouTube captions (manual or auto-generated). YouTube blocks cloud servers, so the transcript is fetched by the user\'s paired CamMicGo Android app (open, with "Mode connecté" on) and relayed here; recent transcripts are served from cache. If no device is paired, call device_pairing_code and show the user the code. If the result says pending, call youtube_transcript_status with the jobId. No Google API quota used.',inputSchema:z.object({videoId:z.string().min(1).max(250).describe('YouTube URL or 11-character video ID'),language:z.string().max(12).default('en')})},async args=>{
+   server.registerTool('youtube_get_transcript',{title:'Read timestamped YouTube captions',description:'Retrieve timestamped YouTube captions. By default returns the video\'s ORIGINAL spoken language (detected with the YouTube Data API); translate it yourself into the user\'s language. Pass language only when the user explicitly wants another language: YouTube then translates if no such track exists. YouTube blocks cloud servers, so the transcript is fetched by the user\'s paired CamMicGo Android app (open, with "Mode connecté" on) and relayed here; recent transcripts are served from cache. If no device is paired, call device_pairing_code and show the user the code. If the result says pending, call youtube_transcript_status with the jobId. Uses 1 YouTube Data API unit to detect the original language.',inputSchema:z.object({videoId:z.string().min(1).max(250).describe('YouTube URL or 11-character video ID'),language:z.string().max(12).default('original').describe('original (default) or a language code such as fr')})},async args=>{
     const videoId=relay.parseVideoId(args.videoId);if(!videoId)return asText({error:'Invalid YouTube URL or video ID'});
-    const language=relay.normalizeLanguage(args.language);
+    let language=relay.normalizeLanguage(args.language);let originalLanguage:string|null=null;
+    if(language==='original'){try{const v=await googleRequest('https://www.googleapis.com/youtube/v3/videos?part=snippet&id='+videoId) as {items?:Array<{snippet?:{defaultAudioLanguage?:string;defaultLanguage?:string}}>};const sn=v.items?.[0]?.snippet;originalLanguage=(sn?.defaultAudioLanguage||sn?.defaultLanguage||'').toLowerCase().split('-')[0]||null;if(originalLanguage&&/^[a-z]{2,3}$/.test(originalLanguage))language=originalLanguage}catch{}}
+    const meta={originalLanguage,requestedLanguage:args.language||'original'};
     try{
-     const cached=await relay.cachedTranscript(videoId,language);if(cached)return asText({...(cached as object),cached:true});
+     const cached=await relay.cachedTranscript(videoId,language);if(cached)return asText({...(cached as object),...meta,cached:true});
      const devices=await relay.listDevices(user.id);const online=devices.filter(relay.isOnline);
      if(online.length){
       const job=await relay.createJob(user.id,videoId,language);
@@ -86,12 +88,12 @@ async function handler(req:NextRequest){
       while(Date.now()<deadline){
        await new Promise(r=>setTimeout(r,1500));
        const current=await relay.getJob(user.id,job.id);
-       if(current?.status==='done')return asText(current.result);
+       if(current?.status==='done')return asText({...(current.result as object),...meta});
        if(current?.status==='error')return asText({videoId,error:'The paired device could not fetch captions',deviceError:current.error});
       }
       return asText({videoId,status:'pending',jobId:job.id,hint:'The paired device has not answered yet. Call youtube_transcript_status with this jobId in a few seconds.'});
      }
-     const direct=await getYouTubeTranscript(videoId,language) as {segments?:unknown};
+     const direct=await getYouTubeTranscript(videoId,language==='original'?'en':language) as {segments?:unknown};
      if(direct.segments)return asText(direct);
      return asText({...direct,videoId,devicesPaired:devices.length,howToFix:devices.length
       ?'Open the CamMicGo Android app on the paired phone and turn on "Mode connecté", then retry.'
