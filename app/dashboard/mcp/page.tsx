@@ -18,7 +18,7 @@ export default async function RemoteMcp(){
   <section className="connect-card"><h2>Your Google connection</h2>
   <p>{session?'A Google browser session is present.':'No Google browser session is present.'}</p>
   <p>Important: a browser sign-in is not an OAuth authorization for ChatGPT or Claude. We never send the Google refresh token to an AI client.</p>
-  <p><Link href="/connect">Connect Google / use your own Google Cloud OAuth client</Link></p>
+  <p><Link href="/account">Connect Google / use your own Google Cloud OAuth client</Link></p>
   </section>
   <section className="connect-card"><h2>Remote AI client authentication</h2>
   <p><strong>{privateActive?'Supabase-backed MCP identity verification is configured for controlled tests.':'Public remote Google tools are not enabled yet.'}</strong></p>

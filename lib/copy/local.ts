@@ -25,7 +25,7 @@ const en:LocalCopy={
  steps:[
   ['Install Git and Node.js','Open {terminal} and paste these commands. Skip the tools you already have.'],
   ['Download the project','This copies CamMicGo to your computer and installs its dependencies (2–3 minutes).'],
-  ['Create your Google Desktop client','In Google Cloud Console, create a project and enable Search Console, Analytics Data, Analytics Admin, YouTube Data API v3 and Calendar. Configure the consent screen and add your Google address as a test user. Then create an OAuth client of type “Desktop app” and download its JSON file.'],
+  ['Create your Google Desktop client','In Google Cloud Console, create a project and enable Search Console, Analytics Data, Analytics Admin, YouTube Data API v3 and Calendar. Configure the consent screen and add your Google address as a test user. Then create an OAuth client of type “Desktop app” and download its JSON file. No redirect URI to register: the Desktop client uses http://127.0.0.1 automatically, and your identifiers never leave your computer.'],
   ['Run the guided installer','It asks for the JSON file, opens Google sign-in in your browser, checks everything and offers to configure your AI client.'],
   ['Connect your AI client','Run only the line for your app, then fully quit and reopen it.'],
   ['Check and try it','Run the checks, then ask your assistant a question. YouTube transcripts come straight from your connection: no phone needed.'],
@@ -49,7 +49,7 @@ export const localCopy:Dict<LocalCopy>={
   steps:[
    ['Installer Git et Node.js','Ouvrez {terminal} et collez ces commandes. Ignorez les outils déjà installés.'],
    ['Télécharger le projet','Cela copie CamMicGo sur votre ordinateur et installe ses dépendances (2 à 3 minutes).'],
-   ['Créer votre client Google « Bureau »','Dans Google Cloud Console, créez un projet et activez Search Console, Analytics Data, Analytics Admin, YouTube Data API v3 et Calendar. Configurez l’écran de consentement et ajoutez votre adresse Google comme utilisateur test. Créez ensuite un client OAuth de type « Application de bureau » et téléchargez son fichier JSON.'],
+   ['Créer votre client Google « Bureau »','Dans Google Cloud Console, créez un projet et activez Search Console, Analytics Data, Analytics Admin, YouTube Data API v3 et Calendar. Configurez l’écran de consentement et ajoutez votre adresse Google comme utilisateur test. Créez ensuite un client OAuth de type « Application de bureau » et téléchargez son fichier JSON. Aucune URI de redirection à déclarer : le client Bureau utilise automatiquement http://127.0.0.1, et vos identifiants ne quittent jamais votre ordinateur.'],
    ['Lancer l’installateur guidé','Il demande le fichier JSON, ouvre la connexion Google dans votre navigateur, vérifie tout et propose de configurer votre client IA.'],
    ['Connecter votre client IA','Lancez uniquement la ligne de votre application, puis quittez-la complètement et rouvrez-la.'],
    ['Vérifier et essayer','Lancez les vérifications, puis posez une question à votre assistant. Les transcriptions YouTube passent directement par votre connexion : pas besoin de téléphone.'],
@@ -69,7 +69,7 @@ export const localCopy:Dict<LocalCopy>={
   steps:[
    ['Instala Git y Node.js','Abre {terminal} y pega estos comandos. Omite las herramientas que ya tengas.'],
    ['Descarga el proyecto','Copia CamMicGo en tu ordenador e instala sus dependencias (2–3 minutos).'],
-   ['Crea tu cliente de escritorio de Google','En Google Cloud Console, crea un proyecto y activa Search Console, Analytics Data, Analytics Admin, YouTube Data API v3 y Calendar. Configura la pantalla de consentimiento y añade tu dirección de Google como usuario de prueba. Después crea un cliente OAuth de tipo «Aplicación de escritorio» y descarga su archivo JSON.'],
+   ['Crea tu cliente de escritorio de Google','En Google Cloud Console, crea un proyecto y activa Search Console, Analytics Data, Analytics Admin, YouTube Data API v3 y Calendar. Configura la pantalla de consentimiento y añade tu dirección de Google como usuario de prueba. Después crea un cliente OAuth de tipo «Aplicación de escritorio» y descarga su archivo JSON. No hay que registrar ningún URI de redirección: el cliente de escritorio usa http://127.0.0.1 automáticamente y tus credenciales nunca salen de tu ordenador.'],
    ['Ejecuta el instalador guiado','Pide el archivo JSON, abre el inicio de sesión de Google en tu navegador, lo comprueba todo y propone configurar tu cliente de IA.'],
    ['Conecta tu cliente de IA','Ejecuta solo la línea de tu aplicación y luego ciérrala por completo y vuelve a abrirla.'],
    ['Comprueba y pruébalo','Ejecuta las comprobaciones y haz una pregunta a tu asistente. Las transcripciones de YouTube llegan directamente por tu conexión: no necesitas el móvil.'],
@@ -89,7 +89,7 @@ export const localCopy:Dict<LocalCopy>={
   steps:[
    ['Git und Node.js installieren','Öffnen Sie {terminal} und fügen Sie diese Befehle ein. Bereits installierte Tools überspringen.'],
    ['Projekt herunterladen','Kopiert CamMicGo auf Ihren Computer und installiert die Abhängigkeiten (2–3 Minuten).'],
-   ['Google-Desktop-Client erstellen','Erstellen Sie in der Google Cloud Console ein Projekt und aktivieren Sie Search Console, Analytics Data, Analytics Admin, YouTube Data API v3 und Calendar. Richten Sie den Zustimmungsbildschirm ein und fügen Sie Ihre Google-Adresse als Testnutzer hinzu. Erstellen Sie dann einen OAuth-Client vom Typ „Desktop-App“ und laden Sie seine JSON-Datei herunter.'],
+   ['Google-Desktop-Client erstellen','Erstellen Sie in der Google Cloud Console ein Projekt und aktivieren Sie Search Console, Analytics Data, Analytics Admin, YouTube Data API v3 und Calendar. Richten Sie den Zustimmungsbildschirm ein und fügen Sie Ihre Google-Adresse als Testnutzer hinzu. Erstellen Sie dann einen OAuth-Client vom Typ „Desktop-App“ und laden Sie seine JSON-Datei herunter. Kein Weiterleitungs-URI nötig: Der Desktop-Client nutzt automatisch http://127.0.0.1, und Ihre Zugangsdaten verlassen nie Ihren Computer.'],
    ['Geführte Installation starten','Sie fragt nach der JSON-Datei, öffnet die Google-Anmeldung im Browser, prüft alles und bietet an, Ihren KI-Client einzurichten.'],
    ['KI-Client verbinden','Führen Sie nur die Zeile für Ihre App aus, beenden Sie sie dann vollständig und öffnen Sie sie erneut.'],
    ['Prüfen und ausprobieren','Führen Sie die Prüfungen aus und stellen Sie Ihrem Assistenten eine Frage. YouTube-Transkripte kommen direkt über Ihre Verbindung: kein Smartphone nötig.'],
@@ -109,7 +109,7 @@ export const localCopy:Dict<LocalCopy>={
   steps:[
    ['Instalar o Git e o Node.js','Abra o {terminal} e cole estes comandos. Ignore as ferramentas que já tem.'],
    ['Transferir o projeto','Copia o CamMicGo para o seu computador e instala as dependências (2–3 minutos).'],
-   ['Criar o cliente Google para computador','Na Google Cloud Console, crie um projeto e ative Search Console, Analytics Data, Analytics Admin, YouTube Data API v3 e Calendar. Configure o ecrã de consentimento e adicione o seu endereço Google como utilizador de teste. Depois crie um cliente OAuth do tipo «Aplicação para computador» e transfira o ficheiro JSON.'],
+   ['Criar o cliente Google para computador','Na Google Cloud Console, crie um projeto e ative Search Console, Analytics Data, Analytics Admin, YouTube Data API v3 e Calendar. Configure o ecrã de consentimento e adicione o seu endereço Google como utilizador de teste. Depois crie um cliente OAuth do tipo «Aplicação para computador» e transfira o ficheiro JSON. Nenhum URI de redirecionamento a registrar: o cliente para computador usa http://127.0.0.1 automaticamente e suas credenciais nunca saem do seu computador.'],
    ['Executar o instalador guiado','Pede o ficheiro JSON, abre o início de sessão Google no navegador, verifica tudo e propõe configurar o seu cliente de IA.'],
    ['Ligar o seu cliente de IA','Execute apenas a linha da sua aplicação e depois feche-a por completo e volte a abri-la.'],
    ['Verificar e experimentar','Execute as verificações e faça uma pergunta ao seu assistente. As transcrições do YouTube chegam diretamente pela sua ligação: não precisa do telemóvel.'],
@@ -129,7 +129,7 @@ export const localCopy:Dict<LocalCopy>={
   steps:[
    ['Installa Git e Node.js','Apri {terminal} e incolla questi comandi. Salta gli strumenti che hai già.'],
    ['Scarica il progetto','Copia CamMicGo sul tuo computer e installa le dipendenze (2–3 minuti).'],
-   ['Crea il client Google desktop','In Google Cloud Console crea un progetto e attiva Search Console, Analytics Data, Analytics Admin, YouTube Data API v3 e Calendar. Configura la schermata di consenso e aggiungi il tuo indirizzo Google come utente di test. Poi crea un client OAuth di tipo «App desktop» e scarica il suo file JSON.'],
+   ['Crea il client Google desktop','In Google Cloud Console crea un progetto e attiva Search Console, Analytics Data, Analytics Admin, YouTube Data API v3 e Calendar. Configura la schermata di consenso e aggiungi il tuo indirizzo Google come utente di test. Poi crea un client OAuth di tipo «App desktop» e scarica il suo file JSON. Nessun URI di reindirizzamento da registrare: il client desktop usa automaticamente http://127.0.0.1 e le tue credenziali non lasciano mai il computer.'],
    ['Avvia l’installazione guidata','Chiede il file JSON, apre l’accesso Google nel browser, controlla tutto e propone di configurare il tuo client IA.'],
    ['Collega il tuo client IA','Esegui solo la riga della tua app, poi chiudila completamente e riaprila.'],
    ['Verifica e prova','Esegui i controlli, poi fai una domanda al tuo assistente. Le trascrizioni di YouTube arrivano direttamente dalla tua connessione: niente smartphone.'],
@@ -149,7 +149,7 @@ export const localCopy:Dict<LocalCopy>={
   steps:[
    ['Установите Git и Node.js','Откройте {terminal} и вставьте эти команды. Пропустите уже установленные инструменты.'],
    ['Скачайте проект','Копирует CamMicGo на компьютер и устанавливает зависимости (2–3 минуты).'],
-   ['Создайте клиент Google для ПК','В Google Cloud Console создайте проект и включите Search Console, Analytics Data, Analytics Admin, YouTube Data API v3 и Calendar. Настройте экран согласия и добавьте свой адрес Google как тестового пользователя. Затем создайте OAuth-клиент типа «Приложение для ПК» и скачайте его JSON-файл.'],
+   ['Создайте клиент Google для ПК','В Google Cloud Console создайте проект и включите Search Console, Analytics Data, Analytics Admin, YouTube Data API v3 и Calendar. Настройте экран согласия и добавьте свой адрес Google как тестового пользователя. Затем создайте OAuth-клиент типа «Приложение для ПК» и скачайте его JSON-файл. URI перенаправления регистрировать не нужно: клиент для компьютера автоматически использует http://127.0.0.1, а ваши данные не покидают компьютер.'],
    ['Запустите мастер установки','Он запросит JSON-файл, откроет вход в Google в браузере, всё проверит и предложит настроить ваш ИИ-клиент.'],
    ['Подключите ИИ-клиент','Выполните только строку для своего приложения, затем полностью закройте и снова откройте его.'],
    ['Проверьте и попробуйте','Запустите проверки и задайте вопрос ассистенту. Расшифровки YouTube приходят напрямую через ваше подключение: телефон не нужен.'],
@@ -169,7 +169,7 @@ export const localCopy:Dict<LocalCopy>={
   steps:[
    ['安装 Git 和 Node.js','打开{terminal}并粘贴以下命令。已安装的工具可跳过。'],
    ['下载项目','将 CamMicGo 复制到你的电脑并安装依赖（2–3 分钟）。'],
-   ['创建 Google 桌面客户端','在 Google Cloud Console 中创建项目，启用 Search Console、Analytics Data、Analytics Admin、YouTube Data API v3 和 Calendar。配置同意屏幕，并将你的 Google 地址添加为测试用户。然后创建类型为“桌面应用”的 OAuth 客户端并下载其 JSON 文件。'],
+   ['创建 Google 桌面客户端','在 Google Cloud Console 中创建项目，启用 Search Console、Analytics Data、Analytics Admin、YouTube Data API v3 和 Calendar。配置同意屏幕，并将你的 Google 地址添加为测试用户。然后创建类型为“桌面应用”的 OAuth 客户端并下载其 JSON 文件。 无需登记重定向 URI：桌面客户端会自动使用 http://127.0.0.1，你的凭据也不会离开你的电脑。'],
    ['运行安装向导','它会要求提供 JSON 文件，在浏览器中打开 Google 登录，检查所有设置，并提供配置 AI 客户端的选项。'],
    ['连接你的 AI 客户端','只运行与你的应用对应的那一行，然后完全退出并重新打开该应用。'],
    ['检查并试用','运行检查，然后向助手提问。YouTube 字幕直接通过你的网络获取，无需手机。'],
@@ -189,7 +189,7 @@ export const localCopy:Dict<LocalCopy>={
   steps:[
    ['Git と Node.js をインストール','{terminal}を開き、次のコマンドを貼り付けます。インストール済みのツールは飛ばしてください。'],
    ['プロジェクトをダウンロード','CamMicGo をパソコンにコピーし、依存関係をインストールします（2〜3 分）。'],
-   ['Google デスクトップクライアントを作成','Google Cloud Console でプロジェクトを作成し、Search Console、Analytics Data、Analytics Admin、YouTube Data API v3、Calendar を有効にします。同意画面を設定し、自分の Google アドレスをテストユーザーに追加します。次に種類が「デスクトップアプリ」の OAuth クライアントを作成し、JSON ファイルをダウンロードします。'],
+   ['Google デスクトップクライアントを作成','Google Cloud Console でプロジェクトを作成し、Search Console、Analytics Data、Analytics Admin、YouTube Data API v3、Calendar を有効にします。同意画面を設定し、自分の Google アドレスをテストユーザーに追加します。次に種類が「デスクトップアプリ」の OAuth クライアントを作成し、JSON ファイルをダウンロードします。 リダイレクト URI の登録は不要です。デスクトップ クライアントは自動で http://127.0.0.1 を使い、認証情報がパソコンの外に出ることはありません。'],
    ['ガイド付きインストーラーを実行','JSON ファイルを尋ね、ブラウザで Google ログインを開き、すべてを確認して AI クライアントの設定を提案します。'],
    ['AI クライアントを接続','使っているアプリの行だけを実行し、アプリを完全に終了してから再度開きます。'],
    ['確認して試す','チェックを実行し、アシスタントに質問します。YouTube の字幕は自分の回線から直接取得されるので、スマートフォンは不要です。'],
@@ -209,7 +209,7 @@ export const localCopy:Dict<LocalCopy>={
   steps:[
    ['Git과 Node.js 설치','{terminal}을 열고 다음 명령을 붙여 넣으세요. 이미 설치된 도구는 건너뛰세요.'],
    ['프로젝트 다운로드','CamMicGo를 컴퓨터에 복사하고 의존성을 설치합니다(2–3분).'],
-   ['Google 데스크톱 클라이언트 만들기','Google Cloud Console에서 프로젝트를 만들고 Search Console, Analytics Data, Analytics Admin, YouTube Data API v3, Calendar를 사용 설정하세요. 동의 화면을 구성하고 내 Google 주소를 테스트 사용자로 추가한 뒤, 유형이 “데스크톱 앱”인 OAuth 클라이언트를 만들어 JSON 파일을 다운로드하세요.'],
+   ['Google 데스크톱 클라이언트 만들기','Google Cloud Console에서 프로젝트를 만들고 Search Console, Analytics Data, Analytics Admin, YouTube Data API v3, Calendar를 사용 설정하세요. 동의 화면을 구성하고 내 Google 주소를 테스트 사용자로 추가한 뒤, 유형이 “데스크톱 앱”인 OAuth 클라이언트를 만들어 JSON 파일을 다운로드하세요. 리디렉션 URI를 등록할 필요가 없습니다. 데스크톱 클라이언트는 자동으로 http://127.0.0.1을 사용하며 자격 증명은 컴퓨터 밖으로 나가지 않습니다.'],
    ['설치 도우미 실행','JSON 파일을 묻고, 브라우저에서 Google 로그인을 열고, 모든 것을 확인한 뒤 AI 클라이언트 설정을 제안합니다.'],
    ['AI 클라이언트 연결','사용하는 앱의 줄만 실행한 다음 앱을 완전히 종료했다가 다시 여세요.'],
    ['확인하고 사용해 보기','점검을 실행한 뒤 어시스턴트에게 질문하세요. YouTube 자막은 내 연결로 바로 가져오므로 휴대폰이 필요 없습니다.'],
@@ -229,7 +229,7 @@ export const localCopy:Dict<LocalCopy>={
   steps:[
    ['ثبّت Git وNode.js','افتح {terminal} والصق هذه الأوامر. تجاوز الأدوات المثبتة لديك.'],
    ['نزّل المشروع','ينسخ CamMicGo إلى حاسوبك ويثبّت الاعتماديات (2–3 دقائق).'],
-   ['أنشئ عميل Google لسطح المكتب','في Google Cloud Console أنشئ مشروعًا وفعّل Search Console وAnalytics Data وAnalytics Admin وYouTube Data API v3 وCalendar. اضبط شاشة الموافقة وأضف عنوان Google الخاص بك كمستخدم اختبار. ثم أنشئ عميل OAuth من نوع «تطبيق سطح المكتب» ونزّل ملف JSON الخاص به.'],
+   ['أنشئ عميل Google لسطح المكتب','في Google Cloud Console أنشئ مشروعًا وفعّل Search Console وAnalytics Data وAnalytics Admin وYouTube Data API v3 وCalendar. اضبط شاشة الموافقة وأضف عنوان Google الخاص بك كمستخدم اختبار. ثم أنشئ عميل OAuth من نوع «تطبيق سطح المكتب» ونزّل ملف JSON الخاص به. لا حاجة لتسجيل عنوان إعادة توجيه: يستخدم عميل سطح المكتب http://127.0.0.1 تلقائيًا، ولا تغادر بيانات اعتمادك حاسوبك.'],
    ['شغّل المثبّت الموجّه','يطلب ملف JSON، ويفتح تسجيل الدخول إلى Google في المتصفح، ويتحقق من كل شيء، ويقترح إعداد عميل الذكاء الاصطناعي.'],
    ['اربط عميل الذكاء الاصطناعي','شغّل السطر الخاص بتطبيقك فقط، ثم أغلقه تمامًا وأعد فتحه.'],
    ['تحقّق وجرّب','شغّل الفحوص ثم اطرح سؤالًا على مساعدك. تصل نصوص YouTube مباشرة عبر اتصالك: لا حاجة إلى الهاتف.'],

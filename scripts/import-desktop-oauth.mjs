@@ -24,6 +24,7 @@ try{
   'APP_BASE_URL=http://localhost:3000',
   'GOOGLE_CLIENT_ID='+JSON.stringify(id),
   'GOOGLE_CLIENT_SECRET='+JSON.stringify(secret),
+  ...(typeof json.installed.project_id==='string'?['GOOGLE_CLOUD_PROJECT='+JSON.stringify(json.installed.project_id)]:[]),
   'SESSION_ENCRYPTION_KEY='+JSON.stringify(randomBytes(32).toString('base64')),
   'ENABLE_MCP_BETA=false',''
  ].join('\n');

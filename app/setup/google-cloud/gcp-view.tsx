@@ -36,10 +36,10 @@ export default function GcpView(){
   <p><Rich text={t.s4after}/></p>
   <p><a href="https://console.cloud.google.com/auth/clients" target="_blank" rel="noreferrer">Google Auth Platform › Clients ↗</a></p>
   <h2>{t.s5t}</h2><ul>{t.s5.map((s,i)=><li key={i}><Rich text={s}/></li>)}</ul>
-  <p><a href="/connect">{t.connect}</a></p>
+  <p><a href="/account">{t.connect}</a></p>
   <h2>{t.s6t}</h2><p><Rich text={t.s6p}/></p>
   <p><a href="https://console.cloud.google.com/apis/dashboard" target="_blank" rel="noreferrer">{t.dash}</a></p>
   <div className="setup-alert"><strong>{t.localT}</strong> <Rich text={t.localP}/> <a href="/setup/local">{t.localLink}</a></div>
-  <footer className="setup-footer"><a href="/connect">{t.connect}</a><a href="https://github.com/CamMicGo/cammicgo-seo-mcp">{t.source}</a></footer>
+  <footer className="setup-footer"><a href="/account">{t.connect}</a><a href="https://github.com/CamMicGo/cammicgo-seo-mcp">{t.source}</a></footer>
  </main>;
 }

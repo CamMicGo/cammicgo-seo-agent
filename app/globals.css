@@ -302,3 +302,30 @@ html,body{overflow-x:hidden}
 body:has(#a11y-dialog) .sh-wrap{z-index:170}
 .agent-available{background:linear-gradient(135deg,#1f7bff,#6a4cf0)!important;color:#fff!important;border-color:transparent!important;text-decoration:none}
 .home-os{flex:none;display:grid;grid-template-columns:1fr 1fr;place-items:center;gap:4px;width:64px;height:64px;padding:7px;border-radius:16px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.15)}.home-os img{width:22px;height:22px;object-fit:contain}
+/* account page */
+.acc{max-width:880px;margin:0 auto;padding:40px 18px 70px}
+.acc h1{font-size:clamp(30px,5vw,44px);margin:8px 0 10px;letter-spacing:-1px}
+.acc .lead{margin:0 0 22px;text-align:start;max-width:none}
+.acc-card{background:#fff;border:1px solid #dce6f7;border-radius:20px;padding:22px;margin-bottom:16px;box-shadow:0 10px 30px #263e7209}
+.acc-card h2{margin:0 0 8px;font-size:20px}.acc-card p{color:#5b6a86;line-height:1.6;margin:6px 0}.acc-card a{color:#245edc;font-weight:700}
+.acc-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px}.acc-row input{flex:1 1 240px}
+.acc input[type=email],.acc input[type=password],.acc input:not([type]){font:inherit;color:#17234a;background:#f6f9ff;border:1.5px solid #dce5f5;border-radius:12px;padding:12px 14px;width:100%}
+.acc input:focus{outline:none;border-color:#2764df}
+.acc-btn{font:inherit;font-weight:800;border:0;border-radius:12px;padding:12px 18px;cursor:pointer;color:#fff;background:linear-gradient(135deg,#1f7bff,#6a4cf0);display:inline-flex;gap:10px;align-items:center}
+.acc-btn:disabled{opacity:.5;cursor:not-allowed}.acc-btn.ghost{background:#eef3ff;color:#2459d6}.acc-btn.danger{background:#fff;color:#c62828;border:1px solid #f3c6c6}
+.acc-btn.google{background:#fff;color:#202124;border:1px solid #d1d5db;margin-top:12px}
+.acc-link{background:none;border:0;color:#245edc;font-weight:700;cursor:pointer;font:inherit}
+.acc-who{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;color:#4c5d7d}
+.acc-badge{font-style:normal;margin-inline-start:8px;background:#e7efff;color:#2459d6;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:800}
+.acc-usage b{font-size:26px}.acc-bar{height:12px;border-radius:8px;background:#e9effa;overflow:hidden;margin:10px 0}.acc-bar div{height:100%;background:linear-gradient(90deg,#11c7e6,#2764df,#6a4cf0);border-radius:8px;transition:width .4s}
+.acc-note{font-size:13px}.acc-ok{color:#15803d!important;font-weight:700}.acc-warn{color:#b45309!important;font-weight:700}
+.acc-msg{border-radius:12px;padding:12px 14px;font-weight:700}.acc-msg.ok{background:#ecfdf3;color:#166534}.acc-msg.err{background:#fef2f2;color:#b42318}
+.acc-form{display:grid;gap:12px;margin-top:10px}.acc-form label{display:grid;gap:6px;font-weight:700;font-size:14px;color:#17234a}
+.acc-client dl{display:grid;grid-template-columns:max-content 1fr;gap:8px 16px;margin:12px 0}.acc-client dt{color:#63728d;font-size:14px}.acc-client dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.acc code{background:#eef3ff;color:#2854ae;border-radius:6px;padding:2px 6px;font-size:13px;overflow-wrap:anywhere}
+.acc-apis{border:1px solid #e2e8f0;border-radius:14px;padding:12px 14px;margin:12px 0;display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}
+.acc-apis legend{font-weight:800;padding:0 6px}.acc-apis label,.acc-shared{display:flex;gap:8px;align-items:center;font-size:14px}.acc-all{grid-column:1/-1;font-weight:800;border-bottom:1px solid #e2e8f0;padding-bottom:8px}
+.acc-table{display:grid;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;margin:12px 0}
+.acc-tr{display:grid;grid-template-columns:1.2fr .8fr 1.4fr 1fr;gap:12px;padding:12px 14px;border-top:1px solid #e2e8f0;font-size:14px;color:#33415c}.acc-tr.head{border-top:0;background:#f4f7fd;font-weight:800;color:#17234a;font-size:13px}
+@media(max-width:720px){.acc-tr{grid-template-columns:1fr;gap:4px}.acc-tr.head{display:none}.acc-tr span:nth-child(2)::before{content:"⚙ "}.acc-tr span:nth-child(3)::before{content:"↪ "}.acc-tr span:nth-child(4)::before{content:"🔒 "}.acc-client dl{grid-template-columns:1fr}}
+.sh-icon[aria-current=page]{border-color:#2764df;background:#eef4ff;color:#2459d6}

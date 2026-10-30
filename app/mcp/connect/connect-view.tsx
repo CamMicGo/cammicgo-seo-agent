@@ -2,6 +2,7 @@
 import {RelayFlow,RelayLimits,RelaySteps} from '../../relay-explainer';
 import {useT} from '../../lang-provider';
 import {remoteCopy} from '@/lib/copy/remote';
+import {accountCopy} from '@/lib/copy/account';
 import Rich,{LinkIn} from '../../rich';
 
 const MCP_URL='https://seo.cammicgo.com/api/mcp';
@@ -10,6 +11,7 @@ const TOOLS=[{k:'sc',icon:'/google-search-console.svg',name:'Search Console'},{k
 
 export default function ConnectView(){
  const t=useT(remoteCopy);
+ const a=useT(accountCopy);
  return <div className="site">
   <section className="hero" style={{paddingTop:56,paddingBottom:40}}>
    <span className="eyebrow">{t.eyebrow}</span>
@@ -29,6 +31,7 @@ export default function ConnectView(){
     <article className="connect-card"><h3>{t.shared.t}</h3><p><Rich text={t.shared.p}/></p></article>
     <article className="connect-card connect-card-accent"><h3>{t.own.t}</h3><p><Rich text={t.own.p}/></p></article>
    </div>
+   <div className="actions"><a className="primary" href="/account">{a.title} ↗</a><a className="secondary" href="/setup/google-cloud">{a.guide}</a></div>
    <ol className="relay-steps" style={{marginTop:22}}>
     {t.steps.map((s,i)=><li key={i}><span className="relay-step-num">{i+1}</span><h3>{s.t}</h3><p><Rich text={s.p}/>{i===0&&<> <a href="/setup/google-cloud">{t.checklist}</a></>}{i===2&&<> <code className="connect-url">{REDIRECT}</code></>}</p></li>)}
    </ol>

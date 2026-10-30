@@ -29,4 +29,6 @@ if(existsSync(file)){const backup=file+'.cammicgo-backup';if(existsSync(backup))
 writeFileSync(file,JSON.stringify(config,null,2)+'\n',{mode:0o600});
 console.log('CamMicGo local MCP configured for',target,'at',file);
 console.log('Restart your agent. First run npm run local:login to authorize your Google account.');
+if(target==='gemini')console.log('Gemini CLI: start `gemini`, then type /mcp to check that cammicgo-seo-local is connected.');
+if(target==='cursor')console.log('Cursor: Settings › MCP (Tools & Integrations) should list cammicgo-seo-local with a green dot.');
 console.log('No OAuth secrets or refresh tokens were written to the agent configuration.');

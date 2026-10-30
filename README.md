@@ -434,3 +434,16 @@ Besides the Android app, any computer can do it with the desktop relay:
 - CLI: `npm run relay -- --pair ABCD-2345`, `--headless`, `--status`, `--unpair`.
 
 The **local** MCP server does not need it: it fetches transcripts itself.
+
+## Google credentials: bring your own client (BYO)
+
+| You use | Google Cloud client type | Authorized redirect URI | Where the credentials live |
+|---|---|---|---|
+| Remote MCP `https://seo.cammicgo.com/api/mcp` (Claude, ChatGPT…) | Web application | `https://seo.cammicgo.com/api/auth/google/callback` | https://seo.cammicgo.com/account (secret encrypted with AES-256-GCM, never returned to the browser or the AI agent) |
+| Local MCP (Cursor, Gemini CLI, Claude Desktop) | Desktop app | none to register (loopback `http://127.0.0.1:38271`) | your computer only (`.env.local`) |
+| Local web dashboard (optional) | Web application | `http://localhost:3000/api/auth/google/callback` | your computer only (`.env.local`) |
+
+- External users of the remote MCP must use their own Google Cloud OAuth client; the shared CamMicGo project is reserved to administrators (`cmg_admins`).
+- Users sign in on `/account` with their email (Supabase magic link), save project ID + client ID + secret (checked against Google), then click **Connect Google**. The same form appears in the agent authorization window.
+- Allowance per account: 100 counted MCP tool calls per day, 10 per minute (30 calls/min in total), global cap 5,000/day. Status tools (`service_info`, `youtube_transcript_status`, `youtube_batch_status`, pairing) do not count. Override with `MCP_DAILY_LIMIT`, `MCP_MINUTE_LIMIT`, `MCP_MINUTE_TOTAL_LIMIT`, `MCP_GLOBAL_DAILY_LIMIT`, `MCP_ADMIN_DAILY_LIMIT`.
+- Local MCP for Cursor / Gemini CLI: `npm run install:local`, then `npm run agent:setup -- cursor` or `npm run agent:setup -- gemini`.

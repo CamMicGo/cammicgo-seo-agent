@@ -15,6 +15,7 @@ const SERVER_INSTRUCTIONS=[
  'Pairing: when the user asks to pair/link/connect the app ("code d\'appairage", "appairer", "pairing code"), call device_pairing_code and show the code exactly, with messageForUser translated into the user\'s language. youtube_get_transcript also returns a pairingCode by itself when no device is reachable.',
  'Always remind the user to keep the app open in "Mode connecté" and the device awake while you fetch transcripts.',
  'youtube_get_transcript returns the original spoken language by default (compact [mm:ss] text): translate it yourself. To find a person\'s main channel use youtube_find_channels; several channels can share a name, ask the user if unsure.',
+ 'Google tools use the user\'s own Google Cloud project (OAuth client ID and secret saved at https://seo.cammicgo.com/account, then "Connect Google"). If a tool answers google_not_connected, relay its messageForUser. Each user has a daily CamMicGo allowance (about 100 tool calls; status checks are free): prefer one youtube_channel_batch over many single transcript calls.',
  'Whole channels: youtube_channel_batch builds ONE document (details + full transcripts of every video) with a stable URL, ideal as a single NotebookLM source; follow it with youtube_batch_status. Never paste whole documents into the chat.',
 ].join(' ');
 
@@ -25,14 +26,33 @@ async function handler(req:NextRequest){
   const {verifySupabaseMcpUser}=await import('@/lib/supabase-mcp-auth');
   const user=await verifySupabaseMcpUser(req.headers.get('authorization'));
   if(!user)return unauthorized();
-  const {readGoogle,consumeQuota}=await import('@/lib/mcp-google-store');
+  const store=await import('@/lib/mcp-google-store');
+  const consumeQuota=store.consumeQuota;
+  const account=await import('@/lib/account');
+  const admin=await account.isAdmin(user.id).catch(()=>false);
+  // External users must use their own Google Cloud project: a shared-project connection only counts for administrators.
+  const readGoogle=async(id:string)=>{const s=await store.readGoogle(id);return s&&(admin||s.credentials.mode==='byo')?s:null;};
+  const CONNECT_GOOGLE={error:'google_not_connected',setupUrl:account.ACCOUNT_URL,
+   messageForUser:'Connect your Google account with your own Google Cloud project first: open '+account.ACCOUNT_URL+' , sign in with your email, paste your OAuth client ID and secret, then click "Connect Google". The guide is at https://seo.cammicgo.com/setup/google-cloud .',
+   instructions:'Relay messageForUser to the user in their language with the link.'};
+  // Per-user MCP allowance, checked before the tool runs (protects the free hosting).
+  const rpc=await req.clone().json().catch(()=>null) as {id?:unknown;method?:string;params?:{name?:string}}|null;
+  if(rpc&&!Array.isArray(rpc)&&rpc.method==='tools/call'&&typeof rpc.params?.name==='string'){
+   const used=await account.consumeCall(user.id,rpc.params.name,admin).catch(()=>({ok:true,reason:null,used:0,limit:0}));
+   if(!used.ok){
+    const message=used.reason==='minute'?'Too many requests in one minute ('+account.LIMITS.minuteCostly+' max). Wait one minute, then continue.'
+     :used.reason==='global'?'CamMicGo is very busy today: the shared daily capacity is reached. Try again tomorrow.'
+     :'Daily allowance reached: '+used.used+' / '+used.limit+' CamMicGo calls today. It resets at midnight UTC. Usage: '+account.ACCOUNT_URL;
+    return NextResponse.json({jsonrpc:'2.0',id:rpc.id??null,result:{isError:true,content:[{type:'text',text:JSON.stringify({error:'quota_exceeded',reason:used.reason,used:used.used,limit:used.limit,messageForUser:message})}]}},{headers:{'Cache-Control':'no-store'}});
+   }
+  }
   const relay=await import('@/lib/device-relay');
-  const quotaLimit=(session:{credentials:{mode:string}})=>session.credentials.mode==='byo'?2000:150;
+  const quotaLimit=(_session:{credentials:{mode:string}})=>2000; // Google API safety cap; the user-facing allowance is counted per MCP call
   const protectedMcp=createMcpHandler(server=>{
-   server.registerTool('service_info',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Authenticated MCP status',description:'Check connected Google account.',inputSchema:z.object({})},async()=>{const session=await readGoogle(user.id);let devices:Array<{name:string;online:boolean}>|string=[];try{devices=(await relay.listDevices(user.id)).map(d=>({name:d.name,online:relay.isOnline(d)}))}catch(e){devices=e instanceof Error?e.message:'unavailable'}return asText({authenticated:true,googleConnected:!!session,googleQuota:session?(session.credentials.mode==='byo'?'own Google Cloud project':'shared CamMicGo project'):null,googleScopes:session?.scopes?session.scopes.filter(x=>x.includes('googleapis.com/auth/')).map(x=>x.split('/auth/')[1]):'unknown (connected before scope tracking)',reauthorizeGoogle:REAUTH_URL,transcriptDevices:devices,build:process.env.VERCEL_GIT_COMMIT_SHA?.slice(0,7)??null})});
+   server.registerTool('service_info',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Authenticated MCP status',description:'Check connected Google account.',inputSchema:z.object({})},async()=>{const session=await readGoogle(user.id);let devices:Array<{name:string;online:boolean}>|string=[];try{devices=(await relay.listDevices(user.id)).map(d=>({name:d.name,online:relay.isOnline(d)}))}catch(e){devices=e instanceof Error?e.message:'unavailable'}const usage=await account.usageToday(user.id,admin).catch(()=>null);return asText({authenticated:true,administrator:admin,camMicGoUsageToday:usage?{used:usage.used,limit:usage.limit,perMinute:usage.perMinute,resetsAt:usage.resetsAt,details:account.ACCOUNT_URL}:null,googleConnected:!!session,...(session?{}:{connectGoogle:CONNECT_GOOGLE.messageForUser}),googleQuota:session?(session.credentials.mode==='byo'?'own Google Cloud project':'shared CamMicGo project'):null,googleScopes:session?.scopes?session.scopes.filter(x=>x.includes('googleapis.com/auth/')).map(x=>x.split('/auth/')[1]):'unknown (connected before scope tracking)',reauthorizeGoogle:REAUTH_URL,transcriptDevices:devices,build:process.env.VERCEL_GIT_COMMIT_SHA?.slice(0,7)??null})});
    server.registerTool('list_google_properties',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Google Search Console and GA4 properties',description:'List properties accessible to the linked Google account.',inputSchema:z.object({})},async()=>{
     try{
-     const session=await readGoogle(user.id);if(!session)return asText({error:'Connect Google first'});
+     const session=await readGoogle(user.id);if(!session)return asText(CONNECT_GOOGLE);
      if(!await consumeQuota(user.id,quotaLimit(session)))return asText({error:'Daily quota exceeded'});
      const {token}=await authorizedAccessToken(session);
      const [gsc,ga4]=await Promise.all([googleFetch('https://www.googleapis.com/webmasters/v3/sites',token),googleFetch('https://analyticsadmin.googleapis.com/v1beta/accountSummaries?pageSize=100',token)]);
@@ -60,7 +80,7 @@ async function handler(req:NextRequest){
     const allowed: Set<string>=new Set((('fields' in op ? op.fields : [])).filter(f=>f.location==='query').map(f=>f.name));
     for(const [key,value] of Object.entries(input.args)){if(!allowed.has(key))continue;if(typeof value==='string'||typeof value==='number'||typeof value==='boolean')url.searchParams.set(key,String(value));else if(Array.isArray(value)&&value.every(v=>typeof v==='string'))url.searchParams.set(key,value.join(','));}
     if(op.service==='calendar'&&op.id==='calendar.events.list'){if(!url.searchParams.has('maxResults'))url.searchParams.set('maxResults','25');if(!url.searchParams.has('timeMin')&&!url.searchParams.has('timeMax'))url.searchParams.set('timeMin',new Date(Date.now()-7*24*60*60*1000).toISOString());}
-    const session=await readGoogle(user.id);if(!session)return asText({error:'Connect Google first'});
+    const session=await readGoogle(user.id);if(!session)return asText(CONNECT_GOOGLE);
     if(!await consumeQuota(user.id,quotaLimit(session)))return asText({error:'Daily quota exceeded'});
     try{const {token}=await authorizedAccessToken(session);
       const body=input.args.body;const init:RequestInit=op.method==='POST'?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body??{})}:{method:'GET'};
@@ -69,7 +89,7 @@ async function handler(req:NextRequest){
    });
    // Google tools are registered for every authenticated user; access is checked per call.
    const googleRequest=async(url:string,init?:RequestInit)=>{
-    const session=await readGoogle(user.id);if(!session)return {error:'Connect Google first'};
+    const session=await readGoogle(user.id);if(!session)return CONNECT_GOOGLE;
     if(!await consumeQuota(user.id,quotaLimit(session)))return {error:'Daily quota exceeded'};
     const {token}=await authorizedAccessToken(session);
     const response=await googleFetch(url,token,init);
