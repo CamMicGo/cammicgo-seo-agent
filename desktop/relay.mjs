@@ -23,7 +23,7 @@ import { spawn } from 'node:child_process';
 import { fetchYouTubeCaptions, listCaptionTracks, parseVideoId } from '../lib/youtube-captions.mjs';
 import { page } from './ui.mjs';
 
-export const VERSION = '1.0.0';
+export const VERSION = '1.1.0';
 const BASE = process.env.CAMMICGO_RELAY_BASE || 'https://seo.cammicgo.com';
 const PORT = Number(process.env.CAMMICGO_RELAY_PORT || 47821);
 const args = process.argv.slice(2);
@@ -75,7 +75,7 @@ function forget(message) {
 }
 
 // ---------- relay loop (same behaviour as the Android app) ----------
-const state = { running: false, status: 'Arrêté', lastSync: 0, pausedUntil: 0, strikes: 0, current: null, log: [] };
+const state = { running: false, status: 'Arrêté', lastSync: 0, pausedUntil: 0, strikes: 0, current: null, progress: null, log: [] };
 let loopId = 0;
 function setStatus(text) {
   state.status = text;
@@ -101,30 +101,46 @@ async function loop(id) {
   while (state.running && id === loopId) {
     try {
       const wait = state.pausedUntil - Date.now();
-      if (wait > 0) { await api('GET', '/api/devices/jobs?claim=0'); await sleep(Math.min(wait, 60000)); continue; }
+      if (wait > 0) { state.progress = (await api('GET', '/api/devices/jobs?claim=0')).progress ?? null; await sleep(Math.min(wait, 30000)); continue; }
       const res = await api('GET', '/api/devices/jobs');
-      backoff = 5000; state.lastSync = Date.now();
+      if (backoff > 5000) setStatus('Connexion rétablie : reprise de la file d’attente.');
+      backoff = 5000; state.lastSync = Date.now(); state.progress = res.progress ?? null;
       if (res.job && id === loopId) await handle(res.job);
-      await sleep(res.pollAfterMs || 4000);
+      else if (!(state.pausedUntil > Date.now())) idleStatus();
+      await sleep(res.job ? 300 : res.pollAfterMs || 4000);
     } catch (e) {
       if (e instanceof Unpaired) { forget('Appareil dissocié par le serveur. Appairez-le à nouveau.'); return; }
-      setStatus('Connexion au serveur impossible, nouvel essai… (' + e.message + ')');
+      setStatus('Connexion perdue, nouvel essai dans ' + backoff / 1000 + ' s. La file reprendra là où elle s’est arrêtée. (' + e.message + ')');
       await sleep(backoff); backoff = Math.min(backoff * 2, 60000);
     }
   }
 }
 
+function idleStatus() {
+  const p = state.progress;
+  const text = !p ? 'Mode connecté : en attente de demandes'
+    : p.pending + p.working > 0 ? (p.pending + p.working) + ' transcription(s) en attente…'
+    : 'Terminé : ' + p.done + ' / ' + p.total + ' envoyées. En attente de nouvelles demandes.';
+  if (state.status !== text) setStatus(text);
+}
+
+/** Network trouble (not a YouTube refusal): the job goes back to the queue instead of failing. */
+const isNetwork = e => /fetch failed|ECONN|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket|network|timed? ?out|aborted|TimeoutError/i.test(String(e?.message) + ' ' + String(e?.cause?.code || '') + ' ' + String(e?.name || ''));
+
+function remember(entry) {
+  cfg.history = [{ ...entry, at: Date.now() }, ...(cfg.history || [])].slice(0, 60);
+  save();
+}
+
 async function handle(job) {
   state.current = job.videoId;
   setStatus('Transcription en cours : ' + job.videoId);
+  let r;
   try {
-    const r = await fetchYouTubeCaptions(job.videoId, job.language || 'original');
-    await api('POST', '/api/devices/jobs/' + job.id, { result: { ...r, method: 'desktop-device' } });
-    cfg.jobsDone = (cfg.jobsDone || 0) + 1; save(); state.strikes = 0;
-    setStatus('Transcription envoyée : ' + job.videoId + ' (' + r.segments.length + ' segments)');
+    r = await fetchYouTubeCaptions(job.videoId, job.language || 'original');
   } catch (e) {
-    if (e instanceof Unpaired) throw e;
     const msg = (e.message || 'Erreur inconnue') + (e.diagnostics ? '\n' + e.diagnostics.join('\n') : '');
+    state.current = null;
     if (/HTTP 429/.test(msg)) {
       // YouTube rate-limits this connection: give the job back and pause instead of failing the queue.
       await api('POST', '/api/devices/jobs/' + job.id, { release: true }).catch(() => {});
@@ -132,11 +148,40 @@ async function handle(job) {
       const minutes = Math.min(30, 5 * 2 ** Math.min(state.strikes - 1, 3));
       state.pausedUntil = Date.now() + minutes * 60000;
       setStatus('YouTube limite temporairement cette connexion. Reprise automatique à ' + new Date(state.pausedUntil).toLocaleTimeString() + '.');
-    } else {
-      await api('POST', '/api/devices/jobs/' + job.id, { error: msg.slice(0, 2000) }).catch(() => {});
-      setStatus('Échec pour ' + job.videoId + ' : ' + msg.split('\n')[0]);
+      return;
     }
-  } finally { state.current = null; }
+    if (!e.diagnostics ? isNetwork(e) : e.diagnostics.length > 0 && e.diagnostics.every(d => isNetwork({ message: d }))) {
+      await api('POST', '/api/devices/jobs/' + job.id, { release: true }).catch(() => {});
+      throw new Error('YouTube injoignable depuis cette connexion');
+    }
+    await api('POST', '/api/devices/jobs/' + job.id, { error: msg.slice(0, 2000) });
+    remember({ videoId: job.videoId, title: null, status: 'failed', segments: 0, error: msg.split('\n')[0] });
+    setStatus('Échec pour ' + job.videoId + ' : ' + msg.split('\n')[0]);
+    return;
+  }
+  // Upload with retries so a short network drop does not lose a finished transcript.
+  let lastError = null;
+  for (let attempt = 0; attempt < 4 && state.running; attempt++) {
+    try {
+      if (attempt) { setStatus('Envoi interrompu, nouvel essai (' + attempt + '/3)…'); await sleep(5000 * attempt); }
+      await api('POST', '/api/devices/jobs/' + job.id, { result: { ...r, method: 'desktop-device' } });
+      lastError = null; break;
+    } catch (e) {
+      if (e instanceof Unpaired) throw e;
+      lastError = e;
+      if (!isNetwork(e)) break;
+    }
+  }
+  state.current = null;
+  if (lastError) {
+    if (isNetwork(lastError)) throw lastError;
+    remember({ videoId: job.videoId, title: r.title ?? null, status: 'failed', segments: r.segments.length, error: lastError.message });
+    setStatus('Envoi refusé pour ' + job.videoId + ' : ' + lastError.message);
+    return;
+  }
+  cfg.jobsDone = (cfg.jobsDone || 0) + 1; state.strikes = 0;
+  remember({ videoId: job.videoId, title: r.title ?? null, status: 'done', segments: r.segments.length });
+  setStatus('Envoyée : ' + (r.title || job.videoId) + ' (' + r.segments.length + ' segments)');
 }
 
 // ---------- local control page ----------
@@ -146,7 +191,7 @@ const key = randomBytes(18).toString('base64url');
 const snapshot = () => ({
   version: VERSION, paired: !!cfg.token, deviceName: cfg.deviceName || null, suggestedName: defaultName(), os: osName,
   running: state.running, status: state.status, lastSync: state.lastSync, pausedUntil: state.pausedUntil,
-  jobsDone: cfg.jobsDone || 0, current: state.current, log: state.log.slice(0, 12),
+  jobsDone: cfg.jobsDone || 0, current: state.current, progress: state.progress, history: (cfg.history || []).slice(0, 20), log: state.log.slice(0, 12),
 });
 function send(res, status, body, type = 'application/json; charset=utf-8') {
   res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });

@@ -31,7 +31,11 @@ button:disabled{opacity:.55;cursor:wait}.small{padding:8px 12px;font-size:13px;f
 .prompts{display:grid;gap:8px}.prompt{display:flex;gap:10px;align-items:center;justify-content:space-between;background:var(--soft);border-radius:12px;padding:10px 12px;font-size:14px}
 textarea{min-height:220px;font:13px/1.5 ui-monospace,Consolas,monospace;resize:vertical}
 .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}.tiles button{padding:10px}
-.hint{font-size:13px;color:var(--muted);margin-top:6px}.hide{display:none!important}
+.hint{font-size:13px;color:var(--muted);margin-top:6px}
+.pbig{display:flex;align-items:baseline;gap:10px;margin:8px 0 10px}.pbig b{font-size:30px}.pbig span{color:var(--muted);font-size:14px}
+.pbar{height:12px;border-radius:8px;background:var(--soft);overflow:hidden}.pbar div{height:100%;width:0;border-radius:8px;background:linear-gradient(90deg,#11c7e6,#2764df,#6a4cf0);transition:width .4s}
+.hist{list-style:none;margin:0;padding:0}.hist li{display:flex;gap:10px;align-items:center;padding:9px 2px;border-top:1px solid var(--line)}.hist i{flex:none;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;color:#fff;font-style:normal;font-size:12px;font-weight:800}
+.hist a{color:var(--ink);font-weight:700;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}.hist small{color:var(--muted);display:block}.hist div{min-width:0;flex:1}.hide{display:none!important}
 .note{font-size:13px;color:var(--muted);text-align:center;margin-top:20px}
 @media(max-width:560px){.stats{grid-template-columns:1fr 1fr}.tiles{grid-template-columns:1fr 1fr}.pill{display:none}}
 </style></head><body><div class="wrap">
@@ -54,6 +58,13 @@ textarea{min-height:220px;font:13px/1.5 ui-monospace,Consolas,monospace;resize:v
 <div class="stats"><div class="stat"><b id="sJobs">0</b><span>transcriptions envoyées</span></div><div class="stat"><b id="sSync">—</b><span>dernier contact serveur</span></div><div class="stat"><b id="sState">—</b><span>état</span></div></div>
 <div class="row"><button id="toggleBtn">Démarrer</button><button class="danger" id="unpairBtn" style="flex:0 0 auto">Dissocier</button></div>
 <ul class="log" id="log"></ul></section>
+
+<section class="card hide" id="progCard"><span class="kicker">Demandes de votre assistant</span>
+<div class="pbig"><b id="pCount">—</b><span id="pLabel">Aucune demande en cours</span></div>
+<div class="pbar"><div id="pFill"></div></div>
+<div class="stats" id="pStats"><div class="stat"><b id="pDone" style="color:var(--green)">0</b><span>envoyées</span></div><div class="stat"><b id="pWait" style="color:var(--blue)">0</b><span>en attente</span></div><div class="stat"><b id="pFail" style="color:var(--red)">0</b><span>échecs</span></div></div>
+<p id="pCurrent" style="color:var(--ink);font-weight:700;margin:0 0 4px"></p><p id="pNote" class="hint" style="margin:0"></p>
+<h2 style="font-size:16px;margin:18px 0 6px">Envoyées à l’assistant</h2><ul class="hist" id="hist"></ul></section>
 
 <section class="card hide" id="askCard"><span class="kicker">Ensuite</span><h2>Que demander à votre assistant ?</h2><div class="prompts" id="prompts"></div></section>
 
@@ -79,7 +90,7 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-copy]');if
 const ago=t=>{if(!t)return '—';const s=Math.round((Date.now()-t)/1000);return s<60?s+' s':Math.round(s/60)+' min'};
 let S=null;
 function render(s){S=s;
- $('pairCard').classList.toggle('hide',s.paired);$('statusCard').classList.toggle('hide',!s.paired);$('askCard').classList.toggle('hide',!s.paired);
+ $('pairCard').classList.toggle('hide',s.paired);$('statusCard').classList.toggle('hide',!s.paired);$('askCard').classList.toggle('hide',!s.paired);$('progCard').classList.toggle('hide',!s.paired);renderProgress(s);
  if(!$('name').value)$('name').placeholder='Nom de l’ordinateur (par défaut : '+s.suggestedName+')';
  const paused=s.pausedUntil>Date.now();
  $('pdot').className='dot'+(s.running?(paused?' pause':' on'):'');
@@ -89,8 +100,17 @@ function render(s){S=s;
  $('toggleBtn').textContent=s.running?'Arrêter le mode connecté':'Démarrer le mode connecté';$('toggleBtn').className=s.running?'sec':'';
  $('log').innerHTML='';for(const l of s.log){const li=document.createElement('li');const t=document.createElement('time');t.textContent=new Date(l.at).toLocaleTimeString();li.append(t,l.text);$('log').append(li)}
 }
+function renderProgress(s){const p=s.progress;
+ if(!p||!p.total){$('pCount').textContent='—';$('pLabel').textContent='Aucune demande en cours';$('pFill').style.width='0';$('pStats').classList.add('hide');$('pCurrent').textContent='';$('pNote').textContent='Demandez une transcription ou une chaîne entière à votre assistant : la progression s’affiche ici, vidéo par vidéo.';}
+ else{const handled=p.done+p.failed,wait=p.pending+p.working;$('pStats').classList.remove('hide');$('pCount').textContent=handled+' / '+p.total;$('pLabel').textContent=wait?'transcriptions traitées':'terminé';$('pFill').style.width=Math.round(handled*100/p.total)+'%';$('pDone').textContent=p.done;$('pWait').textContent=wait;$('pFail').textContent=p.failed;
+  const cur=(p.recent||[]).find(r=>r.status==='working');$('pCurrent').textContent=wait?(cur||s.current?'⏳ En cours : '+(cur?(cur.title||cur.videoId):s.current):''):'✓ Toutes les demandes de cette série ont été traitées.';
+  let eta='';if(wait&&handled>1){const el=Date.now()-Date.parse(p.startedAt);const left=Math.round(el/handled*wait/1000);eta=left<60?'Moins d’une minute restante · ':'Environ '+Math.ceil(left/60)+' min restantes · ';}
+  $('pNote').textContent=wait?(s.running?eta+'Si la connexion coupe, l’envoi reprend automatiquement là où il s’est arrêté.':'Mode connecté arrêté : démarrez-le pour reprendre là où l’envoi s’est arrêté.'):(p.failed?'Certaines vidéos ont échoué ou n’ont pas de sous-titres : votre assistant peut relancer les échecs.':'');}
+ const h=$('hist');h.innerHTML='';const list=s.history||[];
+ if(!list.length){const li=document.createElement('li');li.textContent='Rien pour l’instant : chaque transcription envoyée apparaîtra ici.';li.style.color='var(--muted)';h.append(li);return}
+ for(const e of list){const li=document.createElement('li');const i=document.createElement('i');const ok=e.status==='done';i.textContent=ok?'✓':'✕';i.style.background=ok?'var(--green)':'var(--red)';const d=document.createElement('div');const a=document.createElement('a');a.href='https://www.youtube.com/watch?v='+encodeURIComponent(e.videoId);a.target='_blank';a.rel='noreferrer';a.textContent=e.title||('Vidéo '+e.videoId);const sm=document.createElement('small');const t=new Date(e.at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});sm.textContent=ok?e.segments+' segments · '+t:t+' · '+(e.error||'échec');if(!ok)sm.style.color='var(--red)';d.append(a,sm);li.append(i,d);h.append(li)}}
 async function refresh(){try{render(await call('/api/state'))}catch(e){$('ptext').textContent='Relais fermé'}}
-refresh();setInterval(refresh,3000);
+refresh();setInterval(refresh,1500);
 $('code').addEventListener('input',e=>{let v=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,8);e.target.value=v.length>4?v.slice(0,4)+'-'+v.slice(4):v});
 $('pairBtn').onclick=async()=>{const b=$('pairBtn');b.disabled=true;$('pairMsg').className='msg';$('pairMsg').textContent='Association…';
  try{render(await call('/api/pair',{method:'POST',body:JSON.stringify({code:$('code').value,name:$('name').value.trim()||undefined})}));$('pairMsg').textContent=''}

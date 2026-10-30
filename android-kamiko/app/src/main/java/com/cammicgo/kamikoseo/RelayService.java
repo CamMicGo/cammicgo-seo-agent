@@ -128,15 +128,7 @@ public class RelayService extends Service {
     return "En attente des demandes de votre assistant";
   }
 
-  /** Network trouble (not a YouTube refusal): the job goes back to the queue instead of failing. */
-  static boolean isNetwork(IOException e) {
-    if (e instanceof java.net.UnknownHostException || e instanceof java.net.SocketTimeoutException
-        || e instanceof java.net.ConnectException || e instanceof java.net.NoRouteToHostException
-        || e instanceof javax.net.ssl.SSLException || e instanceof java.net.SocketException) return true;
-    String m = e.getMessage() == null ? "" : e.getMessage().toLowerCase();
-    return m.contains("timeout") || m.contains("timed out") || m.contains("unable to resolve") || m.contains("connection reset")
-        || m.contains("failed to connect") || m.contains("network is unreachable");
-  }
+  static boolean isNetwork(IOException e) { return TranscriptFetcher.isNetwork(e); }
 
   private void handle(String token, JSONObject job) throws IOException {
     String id = job.optString("id"), videoId = job.optString("videoId"), lang = job.optString("language", "original");

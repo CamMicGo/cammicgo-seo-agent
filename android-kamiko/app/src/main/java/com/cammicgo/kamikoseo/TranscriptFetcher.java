@@ -68,12 +68,15 @@ public final class TranscriptFetcher {
     String html = null;
     String apiKey = null;
     StringBuilder diagnostics = new StringBuilder();
+    IOException networkError = null;
+    boolean otherFailure = false;
 
     try {
       html = http("https://www.youtube.com/watch?v=" + videoId + "&hl=en", null, WEB_UA, null);
       apiKey = firstGroup(html, "\"INNERTUBE_API_KEY\"\\s*:\\s*\"([A-Za-z0-9_-]+)\"");
     } catch (IOException e) {
       diagnostics.append("watch-page : ").append(e.getMessage()).append('\n');
+      if (isNetwork(e)) networkError = e; else otherFailure = true;
     }
 
     // 1. InnerTube ANDROID client
@@ -83,8 +86,10 @@ public final class TranscriptFetcher {
       JSONArray tracks = tracksOf(player);
       if (tracks != null && tracks.length() > 0) return titled(download(videoId, tracks, lang, "innertube-android", originalTrackIndex(player)), player);
       diagnostics.append("innertube-android : ").append(statusOf(player)).append('\n');
+      otherFailure = true;
     } catch (IOException e) {
       diagnostics.append("innertube-android : ").append(e.getMessage()).append('\n');
+      if (isNetwork(e)) networkError = e; else otherFailure = true;
     }
 
     // 2. Watch-page embedded player response
@@ -106,7 +111,19 @@ public final class TranscriptFetcher {
       }
     }
 
+    // Connection lost (not a YouTube refusal): report it as such so the relay retries later.
+    if (networkError != null && !otherFailure) throw networkError;
     throw new IOException("Aucune piste de sous-titres accessible.\n" + diagnostics.toString().trim());
+  }
+
+  /** Connection problem (no network, timeout, DNS) rather than an answer from YouTube. */
+  public static boolean isNetwork(IOException e) {
+    if (e instanceof java.net.UnknownHostException || e instanceof java.net.SocketTimeoutException
+        || e instanceof java.net.ConnectException || e instanceof java.net.NoRouteToHostException
+        || e instanceof javax.net.ssl.SSLException || e instanceof java.net.SocketException) return true;
+    String m = e.getMessage() == null ? "" : e.getMessage().toLowerCase(Locale.ROOT);
+    return m.contains("timeout") || m.contains("timed out") || m.contains("unable to resolve") || m.contains("connection reset")
+        || m.contains("failed to connect") || m.contains("network is unreachable");
   }
 
   static Result titled(Result r, JSONObject player) {
