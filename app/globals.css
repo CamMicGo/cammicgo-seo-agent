@@ -171,7 +171,8 @@
 .connect-tools .google-service-head h3{margin:0}
 .relay-steps a,.connect-card a{color:#285fd0}
 @media(max-width:900px){.connect-tools{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:640px){.connect-grid,.connect-tools{grid-template-columns:1fr}}
+@media(max-width:640px){.connect-grid,.connect-tools{grid-template-columns:minmax(0,1fr)}}
+.connect-grid>*,.connect-tools>*{min-width:0}
 
 /* ---------- Shared header ---------- */
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
@@ -300,3 +301,4 @@ html,body{overflow-x:hidden}
 .apk-fallback{font-size:13px;margin-top:16px;color:#63728d}.apk-fallback a{color:#245fde;text-decoration:underline}
 body:has(#a11y-dialog) .sh-wrap{z-index:170}
 .agent-available{background:linear-gradient(135deg,#1f7bff,#6a4cf0)!important;color:#fff!important;border-color:transparent!important;text-decoration:none}
+.home-os{flex:none;display:grid;grid-template-columns:1fr 1fr;place-items:center;gap:4px;width:64px;height:64px;padding:7px;border-radius:16px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.15)}.home-os img{width:22px;height:22px;object-fit:contain}

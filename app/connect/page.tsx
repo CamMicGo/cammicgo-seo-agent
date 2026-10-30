@@ -1,3 +1,22 @@
 'use client';
 import {useState} from 'react';
-export default function Connect(){const [advanced,setAdvanced]=useState(false);return <main className="auth-page"><div className="auth-panel"><span className="kicker">SECURE GOOGLE CONNECTION</span><h1>Bring your own data.<br/><span>Keep control.</span></h1><p className="lead">Connect your Google Search Console and Analytics properties with read-only access. We never request your Google password.</p><div className="connect-card"><h2>Standard connection</h2><p>Use the CamMicGo Google Cloud application. Simple, free and ideal for most website owners.</p><a className="primary connect-button" href="/api/auth/google/start?mode=shared"><span className="google-g" aria-hidden="true">G</span><span>Continue with Google</span></a></div><p className="privacy"><a href="/setup/google-cloud">Step-by-step guide: create your own Google Cloud OAuth project ↗</a></p><div className="connect-card"><button type="button" className="advanced-toggle" aria-expanded={advanced} onClick={()=>setAdvanced(!advanced)}>Advanced · Use my own Google Cloud project <span>{advanced?'−':'+'}</span></button>{advanced&&<form action="/api/auth/google/start" method="POST" className="advanced-form"><input type="hidden" name="mode" value="byo"/><p>For advanced users: create a Google OAuth 2.0 Web application and add the callback below to its authorized redirect URIs. Your credentials are used only for your session and encrypted in an HTTP-only cookie.</p><label>Google OAuth Client ID<input name="client_id" autoComplete="off" required placeholder="...apps.googleusercontent.com"/></label><label>Google OAuth Client Secret<input type="password" name="client_secret" autoComplete="off" required placeholder="Your OAuth client secret"/></label><label>Authorized redirect URI<code>https://seo.cammicgo.com/api/auth/google/callback</code></label><button type="submit" className="primary connect-button">Connect using my Google Cloud project</button></form>}</div><p className="privacy">Read-only access · Disconnect anytime · <a href="/privacy">Privacy notice</a></p><a href="/" className="back-link">← Back to CamMicGo SEO MCP</a></div></main>}
+import {useT} from '../lang-provider';
+import {connectCopy} from '@/lib/copy/setup';
+
+export default function Connect(){
+ const [advanced,setAdvanced]=useState(false);
+ const t=useT(connectCopy);
+ return <main className="auth-page"><div className="auth-panel">
+  <span className="kicker">{t.kicker}</span><h1>{t.h1a}<br/><span>{t.h1b}</span></h1><p className="lead">{t.lead}</p>
+  <div className="connect-card"><h2>{t.stdTitle}</h2><p>{t.stdText}</p><a className="primary connect-button" href="/api/auth/google/start?mode=shared"><span className="google-g" aria-hidden="true">G</span><span>{t.cont}</span></a></div>
+  <p className="privacy"><a href="/setup/google-cloud">{t.guide}</a></p>
+  <div className="connect-card"><button type="button" className="advanced-toggle" aria-expanded={advanced} onClick={()=>setAdvanced(!advanced)}>{t.advanced} <span>{advanced?'−':'+'}</span></button>
+   {advanced&&<form action="/api/auth/google/start" method="POST" className="advanced-form"><input type="hidden" name="mode" value="byo"/><p>{t.advText}</p>
+    <label>{t.idLabel}<input name="client_id" autoComplete="off" required placeholder="...apps.googleusercontent.com" dir="ltr"/></label>
+    <label>{t.secretLabel}<input type="password" name="client_secret" autoComplete="off" required placeholder={t.secretPh} dir="ltr"/></label>
+    <label>{t.redirect}<code dir="ltr">https://seo.cammicgo.com/api/auth/google/callback</code></label>
+    <button type="submit" className="primary connect-button">{t.submit}</button></form>}
+  </div>
+  <p className="privacy">{t.foot} <a href="/privacy">{t.privacy}</a></p><a href="/" className="back-link">{t.back}</a>
+ </div></main>;
+}

@@ -1,1 +1,37 @@
-const services=[{name:'Search Console',icon:'/google-search-console.svg',desc:'Queries, impressions, CTR and rankings',status:'Remote + local',id:'webmasters.googleapis.com'},{name:'Google Analytics 4',icon:'/api/assets/google-analytics',desc:'Traffic, countries, pages and engagement',status:'Remote + local',id:'analyticsdata.googleapis.com'},{name:'Analytics Admin',icon:'/api/assets/google-analytics',desc:'Discover your GA4 properties',status:'Remote + local',id:'analyticsadmin.googleapis.com'},{name:'YouTube Data API',icon:'/google-logos/youtube.svg',desc:'Channels, video metadata and playlists. Hosted: owner or your own GCP quota. Transcripts: local MCP only.',status:'Restricted hosted · local',id:'youtube.googleapis.com'},{name:'Google Calendar',icon:'/google-logos/calendar.png',desc:'Read calendars and events',status:'Remote + local',id:'calendar-json.googleapis.com'},{name:'Gmail',icon:'/google-logos/gmail.png',desc:'OAuth scope available; dedicated MCP operations not yet enabled',status:'Authorization only',id:'gmail.googleapis.com'},{name:'Google Drive',icon:'/google-logos/drive.png',desc:'OAuth scope available; dedicated MCP operations not yet enabled',status:'Authorization only',id:'drive.googleapis.com'},{name:'Google Docs',icon:'/google-logos/docs.png',desc:'OAuth scope available; dedicated MCP operations not yet enabled',status:'Authorization only',id:'docs.googleapis.com'},{name:'Google Sheets',icon:'/google-logos/sheets.png',desc:'OAuth scope available; dedicated MCP operations not yet enabled',status:'Authorization only',id:'sheets.googleapis.com'},{name:'Google Slides',icon:'/google-logos/slides.png',desc:'OAuth scope available; dedicated MCP operations not yet enabled',status:'Authorization only',id:'slides.googleapis.com'},{name:'Google Tasks',icon:'/google-logos/tasks.png',desc:'OAuth scope available; dedicated MCP operations not yet enabled',status:'Authorization only',id:'tasks.googleapis.com'},{name:'Google Contacts',icon:'/google-logos/contacts.png',desc:'OAuth scope available; dedicated MCP operations not yet enabled',status:'Authorization only',id:'people.googleapis.com'},{name:'Google Classroom',icon:'/google-logos/classroom.png',desc:'OAuth scope available; dedicated MCP operations not yet enabled',status:'Authorization only',id:'classroom.googleapis.com'},{name:'Google Chat',icon:'/google-logos/chat.png',desc:'OAuth scope available; dedicated MCP operations not yet enabled',status:'Authorization only',id:'chat.googleapis.com'},{name:'Apps Script',icon:'/google-logos/apps-script.png',desc:'OAuth scope available; dedicated MCP operations not yet enabled',status:'Authorization only',id:'script.googleapis.com'},{name:'Admin SDK API',icon:'/google-logos/admin-sdk.png',desc:'Manage Google Workspace users and groups; requires Workspace admin privileges. No dedicated MCP tool yet.',status:'API enabled · MCP not available',id:'admin.googleapis.com'},{name:'Web Search Indexing API',icon:'/google-logos/indexing.png',desc:'Notify Google of eligible JobPosting and BroadcastEvent URLs only. No general SEO indexing guarantee; no MCP tool yet.',status:'Optional · restricted use',id:'indexing.googleapis.com'},{name:'Google Ads',icon:'/google-logos/google-ads.png',desc:'Future integration; requires separate developer token and API approval',status:'Planned',id:'googleads.googleapis.com'}];export default function GoogleServices(){return <section id="google-apis" className="feature-section google-api-section"><span className="kicker">GOOGLE APIS & MCP TOOLS</span><h2>Explore Google APIs, without the complexity</h2><p className="lead">Explore Google Search Console, Analytics, YouTube, Calendar and more. Each service shows whether MCP tools are available, authorization-only, or planned.</p><div className="google-service-grid">{services.map(s=><article className="google-service-card" key={s.name}><div className="google-service-head"><img src={s.icon} alt="" width="42" height="42"/><div><h3>{s.name}</h3><small>{s.status}</small></div></div><p>{s.desc}</p><a href={'https://console.cloud.google.com/apis/library/'+s.id} target="_blank" rel="noreferrer">Google Cloud API ↗</a></article>)}</div><p className="notice">YouTube search.list uses about 100 quota units, while channels.list, playlistItems.list and videos.list use about 1 each. Your Google login does not create a separate API quota. <a href="/setup/google-cloud">Follow the step-by-step setup guide ↗</a></p></section>}
+'use client';
+import {useT} from './lang-provider';
+import {servicesCopy} from '@/lib/copy/home';
+
+type S={name:string;icon:string;status:'both'|'yt'|'auth'|'adminNa'|'optional'|'planned';desc:'sc'|'ga4'|'admin'|'yt'|'cal'|'auth'|'adminSdk'|'indexing'|'ads';id:string};
+const services:S[]=[
+ {name:'Search Console',icon:'/google-search-console.svg',desc:'sc',status:'both',id:'webmasters.googleapis.com'},
+ {name:'Google Analytics 4',icon:'/api/assets/google-analytics',desc:'ga4',status:'both',id:'analyticsdata.googleapis.com'},
+ {name:'Analytics Admin',icon:'/api/assets/google-analytics',desc:'admin',status:'both',id:'analyticsadmin.googleapis.com'},
+ {name:'YouTube Data API',icon:'/google-logos/youtube.svg',desc:'yt',status:'yt',id:'youtube.googleapis.com'},
+ {name:'Google Calendar',icon:'/google-logos/calendar.png',desc:'cal',status:'both',id:'calendar-json.googleapis.com'},
+ {name:'Gmail',icon:'/google-logos/gmail.png',desc:'auth',status:'auth',id:'gmail.googleapis.com'},
+ {name:'Google Drive',icon:'/google-logos/drive.png',desc:'auth',status:'auth',id:'drive.googleapis.com'},
+ {name:'Google Docs',icon:'/google-logos/docs.png',desc:'auth',status:'auth',id:'docs.googleapis.com'},
+ {name:'Google Sheets',icon:'/google-logos/sheets.png',desc:'auth',status:'auth',id:'sheets.googleapis.com'},
+ {name:'Google Slides',icon:'/google-logos/slides.png',desc:'auth',status:'auth',id:'slides.googleapis.com'},
+ {name:'Google Tasks',icon:'/google-logos/tasks.png',desc:'auth',status:'auth',id:'tasks.googleapis.com'},
+ {name:'Google Contacts',icon:'/google-logos/contacts.png',desc:'auth',status:'auth',id:'people.googleapis.com'},
+ {name:'Google Classroom',icon:'/google-logos/classroom.png',desc:'auth',status:'auth',id:'classroom.googleapis.com'},
+ {name:'Google Chat',icon:'/google-logos/chat.png',desc:'auth',status:'auth',id:'chat.googleapis.com'},
+ {name:'Apps Script',icon:'/google-logos/apps-script.png',desc:'auth',status:'auth',id:'script.googleapis.com'},
+ {name:'Admin SDK API',icon:'/google-logos/admin-sdk.png',desc:'adminSdk',status:'adminNa',id:'admin.googleapis.com'},
+ {name:'Web Search Indexing API',icon:'/google-logos/indexing.png',desc:'indexing',status:'optional',id:'indexing.googleapis.com'},
+ {name:'Google Ads',icon:'/google-logos/google-ads.png',desc:'ads',status:'planned',id:'googleads.googleapis.com'},
+];
+export default function GoogleServices(){
+ const t=useT(servicesCopy);
+ return <section id="google-apis" className="feature-section google-api-section">
+  <span className="kicker">{t.kicker}</span><h2>{t.title}</h2><p className="lead">{t.lead}</p>
+  <div className="google-service-grid">{services.map(s=><article className="google-service-card" key={s.name}>
+   <div className="google-service-head"><img src={s.icon} alt="" width="42" height="42"/><div><h3>{s.name}</h3><small>{t.status[s.status]}</small></div></div>
+   <p>{t.desc[s.desc]}</p>
+   <a href={'https://console.cloud.google.com/apis/library/'+s.id} target="_blank" rel="noreferrer">{t.gcp}</a>
+  </article>)}</div>
+  <p className="notice">{t.notice} <a href="/setup/google-cloud">{t.guide}</a></p>
+ </section>;
+}
