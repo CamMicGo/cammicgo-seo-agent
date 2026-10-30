@@ -109,6 +109,65 @@ public final class TranscriptFetcher {
     throw new IOException("Aucune piste de sous-titres accessible.\n" + diagnostics.toString().trim());
   }
 
+  // ---------- available languages ----------
+
+  /** A caption track the user can pick. code "original" = the spoken language. */
+  public static final class Track {
+    public final String code, label; public final boolean original, auto;
+    Track(String code, String label, boolean original, boolean auto) { this.code = code; this.label = label; this.original = original; this.auto = auto; }
+    @Override public String toString() { return label; }
+  }
+
+  /** Language name in the phone's language, e.g. "Français". */
+  static String languageName(String code) {
+    Locale l = Locale.forLanguageTag(code);
+    String n = l.getDisplayName(Locale.getDefault());
+    if (n == null || n.isEmpty() || n.equalsIgnoreCase(code)) return code;
+    return n.substring(0, 1).toUpperCase(Locale.getDefault()) + n.substring(1);
+  }
+
+  /**
+   * Caption tracks of a video, the original one first:
+   * "Langue originale (Anglais)", then "Anglais · version originale · automatique", "Français · automatique", …
+   */
+  public static List<Track> availableTracks(String videoId) throws IOException {
+    if (videoId == null || !videoId.matches("[A-Za-z0-9_-]{11}")) throw new IOException("Identifiant de vidéo invalide.");
+    JSONObject player = null;
+    try { player = innertubePlayer(videoId, null); } catch (IOException ignored) {}
+    JSONArray tracks = tracksOf(player);
+    if (tracks == null || tracks.length() == 0) {
+      String html = http("https://www.youtube.com/watch?v=" + videoId + "&hl=en", null, WEB_UA, null);
+      String json = embeddedJson(html, "ytInitialPlayerResponse");
+      try { player = json == null ? null : new JSONObject(json); } catch (Exception e) { player = null; }
+      tracks = tracksOf(player);
+    }
+    if (tracks == null || tracks.length() == 0) throw new IOException("Aucune piste de sous-titres pour cette vidéo.");
+    int originalIndex = originalTrackIndex(player);
+    JSONObject original = pickTrack(tracks, "original", originalIndex);
+    String originalCode = original == null ? "" : original.optString("languageCode");
+    List<Track> out = new ArrayList<>();
+    out.add(new Track("original", "Langue originale" + (originalCode.isEmpty() ? "" : " (" + languageName(originalCode) + ")"), true, false));
+    List<String> seen = new ArrayList<>();
+    for (int i = 0; i < tracks.length(); i++) {
+      JSONObject t = tracks.optJSONObject(i);
+      if (t == null) continue;
+      String code = t.optString("languageCode");
+      boolean auto = "asr".equals(t.optString("kind"));
+      String key = code + (auto ? ":a" : ":m");
+      if (code.isEmpty() || seen.contains(key)) continue;
+      seen.add(key);
+      boolean isOriginal = t == original;
+      out.add(new Track(code, languageName(code) + (isOriginal ? " · version originale" : "") + (auto ? " · automatique" : " · manuelle"), isOriginal, auto));
+    }
+    // original first among the concrete tracks, then alphabetical
+    List<Track> rest = new ArrayList<>(out.subList(1, out.size()));
+    rest.sort((a, b) -> a.original != b.original ? (a.original ? -1 : 1) : a.label.compareToIgnoreCase(b.label));
+    List<Track> sorted = new ArrayList<>();
+    sorted.add(out.get(0));
+    sorted.addAll(rest);
+    return sorted;
+  }
+
   // ---------- output formats ----------
 
   /** End of a cue: its own duration, but never past the next cue's start. */
