@@ -111,6 +111,47 @@ public final class TranscriptFetcher {
 
   // ---------- output formats ----------
 
+  /** End of a cue: its own duration, but never past the next cue's start. */
+  static double cueEnd(Result r, int i) {
+    Segment s = r.segments.get(i);
+    double end = s.start + (s.duration > 0 ? s.duration : 2.0);
+    if (i + 1 < r.segments.size()) end = Math.min(end, Math.max(s.start + 0.2, r.segments.get(i + 1).start));
+    return end;
+  }
+
+  static String stamp(double t, char sep) {
+    long ms = Math.round(t * 1000);
+    return String.format(Locale.ROOT, "%02d:%02d:%02d%c%03d", ms / 3_600_000, (ms / 60_000) % 60, (ms / 1000) % 60, sep, ms % 1000);
+  }
+
+  /** SubRip subtitles (.srt). */
+  public static String toSrt(Result r) {
+    StringBuilder b = new StringBuilder();
+    for (int i = 0; i < r.segments.size(); i++) {
+      b.append(i + 1).append('\n')
+       .append(stamp(r.segments.get(i).start, ',')).append(" --> ").append(stamp(cueEnd(r, i), ',')).append('\n')
+       .append(r.segments.get(i).text).append("\n\n");
+    }
+    return b.toString();
+  }
+
+  /** WebVTT subtitles (.vtt). */
+  public static String toVtt(Result r) {
+    StringBuilder b = new StringBuilder("WEBVTT\nLanguage: ").append(r.language).append("\n\n");
+    for (int i = 0; i < r.segments.size(); i++) {
+      b.append(stamp(r.segments.get(i).start, '.')).append(" --> ").append(stamp(cueEnd(r, i), '.')).append('\n')
+       .append(r.segments.get(i).text).append("\n\n");
+    }
+    return b.toString();
+  }
+
+  /** Plain text without timecodes, as one readable paragraph flow. */
+  public static String toPlain(Result r) {
+    StringBuilder b = new StringBuilder();
+    for (Segment s : r.segments) { if (b.length() > 0) b.append(' '); b.append(s.text); }
+    return b.toString();
+  }
+
   public static String toText(Result r) {
     StringBuilder b = new StringBuilder();
     b.append("Vidéo : ").append(r.videoId).append('\n')
