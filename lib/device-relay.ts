@@ -8,7 +8,7 @@ import {createHash,randomBytes,randomInt} from 'node:crypto';
 const url=process.env.SUPABASE_URL||'https://vfngxjsryklqldarkxhy.supabase.co';
 const PAIRING_ALPHABET='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 export const DEVICE_ONLINE_MS=90_000;
-export const MAX_RESULT_SEGMENTS=4000;
+export const MAX_RESULT_SEGMENTS=20000;
 
 /** Compact, token-friendly rendering: one "[mm:ss] text" line per segment. */
 export function transcriptText(segments:Array<{start:number;text:string}>){

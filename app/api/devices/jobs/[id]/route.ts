@@ -6,7 +6,7 @@ const noStore={'Cache-Control':'no-store'};
 export async function POST(req:NextRequest,{params}:{params:Promise<{id:string}>}){
  const {id}=await params;
  const length=Number(req.headers.get('content-length')||0);
- if(length>3_000_000)return NextResponse.json({error:'Result too large'},{status:413,headers:noStore});
+ if(length>4_400_000)return NextResponse.json({error:'Result too large'},{status:413,headers:noStore});
  try{
   const device=await deviceFromAuthorization(req.headers.get('authorization'));
   if(!device)return NextResponse.json({error:'Appareil non appairé ou révoqué'},{status:401,headers:noStore});

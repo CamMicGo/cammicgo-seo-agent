@@ -45,7 +45,7 @@ public final class TranscriptFetcher {
   static final String ANDROID_UA = "com.google.android.youtube/" + ANDROID_CLIENT_VERSION + " (Linux; U; Android 14) gzip";
   static final String WEB_UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36";
   static final String CONSENT_COOKIE = "SOCS=CAI; CONSENT=YES+cb";
-  static final int MAX_BYTES = 6_000_000;
+  static final int MAX_BYTES = 24_000_000;
 
   private TranscriptFetcher() {}
 
@@ -163,7 +163,10 @@ public final class TranscriptFetcher {
   }
 
   /** Same shape as the CamMicGo MCP youtube_get_transcript success response. */
-  public static String toJson(Result r) {
+  public static String toJson(Result r) { return toJson(r, true); }
+
+  /** pretty=false for uploads: no indentation, smaller payload. */
+  public static String toJson(Result r, boolean pretty) {
     try {
       JSONObject o = new JSONObject();
       o.put("videoId", r.videoId);
@@ -182,7 +185,7 @@ public final class TranscriptFetcher {
         segs.put(j);
       }
       o.put("segments", segs);
-      return o.toString(2);
+      return pretty ? o.toString(2) : o.toString();
     } catch (Exception e) {
       return "{\"error\":\"JSON serialization failed\"}";
     }
@@ -265,11 +268,16 @@ public final class TranscriptFetcher {
     URL u = new URL(base);
     if (!"https".equals(u.getProtocol()) || !u.getHost().endsWith("youtube.com") || !u.getPath().startsWith("/api/timedtext"))
       throw new IOException("URL de sous-titres inattendue.");
-    base = base.replaceAll("&fmt=[^&]*", "").replaceAll("&tlang=[^&]*", "") + "&fmt=json3" + (tlang != null ? "&tlang=" + tlang : "");
+    base = base.replaceAll("&fmt=[^&]*", "").replaceAll("&tlang=[^&]*", "") + (tlang != null ? "&tlang=" + tlang : "");
 
-    String body = http(base, null, ANDROID_UA, null);
-    if (body.trim().isEmpty()) throw new IOException("Piste de sous-titres vide (" + method + ").");
-    if (body.trim().startsWith("{")) parseJson3(body, r.segments); else parseXml(body, r.segments);
+    // Compact legacy XML first (about 3x smaller than json3, matters for multi-hour courses), json3 as fallback.
+    String body = http(base + "&fmt=srv1", null, ANDROID_UA, null);
+    if (!body.trim().isEmpty()) parseXml(body, r.segments);
+    if (r.segments.isEmpty()) {
+      body = http(base + "&fmt=json3", null, ANDROID_UA, null);
+      if (body.trim().isEmpty()) throw new IOException("Piste de sous-titres vide (" + method + ").");
+      if (body.trim().startsWith("{")) parseJson3(body, r.segments); else parseXml(body, r.segments);
+    }
     if (r.segments.isEmpty()) throw new IOException("Piste de sous-titres sans texte (" + method + ").");
     return r;
   }

@@ -116,7 +116,7 @@ public class RelayService extends Service {
     status("Transcription en cours : " + videoId);
     try {
       TranscriptFetcher.Result r = TranscriptFetcher.fetch(videoId, lang);
-      RelayClient.sendResult(token, id, TranscriptFetcher.toJson(r));
+      RelayClient.sendResult(token, id, TranscriptFetcher.toJson(r, false));
       SharedPreferences p = RelayClient.prefs(this);
       p.edit().putInt("jobsDone", p.getInt("jobsDone", 0) + 1).apply();
       status("Transcription envoyée : " + videoId + " (" + r.segments.size() + " segments)");
