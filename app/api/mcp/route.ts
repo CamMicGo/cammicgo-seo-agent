@@ -7,6 +7,7 @@ import {getYouTubeTranscript} from '@/lib/youtube-transcript';
 import {verifyMcpAccess} from '@/lib/mcp-access';
 import {authorizedAccessToken,googleFetch} from '@/lib/google-session';
 export const runtime='nodejs';
+export const maxDuration=60;
 const asText=(value:unknown)=>({content:[{type:'text' as const,text:JSON.stringify(value)}]});
 function unauthorized(){return NextResponse.json({error:'invalid_token',error_description:'OAuth authorization required. Sign in through Supabase OAuth to access this MCP server.'},{status:401,headers:{'Cache-Control':'no-store','WWW-Authenticate':'Bearer realm="CamMicGo SEO Agent", resource_metadata="https://seo.cammicgo.com/.well-known/oauth-protected-resource/api/mcp"'}})}
 async function handler(req:NextRequest){
@@ -15,12 +16,14 @@ async function handler(req:NextRequest){
   const user=await verifySupabaseMcpUser(req.headers.get('authorization'));
   if(!user)return unauthorized();
   const {readGoogle,consumeQuota}=await import('@/lib/mcp-google-store');
+  const relay=await import('@/lib/device-relay');
+  const quotaLimit=(session:{credentials:{mode:string}})=>session.credentials.mode==='byo'?2000:150;
   const protectedMcp=createMcpHandler(server=>{
-   server.registerTool('service_info',{title:'Authenticated MCP status',description:'Check connected Google account.',inputSchema:z.object({})},async()=>asText({authenticated:true,googleConnected:!!(await readGoogle(user.id)),build:process.env.VERCEL_GIT_COMMIT_SHA?.slice(0,7)??null}));
+   server.registerTool('service_info',{title:'Authenticated MCP status',description:'Check connected Google account.',inputSchema:z.object({})},async()=>{const session=await readGoogle(user.id);let devices:Array<{name:string;online:boolean}>|string=[];try{devices=(await relay.listDevices(user.id)).map(d=>({name:d.name,online:relay.isOnline(d)}))}catch(e){devices=e instanceof Error?e.message:'unavailable'}return asText({authenticated:true,googleConnected:!!session,googleQuota:session?(session.credentials.mode==='byo'?'own Google Cloud project':'shared CamMicGo project'):null,transcriptDevices:devices,build:process.env.VERCEL_GIT_COMMIT_SHA?.slice(0,7)??null})});
    server.registerTool('list_google_properties',{title:'Google Search Console and GA4 properties',description:'List properties accessible to the linked Google account.',inputSchema:z.object({})},async()=>{
     try{
      const session=await readGoogle(user.id);if(!session)return asText({error:'Connect Google first'});
-     if(!await consumeQuota(user.id))return asText({error:'Daily quota exceeded'});
+     if(!await consumeQuota(user.id,quotaLimit(session)))return asText({error:'Daily quota exceeded'});
      const {token}=await authorizedAccessToken(session);
      const [gsc,ga4]=await Promise.all([googleFetch('https://www.googleapis.com/webmasters/v3/sites',token),googleFetch('https://analyticsadmin.googleapis.com/v1beta/accountSummaries?pageSize=100',token)]);
      return asText({gsc:gsc.ok?await gsc.json():{error:gsc.status},ga4:ga4.ok?await ga4.json():{error:ga4.status}});
@@ -48,7 +51,7 @@ async function handler(req:NextRequest){
     for(const [key,value] of Object.entries(input.args)){if(!allowed.has(key))continue;if(typeof value==='string'||typeof value==='number'||typeof value==='boolean')url.searchParams.set(key,String(value));else if(Array.isArray(value)&&value.every(v=>typeof v==='string'))url.searchParams.set(key,value.join(','));}
     if(op.service==='calendar'&&op.id==='calendar.events.list'){if(!url.searchParams.has('maxResults'))url.searchParams.set('maxResults','25');if(!url.searchParams.has('timeMin')&&!url.searchParams.has('timeMax'))url.searchParams.set('timeMin',new Date(Date.now()-7*24*60*60*1000).toISOString());}
     const session=await readGoogle(user.id);if(!session)return asText({error:'Connect Google first'});
-    if(!await consumeQuota(user.id))return asText({error:'Daily quota exceeded'});
+    if(!await consumeQuota(user.id,quotaLimit(session)))return asText({error:'Daily quota exceeded'});
     try{const {token}=await authorizedAccessToken(session);
       const body=input.args.body;const init:RequestInit=op.method==='POST'?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body??{})}:{method:'GET'};
       const response=await googleFetch(url.toString(),token,init);const result=await response.json().catch(()=>({}));return asText(response.ok?{operationId:op.id,result}:{operationId:op.id,error:'Google API request failed',status:response.status,details:result});
@@ -57,7 +60,7 @@ async function handler(req:NextRequest){
    // Google tools are registered for every authenticated user; access is checked per call.
    const googleRequest=async(url:string,init?:RequestInit)=>{
     const session=await readGoogle(user.id);if(!session)return {error:'Connect Google first'};
-    if(!await consumeQuota(user.id))return {error:'Daily quota exceeded'};
+    if(!await consumeQuota(user.id,quotaLimit(session)))return {error:'Daily quota exceeded'};
     const {token}=await authorizedAccessToken(session);
     const response=await googleFetch(url,token,init);
     const body=await response.json().catch(()=>({}));
@@ -71,7 +74,46 @@ async function handler(req:NextRequest){
     return asText(await googleRequest('https://www.googleapis.com/youtube/v3/search?'+params));
    });
    server.registerTool('youtube_video_details',{title:'YouTube video details',description:'Get metadata, descriptions and statistics for YouTube videos by ID. Does not provide arbitrary video transcripts.',inputSchema:z.object({videoIds:z.array(z.string().min(1).max(30)).min(1).max(25)})},async args=>asText(await googleRequest('https://www.googleapis.com/youtube/v3/videos?'+new URLSearchParams({part:'snippet,statistics,contentDetails',id:args.videoIds.join(',')}))));
-   server.registerTool('youtube_get_transcript',{title:'Read timestamped YouTube captions (experimental)',description:'Retrieve public auto-generated or manual YouTube caption segments with timestamps using the player timedtext endpoint, not the YouTube Data API. This unofficial method can fail on cloud IPs, unavailable captions or YouTube changes. Read-only, no Google API quota used.',inputSchema:z.object({videoId:z.string().min(1).max(200),language:z.string().max(30).default('en')})},async args=>asText(await getYouTubeTranscript(args.videoId,args.language)));
+   server.registerTool('youtube_get_transcript',{title:'Read timestamped YouTube captions',description:'Retrieve timestamped YouTube captions (manual or auto-generated). YouTube blocks cloud servers, so the transcript is fetched by the user\'s paired CamMicGo Android app (open, with "Mode connecté" on) and relayed here; recent transcripts are served from cache. If no device is paired, call device_pairing_code and show the user the code. If the result says pending, call youtube_transcript_status with the jobId. No Google API quota used.',inputSchema:z.object({videoId:z.string().min(1).max(250).describe('YouTube URL or 11-character video ID'),language:z.string().max(12).default('en')})},async args=>{
+    const videoId=relay.parseVideoId(args.videoId);if(!videoId)return asText({error:'Invalid YouTube URL or video ID'});
+    const language=relay.normalizeLanguage(args.language);
+    try{
+     const cached=await relay.cachedTranscript(videoId,language);if(cached)return asText({...(cached as object),cached:true});
+     const devices=await relay.listDevices(user.id);const online=devices.filter(relay.isOnline);
+     if(online.length){
+      const job=await relay.createJob(user.id,videoId,language);
+      const deadline=Date.now()+40_000;
+      while(Date.now()<deadline){
+       await new Promise(r=>setTimeout(r,1500));
+       const current=await relay.getJob(user.id,job.id);
+       if(current?.status==='done')return asText(current.result);
+       if(current?.status==='error')return asText({videoId,error:'The paired device could not fetch captions',deviceError:current.error});
+      }
+      return asText({videoId,status:'pending',jobId:job.id,hint:'The paired device has not answered yet. Call youtube_transcript_status with this jobId in a few seconds.'});
+     }
+     const direct=await getYouTubeTranscript(videoId,language) as {segments?:unknown};
+     if(direct.segments)return asText(direct);
+     return asText({...direct,videoId,devicesPaired:devices.length,howToFix:devices.length
+      ?'Open the CamMicGo Android app on the paired phone and turn on "Mode connecté", then retry.'
+      :'Pair the CamMicGo Android app: call device_pairing_code, show the code to the user, who enters it in the app (download: https://seo.cammicgo.com/download), then turns on "Mode connecté" and retries.'});
+    }catch(e){return asText({videoId,error:e instanceof Error?e.message:'Transcript relay unavailable'})}
+   });
+   server.registerTool('youtube_transcript_status',{title:'Check a relayed YouTube transcript',description:'Read the result of a transcript job returned as pending by youtube_get_transcript.',inputSchema:z.object({jobId:z.string().max(40)})},async({jobId})=>{
+    try{const job=await relay.getJob(user.id,jobId);if(!job)return asText({error:'Unknown job'});
+     if(job.status==='done')return asText(job.result);
+     if(job.status==='error')return asText({videoId:job.video_id,error:'The paired device could not fetch captions',deviceError:job.error});
+     if(Date.parse(job.expires_at)<Date.now())return asText({videoId:job.video_id,error:'Job expired: no paired device answered within 10 minutes. Check that the app is open with "Mode connecté" on.'});
+     return asText({videoId:job.video_id,status:job.status,hint:'Still waiting for the paired device; retry in a few seconds.'});
+    }catch(e){return asText({error:e instanceof Error?e.message:'Transcript relay unavailable'})}
+   });
+   server.registerTool('device_pairing_code',{title:'Pair the CamMicGo Android app',description:'Create a one-time 10-minute code that the user types in the CamMicGo Android app to link it to this account, so YouTube transcripts can be fetched from their phone. Also lists already paired devices. Show the code to the user exactly as returned.',inputSchema:z.object({})},async()=>{
+    try{const {code,expiresAt}=await relay.createPairingCode(user.id);const devices=await relay.listDevices(user.id);
+     return asText({code,expiresAt,steps:['Install the app: https://seo.cammicgo.com/download','Open it, enter this code under "Connexion au serveur MCP" and tap "Appairer"','Turn on "Mode connecté" and keep the app running while transcripts are requested'],pairedDevices:devices.map(d=>({id:d.id,name:d.name,online:relay.isOnline(d),lastSeen:d.last_seen_at}))});
+    }catch(e){return asText({error:e instanceof Error?e.message:'Pairing unavailable'})}
+   });
+   server.registerTool('device_revoke',{title:'Unpair a CamMicGo device',description:'Revoke a paired device by id (from device_pairing_code or service_info). The device stops receiving transcript jobs immediately.',inputSchema:z.object({deviceId:z.string().max(40)})},async({deviceId})=>{
+    try{return asText(await relay.revokeDevice(user.id,deviceId)?{revoked:deviceId}:{error:'Unknown device'})}catch(e){return asText({error:e instanceof Error?e.message:'Unavailable'})}
+   });
    server.registerTool('calendar_list',{title:'List Google Calendars',description:'List calendars accessible to the linked Google account (read-only).',inputSchema:z.object({})},async()=>asText(await googleRequest('https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=100')));
    server.registerTool('calendar_events',{title:'Find Google Calendar events',description:'List or search events, including past appointments, in a specific calendar. Requires calendar.readonly.',inputSchema:z.object({calendarId:z.string().min(1).max(300).default('primary'),query:z.string().max(200).optional(),timeMin:z.string().datetime().optional(),timeMax:z.string().datetime().optional(),maxResults:z.number().int().min(1).max(100).default(25)})},async args=>{
     const params=new URLSearchParams({maxResults:String(args.maxResults),singleEvents:'true',orderBy:'startTime'});

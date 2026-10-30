@@ -16,6 +16,7 @@ const execFileAsync=promisify(execFile);
 import {McpServer} from '@modelcontextprotocol/server';
 import {StdioServerTransport} from '@modelcontextprotocol/server/stdio';
 import {z} from 'zod';
+import {fetchYouTubeCaptions} from '../lib/youtube-captions.mjs';
 
 const dir=join(homedir(),'.cammicgo-seo-agent');
 const secretsPath=join(dir,'google-token.enc');
@@ -84,12 +85,13 @@ async function stdio(){
   return asText(await google('https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId='+encodeURIComponent(playlist)+'&maxResults='+maxResults));
  });
  m.registerTool('youtube_video_metrics',{description:'Public video statistics for a video ID (not private YouTube Analytics reports)',inputSchema:z.object({videoId:z.string().regex(/^[a-zA-Z0-9_-]{11}$/)})},async({videoId})=>asText(await google('https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id='+encodeURIComponent(videoId))));
- m.registerTool('youtube_get_transcript',{description:'Extract YouTube captions locally using yt-dlp on this computer. No Google Data API quota is consumed; captions may be unavailable or blocked. Never runs on the hosted Vercel MCP.',inputSchema:z.object({video:z.string().min(11).max(250),language:z.string().regex(/^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})?$/).default('en')})},async({video,language})=>{
-  const script=resolve(dirname(fileURLToPath(import.meta.url)),'local-youtube-transcript.mjs');
-  try{
-   const {stdout}=await execFileAsync(process.execPath,[script,video],{timeout:90000,maxBuffer:4*1024*1024,env:{...process.env,CAMMICGO_TRANSCRIPT_LANG:language},windowsHide:true});
-   return asText(JSON.parse(stdout.trim()));
-  }catch(error){const diagnostic=String(error?.stderr||error?.message||error).slice(0,900);return asText({error:'Local YouTube transcript extraction failed',diagnostic,requirements:'Install yt-dlp and ensure it is on PATH. Video must have accessible captions.'})}
+ m.registerTool('youtube_get_transcript',{description:'Extract timestamped YouTube captions (manual or auto-generated) from this computer\'s own connection, with no extra dependency (yt-dlp is only used as a fallback if installed). No Google Data API quota is consumed. Accepts a YouTube URL or video ID; language defaults to en and falls back to the original audio language.',inputSchema:z.object({video:z.string().min(11).max(250),language:z.string().regex(/^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})?$/).default('en')})},async({video,language})=>{
+  try{return asText({...await fetchYouTubeCaptions(video,language),source:'local-builtin'})}
+  catch(builtin){
+   const script=resolve(dirname(fileURLToPath(import.meta.url)),'local-youtube-transcript.mjs');
+   try{const {stdout}=await execFileAsync(process.execPath,[script,video,language],{timeout:90000,maxBuffer:8*1024*1024,windowsHide:true});return asText(JSON.parse(stdout.trim()))}
+   catch(error){return asText({error:'Local YouTube transcript extraction failed',builtin:{error:builtin.message,diagnostics:builtin.diagnostics??[]},fallback:String(error?.stderr||error?.message||error).slice(0,900),hint:'Check that the video is public and has captions (CC). If YouTube rate-limits this connection (HTTP 429), wait a few minutes.'})}
+  }
  });
  m.registerTool('calendar_list',{description:'List calendars visible to the signed-in user (read-only)',inputSchema:z.object({})},async()=>asText(await google('https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=100')));
  m.registerTool('calendar_upcoming_events',{description:'List upcoming calendar events (read-only, no modification)',inputSchema:z.object({calendarId:z.string().min(1).max(250).default('primary'),maxResults:z.number().int().min(1).max(100).default(20)})},async({calendarId,maxResults})=>{
@@ -110,5 +112,5 @@ async function stdio(){
  m.registerTool('service_info',{description:'Show local MCP capabilities and security limits',inputSchema:z.object({})},async()=>asText({name:'CamMicGo SEO Agent Local',mode:'stdio',remoteDependency:false,googleReadOnly:true,tools:['find_google_properties','list_search_sites','search_performance','seo_keyword_opportunities','list_ga4_properties','ga4_top_pages','ga4_countries','youtube_my_channels','youtube_my_videos','youtube_video_metrics','youtube_get_transcript','calendar_list','calendar_upcoming_events'],adsCampaignWrites:false,calendar:true,youtube:true}));
  await m.connect(new StdioServerTransport());
 }
-async function doctor(){credentials();console.log('Google OAuth credentials: configured');if(existsSync(secretsPath)){await token();console.log('Encrypted Google token: valid');}else console.log('Encrypted Google token: missing; run npm run local:login');console.log('This local MCP supports read-only GSC, GA4, YouTube and Calendar, plus local YouTube captions via yt-dlp; no ads spending. If you previously signed in, run npm run local:login to grant new scopes.')}
+async function doctor(){credentials();console.log('Google OAuth credentials: configured');if(existsSync(secretsPath)){await token();console.log('Encrypted Google token: valid');}else console.log('Encrypted Google token: missing; run npm run local:login');console.log('This local MCP supports read-only GSC, GA4, YouTube and Calendar, plus local YouTube captions (built-in fetcher, yt-dlp optional fallback); no ads spending. If you previously signed in, run npm run local:login to grant new scopes.')}
 try{const cmd=process.argv[2];if(cmd==='login')await login();else if(cmd==='stdio')await stdio();else if(cmd==='doctor')await doctor();else{console.error('Usage: node scripts/local-mcp.mjs login|stdio|doctor');process.exitCode=2}}catch(e){console.error('CamMicGo:',e.message);process.exitCode=1}

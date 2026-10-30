@@ -1,6 +1,6 @@
-# CamMicGo SEO MCP Android — experimental APK (v0.2.0)
+# CamMicGo SEO MCP Android — experimental APK (v0.3.0)
 
-On-device YouTube transcript extraction. The request leaves the phone, from its residential IP, which avoids the `LOGIN_REQUIRED` / "confirm you're not a bot" block YouTube applies to cloud servers such as Vercel. It is **not yet synchronized with the remote MCP**: no pairing, background service or upload is implemented. Never advertise it as synchronized.
+On-device YouTube transcript extraction. The request leaves the phone, from its residential IP, which avoids the `LOGIN_REQUIRED` / "confirm you're not a bot" block YouTube applies to cloud servers such as Vercel. Since v0.3.0 it can also be **paired with the remote MCP** so AI assistants get transcripts through the phone (see below).
 
 ## How it works
 1. Share a YouTube URL to the app (or paste it), choose a preferred language (`en` by default).
@@ -18,5 +18,10 @@ GitHub Actions workflow **Build CamMicGo Android APK** builds a debug-signed APK
 
 The launcher icons in `app/src/main/res/mipmap-*` are generated from the dedicated APK logo (`public/branding/cammicgo-seo-mcp-apk-icon.png`); the workflow no longer regenerates them from `public/logo.svg`.
 
-## Next step: remote synchronization (not implemented)
-Authenticated device pairing (short-lived device code), revocable per-device credentials, a per-user job queue polled by the app in a foreground service, server-side authorization, validated video IDs only, and no Google OAuth secret ever sent to the app.
+## Remote MCP synchronization ("Mode connecté")
+1. In the AI assistant connected to `https://seo.cammicgo.com/api/mcp`, the tool `device_pairing_code` returns a one-time code (8 characters, 10 minutes).
+2. The user types it in the app ("Connexion au serveur MCP" → "Appairer"). `POST /api/devices/pair` returns a device token (`cmgd_…`), stored only in the app's private preferences; the server keeps its SHA-256 hash.
+3. "Mode connecté" starts `RelayService`, a `dataSync` foreground service with a notification. It polls `GET /api/devices/jobs` (every 4 s, 1 s after a job), fetches each requested video with `TranscriptFetcher` and posts `{result}` or `{error}` to `POST /api/devices/jobs/{id}`.
+4. The MCP tool `youtube_get_transcript` queues a job when a device was seen in the last 90 s, waits up to 40 s, otherwise returns a `jobId` for `youtube_transcript_status`. Results are cached 30 days per video and language.
+
+Limits: Android may pause network access in deep sleep (Doze) and caps `dataSync` services at about 6 hours a day on Android 15. The device only ever receives validated 11-character video IDs, never URLs or commands. Revoke with `device_revoke` or "Dissocier". Server side: `lib/device-relay.ts`, `app/api/devices/*`, migration `supabase/migrations/20261030000100_device_transcript_relay.sql`.

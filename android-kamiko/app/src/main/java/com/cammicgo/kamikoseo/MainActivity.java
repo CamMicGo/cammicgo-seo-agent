@@ -1,14 +1,22 @@
 package com.cammicgo.kamikoseo;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.InputType;
 import android.view.Gravity;
+import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
@@ -17,15 +25,23 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.text.DateFormat;
+import java.util.Date;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
   private final ExecutorService worker = Executors.newSingleThreadExecutor();
-  private EditText urlInput, langInput;
-  private TextView output;
-  private Button runButton, copyText, copyJson, share;
+  private final Handler ui = new Handler(Looper.getMainLooper());
+  private EditText urlInput, langInput, codeInput;
+  private TextView output, relayStatus;
+  private Button runButton, copyText, copyJson, share, pairButton, connectButton, unpairButton;
+  private LinearLayout pairRow, pairedRow;
   private TranscriptFetcher.Result last;
+
+  private final Runnable refresher = new Runnable() {
+    @Override public void run() { refreshRelay(); ui.postDelayed(this, 2000); }
+  };
 
   private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
 
@@ -52,14 +68,10 @@ public class MainActivity extends Activity {
     header.addView(title);
     root.addView(header);
 
-    TextView note = new TextView(this);
-    note.setText("Collez ou partagez une URL YouTube. La transcription est récupérée depuis ce téléphone.");
-    note.setTextColor(Color.DKGRAY);
-    note.setPadding(0, dp(12), 0, dp(8));
-    root.addView(note);
+    root.addView(buildRelayPanel());
 
     urlInput = new EditText(this);
-    urlInput.setHint("https://www.youtube.com/watch?v=…");
+    urlInput.setHint("URL YouTube : https://www.youtube.com/watch?v=…");
     urlInput.setSingleLine(true);
     urlInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
     root.addView(urlInput);
@@ -75,11 +87,10 @@ public class MainActivity extends Activity {
     langInput.setSingleLine(true);
     langInput.setEms(4);
     langRow.addView(langInput);
-    root.addView(langRow);
-
     runButton = new Button(this);
-    runButton.setText("Extraire la transcription");
-    root.addView(runButton);
+    runButton.setText("Extraire");
+    langRow.addView(runButton, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+    root.addView(langRow);
 
     LinearLayout actions = new LinearLayout(this);
     copyText = new Button(this); copyText.setText("Copier");
@@ -118,6 +129,126 @@ public class MainActivity extends Activity {
 
     handleShare(getIntent());
   }
+
+  // ---------- remote MCP pairing / "Mode connecté" ----------
+
+  private View buildRelayPanel() {
+    LinearLayout panel = new LinearLayout(this);
+    panel.setOrientation(LinearLayout.VERTICAL);
+    panel.setPadding(dp(12), dp(10), dp(12), dp(6));
+    GradientDrawable bg = new GradientDrawable();
+    bg.setColor(Color.rgb(237, 244, 255));
+    bg.setCornerRadius(dp(14));
+    bg.setStroke(dp(1), Color.rgb(182, 204, 239));
+    panel.setBackground(bg);
+    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+    lp.setMargins(0, dp(12), 0, dp(10));
+    panel.setLayoutParams(lp);
+
+    TextView heading = new TextView(this);
+    heading.setText("Connexion au serveur MCP");
+    heading.setTypeface(Typeface.DEFAULT_BOLD);
+    heading.setTextColor(Color.rgb(20, 24, 60));
+    panel.addView(heading);
+
+    relayStatus = new TextView(this);
+    relayStatus.setTextColor(Color.rgb(35, 61, 97));
+    relayStatus.setTextSize(13);
+    relayStatus.setPadding(0, dp(2), 0, dp(4));
+    panel.addView(relayStatus);
+
+    pairRow = new LinearLayout(this);
+    pairRow.setGravity(Gravity.CENTER_VERTICAL);
+    codeInput = new EditText(this);
+    codeInput.setHint("Code : ABCD-2345");
+    codeInput.setSingleLine(true);
+    codeInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+    pairRow.addView(codeInput, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+    pairButton = new Button(this);
+    pairButton.setText("Appairer");
+    pairRow.addView(pairButton);
+    panel.addView(pairRow);
+
+    pairedRow = new LinearLayout(this);
+    connectButton = new Button(this);
+    unpairButton = new Button(this);
+    unpairButton.setText("Dissocier");
+    pairedRow.addView(connectButton, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 2));
+    pairedRow.addView(unpairButton, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+    panel.addView(pairedRow);
+
+    pairButton.setOnClickListener(v -> pair());
+    connectButton.setOnClickListener(v -> {
+      if (RelayClient.prefs(this).getBoolean("connected", false)) RelayService.stop(this);
+      else startConnected();
+      ui.postDelayed(this::refreshRelay, 400);
+    });
+    unpairButton.setOnClickListener(v -> {
+      RelayService.stop(this);
+      RelayClient.forget(this);
+      refreshRelay();
+      Toast.makeText(this, "Appareil dissocié sur ce téléphone", Toast.LENGTH_SHORT).show();
+    });
+    return panel;
+  }
+
+  private void pair() {
+    final String code = codeInput.getText().toString().trim();
+    if (code.replaceAll("[^A-Za-z0-9]", "").length() != 8) { relayStatus.setText("Le code fait 8 caractères, par exemple ABCD-2345."); return; }
+    pairButton.setEnabled(false);
+    relayStatus.setText("Appairage en cours…");
+    final String name = (Build.MANUFACTURER + " " + Build.MODEL).trim();
+    worker.execute(() -> {
+      String message;
+      boolean ok = false;
+      try { message = "Appairé : " + RelayClient.pair(this, code, name); ok = true; }
+      catch (Exception e) { message = "Échec de l’appairage : " + e.getMessage(); }
+      final String m = message; final boolean success = ok;
+      runOnUiThread(() -> {
+        pairButton.setEnabled(true);
+        if (success) { codeInput.setText(""); startConnected(); }
+        refreshRelay();
+        Toast.makeText(this, m, Toast.LENGTH_LONG).show();
+      });
+    });
+  }
+
+  private void startConnected() {
+    if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
+      requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 7);
+    RelayService.start(this);
+  }
+
+  private void refreshRelay() {
+    if (relayStatus == null) return;
+    SharedPreferences p = RelayClient.prefs(this);
+    boolean paired = RelayClient.isPaired(this);
+    boolean connected = paired && p.getBoolean("connected", false);
+    pairRow.setVisibility(paired ? View.GONE : View.VISIBLE);
+    pairedRow.setVisibility(paired ? View.VISIBLE : View.GONE);
+    connectButton.setText(connected ? "Arrêter le mode connecté" : "Activer le mode connecté");
+    if (!paired) {
+      String last = p.getString("status", null);
+      relayStatus.setText((last != null && last.contains("dissocié") ? last + "\n" : "")
+          + "Non appairé. Demandez à votre assistant IA un code d’appairage (outil device_pairing_code), puis saisissez-le ici.");
+      return;
+    }
+    StringBuilder b = new StringBuilder();
+    b.append("Appairé : ").append(p.getString("deviceName", "Android")).append('\n');
+    b.append(connected ? "● Mode connecté actif" : "○ Mode connecté arrêté : votre assistant ne peut pas demander de transcription");
+    int done = p.getInt("jobsDone", 0);
+    if (done > 0) b.append(" · ").append(done).append(" envoyée").append(done > 1 ? "s" : "");
+    long sync = p.getLong("lastSync", 0);
+    if (connected && sync > 0) b.append("\nDernier contact : ").append(DateFormat.getTimeInstance(DateFormat.MEDIUM).format(new Date(sync)));
+    String status = p.getString("status", null);
+    if (connected && status != null) b.append('\n').append(status);
+    relayStatus.setText(b.toString());
+  }
+
+  @Override protected void onResume() { super.onResume(); ui.post(refresher); }
+  @Override protected void onPause() { ui.removeCallbacks(refresher); super.onPause(); }
+
+  // ---------- manual extraction ----------
 
   @Override protected void onNewIntent(Intent intent) {
     super.onNewIntent(intent);

@@ -39,7 +39,7 @@ export default function DownloadPage() {
         </p>
         <DownloadButton />
         <p className="notice">
-          Version de test 0.2.0 · fichier APK signé en mode debug. Android peut vous demander d’autoriser l’installation depuis votre navigateur.{' '}
+          Version de test 0.3.0 · fichier APK signé en mode debug. Android peut vous demander d’autoriser l’installation depuis votre navigateur.{' '}
           <a href="/download/android">Détails et installation ↗</a>
         </p>
       </section>
@@ -53,9 +53,19 @@ export default function DownloadPage() {
           <li><h3>Copiez, exportez ou partagez</h3><p>Le résultat s’affiche avec les horodatages <code>[mm:ss]</code>. Le bouton JSON produit le même format que l’outil MCP <code>youtube_get_transcript</code>.</p></li>
         </ol>
         <p className="notice">
-          <strong>Synchronisation avec le serveur MCP distant : en développement.</strong> Pour l’instant, l’application fonctionne seule.
-          À terme, votre assistant IA pourra demander une transcription au serveur MCP, qui la fera récupérer par votre application appairée.
+          <strong>Nouveau : synchronisation avec le serveur MCP distant.</strong> Votre assistant IA (Claude, ChatGPT…) connecté au serveur CamMicGo peut demander une transcription : elle est récupérée par votre téléphone, puis renvoyée à l’assistant.
         </p>
+      </section>
+
+      <section className="feature-section" aria-labelledby="sync-title">
+        <span className="kicker">SYNCHRONISATION AVEC VOTRE ASSISTANT IA</span>
+        <h2 id="sync-title">Relier l’application au serveur MCP</h2>
+        <ol className="local-steps">
+          <li><h3>Demandez un code à votre assistant</h3><p>Dans Claude ou ChatGPT connecté au serveur CamMicGo, demandez « donne-moi un code d’appairage CamMicGo ». L’assistant utilise l’outil <code>device_pairing_code</code> et affiche un code comme <code>ABCD-2345</code>, valable 10 minutes.</p></li>
+          <li><h3>Saisissez-le dans l’application</h3><p>Dans « Connexion au serveur MCP », tapez le code puis « Appairer ». Le mode connecté s’active : une notification indique que l’application attend des demandes.</p></li>
+          <li><h3>Demandez vos transcriptions</h3><p>Demandez par exemple « récupère la transcription de cette vidéo ». Le serveur envoie la demande à votre téléphone, qui la traite en quelques secondes. Laissez l’application en mode connecté pendant ce temps.</p></li>
+        </ol>
+        <p className="notice">Une transcription déjà récupérée est gardée en cache 30 jours. Vous pouvez dissocier le téléphone dans l’application ou demander à l’assistant de le révoquer (outil <code>device_revoke</code>).</p>
       </section>
 
       <section className="feature-section" aria-labelledby="platforms-title">

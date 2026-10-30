@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 // Local-only transcript proof of concept. No cookies or Google credentials are transmitted.
-// Requires yt-dlp on PATH. Execute: node scripts/local-youtube-transcript.mjs VIDEO_URL
+// Built-in fetcher first (no dependency); yt-dlp on PATH is only a fallback.
+// Execute: node scripts/local-youtube-transcript.mjs VIDEO_URL [language]
 import { spawn } from 'node:child_process';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fetchYouTubeCaptions } from '../lib/youtube-captions.mjs';
 
 const input = process.argv[2];
 if (!input) {
@@ -22,10 +24,19 @@ function videoId(value) {
 }
 const id = videoId(input);
 if (!id) { console.error('Invalid YouTube video ID or URL'); process.exit(2); }
+const language = process.argv[3] || process.env.CAMMICGO_TRANSCRIPT_LANG || 'en';
+let builtinError = null;
+try {
+  const result = await fetchYouTubeCaptions(id, language);
+  process.stdout.write(JSON.stringify({ ...result, source: 'local-builtin' }) + '\n');
+  process.exit(0);
+} catch (e) {
+  builtinError = { error: e.message, diagnostics: e.diagnostics ?? [] };
+}
 const dir = await mkdtemp(join(tmpdir(), 'cammicgo-transcript-'));
 const url = 'https://www.youtube.com/watch?v=' + id;
 try {
-  const args = ['--skip-download','--no-playlist','--write-auto-subs','--write-subs','--sub-langs',(process.env.CAMMICGO_TRANSCRIPT_LANG || 'en')+'.*','--sub-format','vtt','-o',join(dir,'%(id)s.%(ext)s'),url];
+  const args = ['--skip-download','--no-playlist','--write-auto-subs','--write-subs','--sub-langs',language+'.*','--sub-format','vtt','-o',join(dir,'%(id)s.%(ext)s'),url];
   const result = await new Promise((resolve,reject) => {
     const child = spawn('yt-dlp',args,{stdio:['ignore','ignore','pipe'],windowsHide:true});
     let stderr = '';
@@ -35,7 +46,7 @@ try {
   });
   const files = (await readdir(dir)).filter(f=>f.endsWith('.vtt'));
   if (!files.length) {
-    console.error(JSON.stringify({videoId:id,error:'No subtitles available locally',exitCode:result.code,details:result.stderr.slice(-600)}));
+    console.error(JSON.stringify({videoId:id,error:'No subtitles available locally',builtin:builtinError,ytDlpExitCode:result.code,details:result.stderr.slice(-600)}));
     process.exitCode = 1;
   } else {
     const preferred = files.find(f=>/\.en(?:[.-]|\.vtt)/.test(f)) ?? files[0];
@@ -58,7 +69,7 @@ try {
     process.stdout.write(JSON.stringify({videoId:id,source:'local-yt-dlp',language:preferred.split('.').slice(-2,-1)[0],segments})+'\n');
   }
 } catch (e) {
-  console.error(JSON.stringify({videoId:id,error:'Local extractor could not start',details:String(e)}));
+  console.error(JSON.stringify({videoId:id,error:'No subtitles available locally',builtin:builtinError,ytDlp:'not installed or failed to start (optional fallback)',details:String(e)}));
   process.exitCode=1;
 } finally {
   await rm(dir,{recursive:true,force:true});

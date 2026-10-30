@@ -74,7 +74,7 @@ export default function OAuthConsent(){
      <label style={{display:'flex',gap:10,alignItems:'center'}}><input type="radio" name="googleMode" checked={googleMode==='shared'} onChange={()=>setGoogleMode('shared')}/> Use CamMicGo's Google Cloud project (shared quota)</label>
      <label style={{display:'flex',gap:10,alignItems:'center'}}><input type="radio" name="googleMode" checked={googleMode==='byo'} onChange={()=>setGoogleMode('byo')}/> Use my own Google Cloud project (my API quota)</label>
      {googleMode==='byo'&&<div style={{display:'grid',gap:10,marginTop:8}}>
-      <p style={{margin:0,color:'#64748b'}}>Create an OAuth Web Application in Google Cloud and authorize the callback URL below. Your credentials are sent directly to the CamMicGo server over HTTPS and stored encrypted, never shared with your AI agent.</p>
+      <p style={{margin:0,color:'#64748b'}}>Create an OAuth Web Application in Google Cloud and authorize the callback URL below. Your credentials are sent directly to the CamMicGo server over HTTPS and stored encrypted, never shared with your AI agent. Google API calls then count against your own project quota, and the CamMicGo daily cap rises from 150 to 2,000 requests.</p>
       <code style={{overflowWrap:'anywhere',fontSize:'.85rem'}}>https://seo.cammicgo.com/api/auth/google/callback</code>
       <label style={{display:'grid',gap:5}}>Google OAuth Client ID<input type="text" autoComplete="off" value={clientId} onChange={e=>setClientId(e.target.value)} placeholder="…apps.googleusercontent.com"/></label>
       <label style={{display:'grid',gap:5}}>Google OAuth Client Secret<input type="password" autoComplete="off" value={clientSecret} onChange={e=>setClientSecret(e.target.value)} placeholder="Client secret"/></label>
