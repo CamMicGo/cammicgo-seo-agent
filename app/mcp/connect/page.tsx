@@ -84,9 +84,9 @@ export default function McpConnect() {
         <span className="kicker">YOUTUBE TRANSCRIPTS</span>
         <h2>Transcripts come from your phone</h2>
         <p className="lead">YouTube blocks cloud servers, so the remote MCP cannot fetch captions itself. Pair the free CamMicGo Android app once, keep it in connected mode, and your assistant gets timestamped transcripts.</p>
-        <RelayFlow lang="en" />
-        <RelaySteps lang="en" />
-        <RelayLimits lang="en" />
+        <RelayFlow />
+        <RelaySteps />
+        <RelayLimits />
         <p className="notice"><a href="/download">Download the Android app ↗</a> · No Android phone? The <a href="/setup/local">local MCP server</a> fetches transcripts directly from your computer.</p>
       </section>
     </div>
