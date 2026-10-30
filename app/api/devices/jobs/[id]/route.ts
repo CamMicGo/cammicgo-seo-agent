@@ -1,5 +1,5 @@
 import {NextRequest,NextResponse} from 'next/server';
-import {completeJob,deviceFromAuthorization,sanitizeDeviceResult} from '@/lib/device-relay';
+import {completeJob,deviceFromAuthorization,releaseJob,sanitizeDeviceResult} from '@/lib/device-relay';
 export const runtime='nodejs';
 const noStore={'Cache-Control':'no-store'};
 /** Device posts {result} (transcript JSON) or {error} for a job it claimed. */
@@ -13,7 +13,8 @@ export async function POST(req:NextRequest,{params}:{params:Promise<{id:string}>
   const body=await req.json().catch(()=>null) as {result?:unknown;error?:unknown;videoId?:unknown}|null;
   if(!body)return NextResponse.json({error:'Invalid body'},{status:400,headers:noStore});
   let ok:boolean;
-  if(typeof body.error==='string')ok=await completeJob(device,id,{error:body.error});
+  if((body as {release?:unknown}).release===true)ok=await releaseJob(device,id);
+  else if(typeof body.error==='string')ok=await completeJob(device,id,{error:body.error});
   else{
    const videoId=typeof body.result==='object'&&body.result&&typeof (body.result as {videoId?:unknown}).videoId==='string'?(body.result as {videoId:string}).videoId:'';
    const result=sanitizeDeviceResult(body.result,videoId);

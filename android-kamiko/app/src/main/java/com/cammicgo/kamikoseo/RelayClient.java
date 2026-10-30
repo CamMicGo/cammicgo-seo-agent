@@ -68,6 +68,14 @@ public final class RelayClient {
     request("POST", "/api/devices/jobs/" + jobId, token, "{\"result\":" + transcriptJson + "}");
   }
 
+  /** Keeps the device marked online without taking a job (used while paused). */
+  public static void ping(String token) throws IOException { request("GET", "/api/devices/jobs?claim=0", token, null); }
+
+  /** Puts a claimed job back in the queue so it is retried later. */
+  public static void release(String token, String jobId) throws IOException {
+    request("POST", "/api/devices/jobs/" + jobId, token, "{\"release\":true}");
+  }
+
   public static void sendError(String token, String jobId, String message) throws IOException {
     try {
       JSONObject body = new JSONObject();

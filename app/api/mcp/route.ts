@@ -130,9 +130,9 @@ async function handler(req:NextRequest){
     const channels=(details.items??[]).map(c=>({channelId:c.id,title:c.snippet?.title,handle:c.snippet?.customUrl,subscribers:c.statistics?.hiddenSubscriberCount?null:Number(c.statistics?.subscriberCount??0),videos:Number(c.statistics?.videoCount??0),description:(c.snippet?.description??'').slice(0,160)})).sort((a,b)=>(b.subscribers??0)-(a.subscribers??0));
     return asText({query:args.query,channels,hint:'The channel with the most subscribers is usually the main one. Ask the user if several look relevant.'});
    });
-   server.registerTool('youtube_channel_batch',{annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:true,openWorldHint:true},title:'Batch transcripts of a YouTube channel (one document)',description:'Collect the latest videos of a channel (details + full timestamped transcripts, original language by default) into ONE Markdown document with a stable URL, e.g. to add as a single NotebookLM source instead of hundreds. Transcripts are fetched one by one by the user\'s paired device: it must stay in "Mode connecté" and awake (about 3-6 seconds per video). Re-run it later with the same channel to add new videos; the URL stays the same. Then use youtube_batch_status.',inputSchema:z.object({channel:z.string().min(3).max(200).describe('Channel ID (UC…), @handle or channel URL'),maxVideos:z.number().int().min(1).max(100).default(25),publishedAfter:z.string().datetime().optional(),language:z.string().max(12).default('original')})},async args=>{
+   server.registerTool('youtube_channel_batch',{annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:true,openWorldHint:true},title:'Batch transcripts of a YouTube channel (one document)',description:'Collect up to 500 latest videos of a channel (details + full timestamped transcripts, original language by default) into Markdown and CSV files (one row per video: channel, author, title, date, URL, transcript) with stable URLs, split into parts of 100 videos, e.g. to add as a single NotebookLM source instead of hundreds. Transcripts are fetched one by one by the user\'s paired device: it must stay in "Mode connecté" and awake (about 3-6 seconds per video). Re-run it later with the same channel to add new videos; the URL stays the same. Then use youtube_batch_status.',inputSchema:z.object({channel:z.string().min(3).max(200).describe('Channel ID (UC…), @handle or channel URL'),maxVideos:z.number().int().min(1).max(500).default(25),publishedAfter:z.string().datetime().optional(),language:z.string().max(12).default('original')})},async args=>{
     try{
-     const {resolveChannel,listUploads,runBatch,exportUrl}=await import('@/lib/channel-export');
+     const {resolveChannel,listUploads,runBatch,exportUrl,exportFiles}=await import('@/lib/channel-export');
      const get=(u:string)=>googleRequest(u);
      const ch=await resolveChannel(args.channel,get);if('error' in ch)return asText(ch);
      const videos=await listUploads(ch.uploads,args.maxVideos,args.publishedAfter,get);
@@ -140,21 +140,21 @@ async function handler(req:NextRequest){
      const devices=await relay.listDevices(user.id);const online=devices.filter(relay.isOnline);
      let pairing:{code:string;expiresAt:string}|null=null;if(queued&&!online.length)pairing=await relay.createPairingCode(user.id);
      const url=exportUrl(exp.id);
-     return asText({exportId:exp.id,channel:ch.title,videos:videos.length,ready,queued,documentUrl:url,downloadUrl:url+'&download=1',deviceOnline:online.length>0,pairingCode:pairing?.code,
+     return asText({exportId:exp.id,channel:ch.title,videos:videos.length,ready,queued,files:exportFiles(exp),documentUrl:url,downloadUrl:url+'&download=1',deviceOnline:online.length>0,pairingCode:pairing?.code,
       estimatedMinutes:Math.ceil(queued*5/60),
       messageForUser:(queued?(online.length?'Your phone is now fetching '+queued+' transcripts (about '+Math.max(1,Math.ceil(queued*5/60))+' min). Keep the CamMicGo app in "Mode connecté" and the phone awake until it finishes. ':'Your CamMicGo app is not reachable: open it in "Mode connecté"'+(pairing?' or pair it with code '+pairing.code+' (valid 10 minutes)':'')+', keep it awake, and the '+queued+' transcripts will be fetched (requests stay valid 2 hours). '):'All transcripts are ready. ')
-       +'The single document for NotebookLM is here: '+url+' (add it as a website source, or download it with &download=1 and upload the .md file). Re-run the batch later to add new videos: the link stays the same.',
+       +'Files for NotebookLM (Markdown and CSV, one row per video with the full transcript; '+(videos.length>100?'split into parts of 100 videos':'one file')+') are listed in files. Re-run the batch later to add new videos: the links stay the same.',
       instructions:'Relay messageForUser in the user\'s language. Call youtube_batch_status with exportId to follow progress; do not paste the whole document into the chat.'});
     }catch(e){return asText({error:e instanceof Error?e.message:'Batch unavailable'})}
    });
    server.registerTool('youtube_batch_status',{annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:false},title:'Progress of a channel transcript batch',description:'Progress of youtube_channel_batch (ready / queued / failed per video) and the document URL. Set retryFailed to requeue failed or missing transcripts.',inputSchema:z.object({exportId:z.string().max(40),retryFailed:z.boolean().default(false)})},async args=>{
     try{
-     const {readExport,exportStatus,retryMissing,exportUrl}=await import('@/lib/channel-export');
+     const {readExport,exportStatus,retryMissing,exportUrl,exportFiles}=await import('@/lib/channel-export');
      const exp=await readExport(args.exportId,user.id);if(!exp)return asText({error:'Unknown exportId'});
      const requeued=args.retryFailed?await retryMissing(exp):0;
      const {counts,failures}=await exportStatus(exp);
      const devices=await relay.listDevices(user.id);
-     return asText({exportId:exp.id,channel:exp.channel_title,videos:exp.videos.length,...counts,requeued,failures,deviceOnline:devices.some(relay.isOnline),documentUrl:exportUrl(exp.id),updatedAt:exp.updated_at});
+     return asText({exportId:exp.id,channel:exp.channel_title,videos:exp.videos.length,...counts,requeued,failures,deviceOnline:devices.some(relay.isOnline),files:exportFiles(exp),documentUrl:exportUrl(exp.id),updatedAt:exp.updated_at});
     }catch(e){return asText({error:e instanceof Error?e.message:'Status unavailable'})}
    });
    server.registerTool('youtube_transcript_status',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Check a relayed YouTube transcript',description:'Read the result of a transcript job returned as pending by youtube_get_transcript.',inputSchema:z.object({jobId:z.string().max(40)})},async({jobId})=>{

@@ -93,6 +93,12 @@ export async function claimJob(device:Device){
  const rows=await sb<Array<{id:string;video_id:string;language:string}>>('/rest/v1/rpc/cmg_claim_transcript_job',{method:'POST',body:JSON.stringify({p_user_id:device.user_id,p_device_id:device.id})});
  return rows?.[0]??null;
 }
+/** Gives a claimed job back to the queue (e.g. YouTube rate-limited the device). */
+export async function releaseJob(device:Device,jobId:string){
+ if(!/^[0-9a-f-]{36}$/i.test(jobId))return false;
+ const rows=await sb<Job[]>('/rest/v1/cmg_transcript_jobs?id=eq.'+jobId+'&device_id=eq.'+device.id+'&status=eq.claimed',{method:'PATCH',body:JSON.stringify({status:'pending',device_id:null,claimed_at:null}),prefer:'return=representation'});
+ return rows.length>0;
+}
 /** Stores a device answer for a job it claimed. */
 export async function completeJob(device:Device,jobId:string,outcome:{result?:unknown;error?:string}){
  if(!/^[0-9a-f-]{36}$/i.test(jobId))return false;

@@ -27,6 +27,8 @@ public class RelayService extends Service {
   static final int NOTIFICATION_ID = 42;
 
   private volatile boolean running;
+  private volatile long pausedUntil;
+  private int rateLimitStrikes;
   private Thread loop;
 
   public static void start(Context c) {
@@ -89,6 +91,8 @@ public class RelayService extends Service {
       String token = RelayClient.token(this);
       if (token == null) break;
       try {
+        long wait = pausedUntil - System.currentTimeMillis();
+        if (wait > 0) { RelayClient.ping(token); sleep(Math.min(wait, 60_000)); continue; }
         JSONObject job = RelayClient.poll(token, pollAfter);
         backoff = 5000;
         RelayClient.prefs(this).edit().putLong("lastSync", System.currentTimeMillis()).apply();
@@ -119,9 +123,21 @@ public class RelayService extends Service {
     } catch (RelayClient.UnpairedException e) {
       throw e;
     } catch (IOException e) {
-      RelayClient.sendError(token, id, e.getMessage());
-      status("Échec pour " + videoId + " : " + firstLine(e.getMessage()));
+      String msg = e.getMessage() == null ? "" : e.getMessage();
+      if (msg.contains("HTTP 429")) {
+        // YouTube rate-limits this phone: give the job back and pause instead of failing the whole queue.
+        RelayClient.release(token, id);
+        rateLimitStrikes++;
+        long pause = Math.min(30, 5L << Math.min(rateLimitStrikes - 1, 3)) * 60_000L;
+        pausedUntil = System.currentTimeMillis() + pause;
+        status("YouTube limite temporairement ce téléphone. Reprise automatique à "
+            + java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(new java.util.Date(pausedUntil)) + ".");
+        return;
+      }
+      RelayClient.sendError(token, id, msg);
+      status("Échec pour " + videoId + " : " + firstLine(msg));
     }
+    rateLimitStrikes = 0;
   }
 
   private void status(String text) {

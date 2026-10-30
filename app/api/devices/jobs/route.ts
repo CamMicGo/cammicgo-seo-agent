@@ -8,7 +8,7 @@ export async function GET(req:NextRequest){
   const device=await deviceFromAuthorization(req.headers.get('authorization'));
   if(!device)return NextResponse.json({error:'Appareil non appairé ou révoqué'},{status:401,headers:noStore});
   await touchDevice(device.id);
-  const job=await claimJob(device);
-  return NextResponse.json({device:{id:device.id,name:device.name},job:job?{id:job.id,videoId:job.video_id,language:job.language}:null,pollAfterMs:job?1000:4000},{headers:noStore});
+  const job=req.nextUrl.searchParams.get('claim')==='0'?null:await claimJob(device);
+  return NextResponse.json({device:{id:device.id,name:device.name},job:job?{id:job.id,videoId:job.video_id,language:job.language}:null,pollAfterMs:job?3000:4000},{headers:noStore});
  }catch(e){return NextResponse.json({error:e instanceof Error?e.message:'Relay unavailable'},{status:503,headers:noStore})}
 }
