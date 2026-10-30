@@ -10,7 +10,7 @@ const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 async function ask(message){const rl=createInterface({input:stdin,output:stdout});try{return await rl.question(message)}finally{rl.close()}}
 function run(file,args=[]){return new Promise((resolveRun,reject)=>{const child=spawn(process.execPath,[join(root,'scripts',file),...args],{cwd:root,stdio:'inherit'});child.on('error',reject);child.on('exit',c=>c===0?resolveRun():reject(new Error(file+' failed with exit code '+c)))})}
 try{
- console.log('\nCamMicGo SEO Agent — Installation locale guidée\n');
+ console.log('\nCamMicGo SEO MCP — Installation locale guidée\n');
  console.log('Configuration requise (une seule fois) dans votre propre Google Cloud :');
  console.log('  https://console.cloud.google.com/apis/dashboard');
  console.log('  Activez Search Console API, Analytics Data API, Analytics Admin API, YouTube Data API v3 et Calendar API.');

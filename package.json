@@ -1,5 +1,5 @@
 {
-  "name": "cammicgo-seo-agent",
+  "name": "cammicgo-seo-mcp",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -15,7 +15,8 @@
     "install:local": "node scripts/install-local.mjs",
     "remote:doctor": "node scripts/remote-doctor.mjs",
     "oauth:desktop": "node scripts/import-desktop-oauth.mjs",
-    "test:mcp:local": "node scripts/test-local-mcp.mjs"
+    "test:mcp:local": "node scripts/test-local-mcp.mjs",
+    "relay": "node desktop/relay.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",

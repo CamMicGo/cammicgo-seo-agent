@@ -11,7 +11,7 @@ export default function SiteHeader({active}:{active?:'home'|'remote'|'local'|'an
  const t=useT(commonCopy);
  const links:[typeof active,string,string][]=[['home','/',t.nav.home],['remote','/mcp/connect',t.nav.remote],['local','/setup/local',t.nav.local],['android','/download',t.nav.android],['apis','/#google-apis',t.nav.apis]];
  return <header className="sh">
-  <a className="sh-brand" href="/"><img src={LOGO} alt="" width="40" height="40"/><span>CamMicGo <b>SEO Agent</b></span></a>
+  <a className="sh-brand" href="/"><img src={LOGO} alt="" width="40" height="40"/><span>CamMicGo <b>SEO MCP</b></span></a>
   <nav className="sh-nav" aria-label="Main">{links.map(([k,href,label])=><a key={href} href={href} aria-current={k===active?'page':undefined}>{label}</a>)}</nav>
   <div className="sh-tools">
    <label className="sh-lang"><span className="sr-only">{t.nav.language}</span>
@@ -19,7 +19,7 @@ export default function SiteHeader({active}:{active?:'home'|'remote'|'local'|'an
      {languages.map(l=><option key={l.code} value={l.code}>{l.flag} {l.label}</option>)}
     </select>
    </label>
-   <a className="sh-gh" href="https://github.com/CamMicGo/cammicgo-seo-agent" target="_blank" rel="noreferrer" aria-label="GitHub"><img src="/github-mark.svg" alt="" width="20" height="20"/></a>
+   <a className="sh-gh" href="https://github.com/CamMicGo/cammicgo-seo-mcp" target="_blank" rel="noreferrer" aria-label="GitHub"><img src="/github-mark.svg" alt="" width="20" height="20"/></a>
   </div>
  </header>;
 }

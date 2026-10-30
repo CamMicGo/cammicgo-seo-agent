@@ -7,13 +7,13 @@ import {commonCopy} from '@/lib/copy/common';
 
 export type Os='windows'|'macos'|'linux';
 type Line={cmd?:string;out?:string};
-const REPO='https://github.com/CamMicGo/cammicgo-seo-agent';
+const REPO='https://github.com/CamMicGo/cammicgo-seo-mcp';
 
 const terminalName:Record<Os,string>={windows:'PowerShell',macos:'Terminal',linux:'Terminal'};
 const prompt:Record<Os,(dir?:boolean)=>string>={
- windows:d=>d?'PS C:\\Users\\you\\cammicgo-seo-agent>':'PS C:\\Users\\you>',
- macos:d=>d?'you@Mac cammicgo-seo-agent %':'you@Mac ~ %',
- linux:d=>d?'you@ubuntu:~/cammicgo-seo-agent$':'you@ubuntu:~$',
+ windows:d=>d?'PS C:\\Users\\you\\cammicgo-seo-mcp>':'PS C:\\Users\\you>',
+ macos:d=>d?'you@Mac cammicgo-seo-mcp %':'you@Mac ~ %',
+ linux:d=>d?'you@ubuntu:~/cammicgo-seo-mcp$':'you@ubuntu:~$',
 };
 const jsonPath:Record<Os,string>={windows:'C:\\Users\\you\\Downloads\\client_secret.json',macos:'/Users/you/Downloads/client_secret.json',linux:'/home/you/Downloads/client_secret.json'};
 
@@ -25,9 +25,7 @@ const installTools:Record<Os,Line[]>={
 
 /** Neutral pictograms (no third-party logos). */
 export function OsIcon({os}:{os:Os}){
- if(os==='windows')return <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>;
- if(os==='macos')return <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="4" y="5" width="16" height="11" rx="2"/><path d="M2 19h20"/></svg>;
- return <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 10 3 2-3 2M12 15h5"/></svg>;
+ return <img className="lg-os-logo" src={'/os-logos/'+os+'.svg'} alt="" width="34" height="34" aria-hidden="true"/>;
 }
 const StepIcon=({i}:{i:number})=>{
  const paths=['M12 3v12m0 0-4-4m4 4 4-4M5 21h14','M4 7h6l2 2h8v10H4z','M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z','M5 12l4 4L19 6','M8 12h8M12 8v8M4 4h16v16H4z','M9 12l2 2 4-4M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18'];
@@ -90,7 +88,7 @@ function stepContent(os:Os,i:number,t:LocalCopy):ReactNode{
    {os==='windows'&&<p className="lg-note">{t.reopen.replace('{terminal}',term)}</p>}
   </>;
   case 1:return <>
-   <Terminal os={os} lines={[{cmd:'git clone '+REPO+'.git'},{out:"Cloning into 'cammicgo-seo-agent'... done."},{cmd:'cd cammicgo-seo-agent'},{cmd:'npm install'},{out:'added 412 packages in 1m'}]}/>
+   <Terminal os={os} lines={[{cmd:'git clone '+REPO+'.git'},{out:"Cloning into 'cammicgo-seo-mcp'... done."},{cmd:'cd cammicgo-seo-mcp'},{cmd:'npm install'},{out:'added 412 packages in 1m'}]}/>
    <p className="lg-note"><a href={REPO} target="_blank" rel="noreferrer"><img src="/github-mark.svg" alt="" width="16" height="16" style={{verticalAlign:'-3px',marginRight:6}}/>{t.repo} ↗</a></p>
   </>;
   case 2:return <div className="lg-links">
@@ -100,7 +98,7 @@ function stepContent(os:Os,i:number,t:LocalCopy):ReactNode{
    <a href="https://console.cloud.google.com/auth/clients" target="_blank" rel="noreferrer">④ {t.links.clients} ↗</a>
   </div>;
   case 3:return <>
-   <Terminal os={os} dir lines={[{cmd:'npm run install:local'},{out:'CamMicGo SEO Agent — Installation locale guidée'},{out:'Ces étapes Google Cloud sont-elles terminées ? (o/N) : o'},{out:'Chemin du fichier OAuth Bureau Google (.json) : '+jsonPath[os]},{out:'Opening Google sign-in in your browser...'},{out:'Google account connected locally.'},{out:'Quel agent souhaitez-vous configurer ? (claude/gemini/cursor/aucun) : claude'}]}/>
+   <Terminal os={os} dir lines={[{cmd:'npm run install:local'},{out:'CamMicGo SEO MCP — Installation locale guidée'},{out:'Ces étapes Google Cloud sont-elles terminées ? (o/N) : o'},{out:'Chemin du fichier OAuth Bureau Google (.json) : '+jsonPath[os]},{out:'Opening Google sign-in in your browser...'},{out:'Google account connected locally.'},{out:'Quel agent souhaitez-vous configurer ? (claude/gemini/cursor/aucun) : claude'}]}/>
    <p className="lg-note">{t.example}</p>
   </>;
   case 4:return <>

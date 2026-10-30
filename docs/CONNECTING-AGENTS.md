@@ -1,4 +1,4 @@
-# Connect your AI agent — CamMicGo SEO Agent
+# Connect your AI agent — CamMicGo SEO MCP
 
 > Status: **planning + technical preview**. The remote MCP at https://seo.cammicgo.com/api/mcp exposes only a public `service_info` tool until proper OAuth authentication and durable quotas are deployed. It **cannot yet retrieve your private Search Console or GA4 data**. Browser dashboard OAuth is a separate login and does not authenticate the remote MCP client. Do not present any of these instructions as a working private-data connector until OAuth for MCP and tools are deployed.
 
@@ -20,7 +20,7 @@ https://seo.cammicgo.com/api/mcp
 
 ### Claude (remote)
 
-Claude → **Customize → Connectors → Add custom connector** → name **CamMicGo SEO Agent** → URL above. Claude can discover the public `service_info` tool today. When our server supports MCP OAuth, choose **Sign in** and authorize your account. A remote connector is not the same as local desktop stdio.
+Claude → **Customize → Connectors → Add custom connector** → name **CamMicGo SEO MCP** → URL above. Claude can discover the public `service_info` tool today. When our server supports MCP OAuth, choose **Sign in** and authorize your account. A remote connector is not the same as local desktop stdio.
 
 ### ChatGPT (remote)
 
@@ -61,7 +61,7 @@ Agent JSON (when using a client that accepts this format):
   "mcpServers": {
     "cammicgo-seo-local": {
       "command": "/absolute/path/to/node",
-      "args": ["/absolute/path/to/cammicgo-seo-agent/scripts/local-mcp.mjs", "stdio"]
+      "args": ["/absolute/path/to/cammicgo-seo-mcp/scripts/local-mcp.mjs", "stdio"]
     }
   }
 }
@@ -117,7 +117,7 @@ Official guidance: https://supabase.com/docs/guides/auth/oauth-server/getting-st
 **Claude Desktop ne s'installe pas sur Android.** Utilisez l'application mobile **Claude** ou le site `claude.ai`. Les connecteurs MCP **distants** sont utilisables sur Claude mobile, mais ils se connectent depuis l'infrastructure d'Anthropic : un MCP local `stdio` sur un PC n'est pas accessible tel quel sur le téléphone.
 
 1. Sur un PC (ou via le navigateur mobile si le compte propose cette option), ouvrez Claude → **Personnaliser → Connecteurs → Ajouter → Personnalisé → Web**.
-2. Nom de test : **CamMicGo SEO Agent** ; URL : `https://seo.cammicgo.com/api/mcp`.
+2. Nom de test : **CamMicGo SEO MCP** ; URL : `https://seo.cammicgo.com/api/mcp`.
 3. À ce stade, le serveur public n'offre que ses outils d'information ; **ne pas s'attendre à accéder aux données Google privées**. La finalisation des sessions Google côté serveur, OAuth du client MCP et quotas durables est indispensable avant un test réel.
 4. Une fois le connecteur distant authentifié officiellement et les outils autorisés déployés, ouvrez Claude sur Android et sélectionnez le connecteur dans la conversation.
 5. Demandez successivement : « Liste mes sites Search Console », « Liste mes propriétés GA4 », « Affiche les pages consultées et les pays des 28 derniers jours », « Liste les chaînes YouTube auxquelles j'ai accès », « Montre mes prochains événements Calendar ». Vérifiez que l'assistant identifie les propriétés sans inventer d'association entre sites et GA4.

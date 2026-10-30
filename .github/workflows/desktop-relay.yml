@@ -1,0 +1,72 @@
+name: Build CamMicGo desktop relay
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'desktop/**'
+      - 'lib/youtube-captions.mjs'
+      - '.github/workflows/desktop-relay.yml'
+jobs:
+  build-linux-windows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.23
+      - name: Compile Windows and Linux binaries
+        run: |
+          mkdir -p out
+          bun build desktop/relay.mjs --compile --minify --target=bun-windows-x64 --outfile out/CamMicGo-Relay-Windows.exe
+          bun build desktop/relay.mjs --compile --minify --target=bun-linux-x64 --outfile pkg/linux-x64/cammicgo-relay
+          bun build desktop/relay.mjs --compile --minify --target=bun-linux-arm64 --outfile pkg/linux-arm64/cammicgo-relay
+          tar -czf out/CamMicGo-Relay-Linux-x64.tar.gz -C pkg/linux-x64 cammicgo-relay
+          tar -czf out/CamMicGo-Relay-Linux-arm64.tar.gz -C pkg/linux-arm64 cammicgo-relay
+          ./pkg/linux-x64/cammicgo-relay --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: relay-linux-windows
+          path: out/*
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.23
+      - name: Compile and ad-hoc sign macOS binaries
+        run: |
+          mkdir -p out
+          for arch in arm64 x64; do
+            mkdir -p "pkg/$arch"
+            bun build desktop/relay.mjs --compile --minify --target=bun-darwin-$arch --outfile "pkg/$arch/CamMicGo-Relay"
+            codesign --force --sign - "pkg/$arch/CamMicGo-Relay"
+            (cd "pkg/$arch" && zip -q -y "../../out/CamMicGo-Relay-macOS-$arch.zip" CamMicGo-Relay)
+          done
+          ./pkg/arm64/CamMicGo-Relay --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: relay-macos
+          path: out/*
+  publish:
+    if: github.ref == 'refs/heads/main'
+    needs: [build-linux-windows, build-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Publish to GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          ls -la out
+          if gh release view desktop-relay-latest >/dev/null 2>&1; then
+            gh release upload desktop-relay-latest out/* --clobber
+          else
+            gh release create desktop-relay-latest out/* --title "CamMicGo SEO MCP — desktop relay" --notes "Desktop relay for the remote CamMicGo SEO MCP: fetches YouTube transcripts from your computer (Windows, macOS, Linux). Not needed with the local MCP server." --prerelease --target "$GITHUB_SHA"
+          fi

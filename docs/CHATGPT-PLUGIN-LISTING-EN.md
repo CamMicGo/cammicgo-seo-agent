@@ -4,7 +4,7 @@
 
 ## Form fields (public submission length limits)
 
-**Display name (max 30):** CamMicGo SEO Agent
+**Display name (max 30):** CamMicGo SEO MCP
 
 **Short description (max 30):** Google SEO & Analytics
 
@@ -24,7 +24,7 @@
 
 **Long description (max 4,000):**
 
-CamMicGo SEO Agent helps website owners and SEO professionals explore their own Google Search Console and Google Analytics 4 data from compatible AI assistants.
+CamMicGo SEO MCP helps website owners and SEO professionals explore their own Google Search Console and Google Analytics 4 data from compatible AI assistants.
 
 Connect your Google account, select the sites and analytics properties you are permitted to access, and ask questions about search queries, clicks, impressions, click-through rates, average search position, top pages, and traffic by country. Identify potential SEO opportunities using real Search Console performance data.
 

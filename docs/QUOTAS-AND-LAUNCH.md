@@ -1,4 +1,4 @@
-# Quotas, capacity, and public launch — CamMicGo SEO Agent
+# Quotas, capacity, and public launch — CamMicGo SEO MCP
 
 ## Distinguish the quota owners
 

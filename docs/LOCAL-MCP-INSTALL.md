@@ -1,4 +1,4 @@
-# CamMicGo SEO Agent — local MCP installation
+# CamMicGo SEO MCP — local MCP installation
 
 This guide covers Windows PowerShell, Linux Bash and macOS Terminal. The local MCP is a **stdio process**, not a website or a Vercel deployment. [Interactive installation guide](https://seo.cammicgo.com/setup/local) · [Google Cloud API catalog](https://seo.cammicgo.com/setup/google-cloud).
 
@@ -51,12 +51,12 @@ Homebrew's `node@22` may be keg-only: follow the printed PATH instructions and v
 Same commands on all three systems:
 
 ```bash
-git clone https://github.com/CamMicGo/cammicgo-seo-agent.git
-cd cammicgo-seo-agent
+git clone https://github.com/CamMicGo/cammicgo-seo-mcp.git
+cd cammicgo-seo-mcp
 npm install
 ```
 
-This is a GitHub source installation. **No verified `npx cammicgo-seo-agent` package or native installer has been published.**
+This is a GitHub source installation. **No verified `npx cammicgo-seo-mcp` package or native installer has been published.**
 
 ## 3. Configure your own Google Cloud project
 
@@ -94,7 +94,7 @@ npm run agent:setup -- cursor
 npm run agent:setup -- gemini
 ```
 
-Each command configures **one** client, preserving other settings and making a backup. Restart the desktop client afterward. A compatible custom MCP stdio agent can launch the absolute path to Node.js with arguments `/absolute/path/to/cammicgo-seo-agent/scripts/local-mcp.mjs` and `stdio`. No Google secrets belong in the AI client's config.
+Each command configures **one** client, preserving other settings and making a backup. Restart the desktop client afterward. A compatible custom MCP stdio agent can launch the absolute path to Node.js with arguments `/absolute/path/to/cammicgo-seo-mcp/scripts/local-mcp.mjs` and `stdio`. No Google secrets belong in the AI client's config.
 
 **ChatGPT:** compatibility depends on the ChatGPT client and its available local MCP support; this repository does not automatically register the local server in ChatGPT. **Claude web/mobile:** a remote cloud connector does not automatically reach a local stdio MCP. **Gemini:** the installer targets Gemini CLI, not the Gemini mobile app.
 

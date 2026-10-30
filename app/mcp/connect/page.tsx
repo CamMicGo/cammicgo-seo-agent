@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { RelayFlow, RelayLimits, RelaySteps } from '../../relay-explainer';
 
 export const metadata: Metadata = {
-  title: 'Connect AI agents | CamMicGo SEO Agent',
+  title: 'Connect AI agents | CamMicGo SEO MCP',
   description: 'Connect Claude, ChatGPT or Gemini CLI to the CamMicGo remote MCP server, authorize Google with the shared project or your own Google Cloud quota, and get YouTube transcripts through the Android app.',
 };
 
@@ -21,7 +21,7 @@ export default function McpConnect() {
   return (
     <div className="site">
       <header className="header">
-        <a className="brand" href="/"><img src={LOGO} alt="CamMicGo logo" width="46" height="46" /><span>CamMicGo <b>SEO Agent</b></span></a>
+        <a className="brand" href="/"><img src={LOGO} alt="CamMicGo logo" width="46" height="46" /><span>CamMicGo <b>SEO MCP</b></span></a>
         <a href="/" style={{ color: '#285bd9', fontWeight: 700 }}>← Home</a>
       </header>
 

@@ -13,7 +13,7 @@ export default function AndroidDownloadPage() {
       <header className="header">
         <a className="brand" href="/">
           <img src="https://avatars.githubusercontent.com/u/322584442?v=4" alt="Logo CamMicGo" width="46" height="46" />
-          <span>CamMicGo <b>SEO Agent</b></span>
+          <span>CamMicGo <b>SEO MCP</b></span>
         </a>
         <a href="/" style={{ color: '#285bd9', fontWeight: 700 }}>← Accueil</a>
       </header>

@@ -30,7 +30,7 @@ try{
    if(!names.has(required))throw new Error('MCP tool missing: '+required);
   }
   const result=await rpc('tools/call',{name:'service_info',arguments:{}});
-  if(!JSON.stringify(result).includes('CamMicGo SEO Agent Local'))throw new Error('service_info returned invalid payload');
+  if(!JSON.stringify(result).includes('CamMicGo SEO MCP Local'))throw new Error('service_info returned invalid payload');
   console.log('PASS: stdio MCP handshake, tool discovery ('+names.size+'), service_info invocation.');
  }finally{child.kill();child.stdin.end()}
 

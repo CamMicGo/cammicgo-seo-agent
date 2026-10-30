@@ -1,6 +1,6 @@
 # Optional Google services and security plan
 
-CamMicGo SEO Agent is independently developed; features are modular. The default SEO login must never ask for calendar, YouTube, Google Ads, Gmail or Drive permissions. **Calendar / YouTube / Ads / Workspace integrations are planned, not currently implemented.** Enabling a Google API alone does not implement a working MCP tool.
+CamMicGo SEO MCP is independently developed; features are modular. The default SEO login must never ask for calendar, YouTube, Google Ads, Gmail or Drive permissions. **Calendar / YouTube / Ads / Workspace integrations are planned, not currently implemented.** Enabling a Google API alone does not implement a working MCP tool.
 
 ## Planned modules
 

@@ -2,7 +2,7 @@
 
 <img src="https://avatars.githubusercontent.com/u/322584442?v=4" width="128" alt="CamMicGo webcam logo" />
 
-# CAMMICGO SEO Agent
+# CAMMICGO SEO MCP
 ### MCP Plugin · Free · Open Source · Google SEO & Analytics for AI assistants
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
@@ -10,7 +10,7 @@
 [![Next.js](https://img.shields.io/badge/Next.js-15-black.svg)](https://nextjs.org/)
 [![MCP](https://img.shields.io/badge/Model%20Context%20Protocol-remote%20preview-6666cc.svg)](https://modelcontextprotocol.io/)
 
-**[Google Cloud setup](https://seo.cammicgo.com/setup/google-cloud)** · **[Website](https://seo.cammicgo.com)** · **[Connect Google](https://seo.cammicgo.com/connect)** · **[Source](https://github.com/CamMicGo/cammicgo-seo-agent)** · **[CamMicGo](https://www.cammicgo.com)**
+**[Google Cloud setup](https://seo.cammicgo.com/setup/google-cloud)** · **[Website](https://seo.cammicgo.com)** · **[Connect Google](https://seo.cammicgo.com/connect)** · **[Source](https://github.com/CamMicGo/cammicgo-seo-mcp)** · **[CamMicGo](https://www.cammicgo.com)**
 
 <img src="https://seo.cammicgo.com/google-search-console.svg" width="62" alt="Google Search Console" /> &nbsp;&nbsp;
 <img src="https://seo.cammicgo.com/api/assets/google-analytics" width="62" alt="Google Analytics" />
@@ -19,7 +19,7 @@
 
 ---
 
-**CAMMICGO SEO Agent** is the official display name for the proposed MCP plugin / AI connector. Read the [French and English plugin description](./docs/PLUGIN-DESCRIPTION.md) for supported services, privacy details and feature availability. This is a **technical preview**, not yet a published ChatGPT app/plugin.\n\n
+**CAMMICGO SEO MCP** is the official display name for the proposed MCP plugin / AI connector. Read the [French and English plugin description](./docs/PLUGIN-DESCRIPTION.md) for supported services, privacy details and feature availability. This is a **technical preview**, not yet a published ChatGPT app/plugin.\n\n
 ## Install local MCP — Windows, Linux, macOS
 
 [**Step-by-step installation (all operating systems)**](./docs/LOCAL-MCP-INSTALL.md) · [**Visual website guide**](https://seo.cammicgo.com/setup/local) · [**Google Cloud API catalog**](https://seo.cammicgo.com/setup/google-cloud)
@@ -57,8 +57,8 @@ brew install git node@22 yt-dlp
 
 Then, on all three platforms:
 ```bash
-git clone https://github.com/CamMicGo/cammicgo-seo-agent.git
-cd cammicgo-seo-agent
+git clone https://github.com/CamMicGo/cammicgo-seo-mcp.git
+cd cammicgo-seo-mcp
 npm install
 npm run install:local
 npm run local:doctor
@@ -80,7 +80,7 @@ The guided installer uses a **Google OAuth Desktop client JSON** from your own [
 
 ## What is this?
 
-CamMicGo SEO Agent is a **free, open-source alternative to GSC Wizard**, focused on Google Search Console, Google Analytics 4 and SEO insights for AI assistants. It is an independently developed project with a secure browser-based Google OAuth flow and a hosted Next.js endpoint. Our goal is to offer transparent, extensible SEO analytics with both remote MCP and local agent support.
+CamMicGo SEO MCP is a **free, open-source alternative to GSC Wizard**, focused on Google Search Console, Google Analytics 4 and SEO insights for AI assistants. It is an independently developed project with a secure browser-based Google OAuth flow and a hosted Next.js endpoint. Our goal is to offer transparent, extensible SEO analytics with both remote MCP and local agent support.
 
 > **Current implementation:** A public MCP `service_info` tool; browser-based read-only Google OAuth (shared project or bring your own GCP OAuth client); listing your authorized Search Console and GA4 properties; a Search Console query report; a GA4 traffic and page report. **Private Google MCP tools are implemented behind a disabled feature flag for limited testing, not available to public clients by default.** A local read-only stdio MCP CLI is now included in source; a downloadable installer and the public remote MCP OAuth flow are still not shipped. Do not mistake the web dashboard for an authenticated remote MCP integration.
 
@@ -123,8 +123,8 @@ Remote MCP preview: https://seo.cammicgo.com/api/mcp  \nMCP readiness status: ht
 Requires **Node.js 22+**, Git and a Google Cloud project. The following commands run a local Next.js web dashboard. For an actual local stdio MCP server, see **Local MCP server (read-only preview)** below. These are separate processes and login flows.
 
 ```bash
-git clone https://github.com/CamMicGo/cammicgo-seo-agent.git
-cd cammicgo-seo-agent
+git clone https://github.com/CamMicGo/cammicgo-seo-mcp.git
+cd cammicgo-seo-mcp
 npm install
 cp .env.example .env.local
 npm run dev
@@ -137,8 +137,8 @@ Open http://localhost:3000. The OAuth callback now follows the server-controlled
 Inspiré de l'approche de [gum](https://github.com/ehmo/gum) (installation guidée puis connexion OAuth), CamMicGo propose maintenant un assistant de configuration pour le **tableau de bord local** :
 
 ```bash
-git clone https://github.com/CamMicGo/cammicgo-seo-agent.git
-cd cammicgo-seo-agent
+git clone https://github.com/CamMicGo/cammicgo-seo-mcp.git
+cd cammicgo-seo-mcp
 npm install
 npm run setup:local
 npm run dev
@@ -202,7 +202,7 @@ Example agent configuration (replace absolute paths with those on your computer)
   "mcpServers": {
     "cammicgo-seo-local": {
       "command": "/absolute/path/to/node",
-      "args": ["/absolute/path/to/cammicgo-seo-agent/scripts/local-mcp.mjs", "stdio"]
+      "args": ["/absolute/path/to/cammicgo-seo-mcp/scripts/local-mcp.mjs", "stdio"]
     }
   }
 }
@@ -289,7 +289,7 @@ Vercel Hobby is intended for **personal non-commercial use**; a public branded s
 
 ## License and third-party notices
 
-CamMicGo SEO Agent's original code is published under the [MIT license](./LICENSE). Third-party dependencies retain their respective licenses and attribution requirements.
+CamMicGo SEO MCP's original code is published under the [MIT license](./LICENSE). Third-party dependencies retain their respective licenses and attribution requirements.
 
 Made by **[CamMicGo](https://www.cammicgo.com)** — free webcam, microphone, headphone and device tests.
 
@@ -351,8 +351,8 @@ Unlike gum's dynamically searched API catalog and its 29 startup MCP tools (9 me
 3. Dans un terminal, installez puis lancez l'assistant :
 
    ```bash
-   git clone https://github.com/CamMicGo/cammicgo-seo-agent.git
-   cd cammicgo-seo-agent
+   git clone https://github.com/CamMicGo/cammicgo-seo-mcp.git
+   cd cammicgo-seo-mcp
    npm install
    npm run install:local
    ```
@@ -389,8 +389,8 @@ The remote MCP has discovery routes at `/.well-known/oauth-protected-resource` a
 3. Installez Node.js 22 ou plus récent, puis exécutez :
 
 ```bash
-git clone https://github.com/CamMicGo/cammicgo-seo-agent.git
-cd cammicgo-seo-agent
+git clone https://github.com/CamMicGo/cammicgo-seo-mcp.git
+cd cammicgo-seo-mcp
 npm install
 npm run oauth:desktop -- "/chemin/vers/client_secret.json"
 npm run local:login
@@ -419,6 +419,18 @@ This automated test runs a separate local MCP process with **throwaway, fake cre
 
 ## Remote AI-client connection details
 
-**Client display name:** CamMicGo SEO Agent. **MCP server (Streamable HTTP):** `https://seo.cammicgo.com/api/mcp`. See [the client connection page](https://seo.cammicgo.com/mcp/connect) for Claude, ChatGPT and Gemini CLI setup, and [Google Cloud BYO setup](https://seo.cammicgo.com/connect) for browser Google login with your own OAuth Web client ID/secret. **Remote private Google tools are not yet available to general third-party clients:** MCP agent OAuth, secure Google-account linking and atomic shared quota enforcement still need integration testing before opening production. Do not confuse Google web login with MCP client authorization. 
+**Client display name:** CamMicGo SEO MCP. **MCP server (Streamable HTTP):** `https://seo.cammicgo.com/api/mcp`. See [the client connection page](https://seo.cammicgo.com/mcp/connect) for Claude, ChatGPT and Gemini CLI setup, and [Google Cloud BYO setup](https://seo.cammicgo.com/connect) for browser Google login with your own OAuth Web client ID/secret. **Remote private Google tools are not yet available to general third-party clients:** MCP agent OAuth, secure Google-account linking and atomic shared quota enforcement still need integration testing before opening production. Do not confuse Google web login with MCP client authorization. 
 
 **App-directory short description:** “Read-only Search Console and Google Analytics insights for AI assistants, with personal Google Cloud OAuth options. Private remote MCP integrations are in development.”
+
+## Desktop relay (Windows, macOS, Linux)
+
+With the **remote** MCP, YouTube transcripts are fetched by a paired device because YouTube blocks cloud servers.
+Besides the Android app, any computer can do it with the desktop relay:
+
+- Download: https://seo.cammicgo.com/download/desktop (binaries built by `.github/workflows/desktop-relay.yml`, release `desktop-relay-latest`)
+- From source: `npm run relay` (Node 18+, no dependency) — opens a local control page on http://127.0.0.1:47821
+- Pair: ask your assistant for a pairing code (`device_pairing_code`), type it in the control page, keep the window open.
+- CLI: `npm run relay -- --pair ABCD-2345`, `--headless`, `--status`, `--unpair`.
+
+The **local** MCP server does not need it: it fetches transcripts itself.

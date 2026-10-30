@@ -3,18 +3,18 @@ import DownloadButton from './android/download-button';
 import { RelayFlow, RelayLimits, RelaySteps } from '../relay-explainer';
 
 export const metadata: Metadata = {
-  title: 'Télécharger | CamMicGo SEO Agent',
+  title: 'Télécharger | CamMicGo SEO MCP',
   description: "Téléchargez l'application Android CamMicGo SEO MCP pour récupérer les transcriptions YouTube depuis votre propre appareil.",
 };
 
 const LOGO = 'https://avatars.githubusercontent.com/u/322584442?v=4';
 
 const platforms = [
-  { name: 'Android', icon: '🤖', desc: 'Téléphones et tablettes · Android 8+', state: 'Disponible (test)', href: '/download/android', available: true },
-  { name: 'Windows', icon: '⊞', desc: 'Serveur MCP local (Node.js), transcriptions incluses', state: "Guide d'installation", href: '/setup/local', available: true },
-  { name: 'macOS', icon: '⌘', desc: 'Serveur MCP local (Node.js)', state: "Guide d'installation", href: '/setup/local', available: true },
-  { name: 'Linux', icon: '🐧', desc: 'Serveur MCP local (Node.js)', state: "Guide d'installation", href: '/setup/local', available: true },
-  { name: 'iOS / iPadOS', icon: '●', desc: 'iPhone et iPad', state: 'Non disponible', href: '', available: false },
+  { name: 'Android', icon:'/os-logos/android.svg', desc: 'Téléphones et tablettes · Android 8+', state: 'Disponible (test)', href: '/download/android', available: true },
+  { name: 'Windows', icon:'/os-logos/windows.svg', desc: 'Application ordinateur pour le MCP distant · Windows 10 / 11', state: 'Télécharger', href: '/download/desktop#windows', available: true, local: '/setup/local/windows' },
+  { name: 'macOS', icon:'/os-logos/macos.svg', desc: 'Application ordinateur pour le MCP distant · Apple Silicon et Intel', state: 'Télécharger', href: '/download/desktop#macos', available: true, local: '/setup/local/macos' },
+  { name: 'Linux', icon:'/os-logos/linux.svg', desc: 'Application ordinateur pour le MCP distant · x64 et ARM64', state: 'Télécharger', href: '/download/desktop#linux', available: true, local: '/setup/local/linux' },
+  { name: 'iOS / iPadOS', icon:'/os-logos/ios.svg', desc: 'iPhone et iPad', state: 'Non disponible', href: '', available: false },
 ];
 
 export default function DownloadPage() {
@@ -23,7 +23,7 @@ export default function DownloadPage() {
       <header className="header">
         <a className="brand" href="/">
           <img src={LOGO} alt="CamMicGo logo" width="46" height="46" />
-          <span>CamMicGo <b>SEO Agent</b></span>
+          <span>CamMicGo <b>SEO MCP</b></span>
         </a>
         <a href="/" style={{ color: '#285bd9', fontWeight: 700 }}>← Accueil</a>
       </header>
@@ -59,7 +59,7 @@ export default function DownloadPage() {
       <section className="feature-section" aria-labelledby="manual-title">
         <span className="kicker">SANS ASSISTANT IA</span>
         <h2 id="manual-title">Utilisation directe dans l’application</h2>
-        <p className="lead">Partagez une vidéo depuis l’app YouTube vers « CamMicGo SEO MCP », ou collez son lien. La transcription s’affiche avec des horodatages <code>[mm:ss]</code> : copiez-la, exportez-la en JSON ou partagez-la. L’anglais est choisi par défaut ; à défaut, la langue d’origine de la vidéo.</p>
+        <p className="lead">Partagez une vidéo depuis l’app YouTube vers « CamMicGo SEO MCP », ou collez son lien. La transcription s’affiche avec des horodatages <code>[mm:ss]</code> : copiez-la, exportez-la en JSON ou partagez-la. La langue originale est choisie par défaut, et la liste des autres langues disponibles pour la vidéo vous permet d’en choisir une autre.</p>
       </section>
 
       <section className="feature-section" aria-labelledby="platforms-title">
@@ -68,16 +68,17 @@ export default function DownloadPage() {
         <div className="agent-platforms">
           {platforms.map(p => (
             <article className="agent-platform" key={p.name}>
-              <span className="agent-platform-icon" aria-hidden="true">{p.icon}</span>
+              <span className="agent-platform-icon" aria-hidden="true"><img src={p.icon} alt="" width="44" height="44" className="os-logo"/></span>
               <h3>{p.name}</h3>
               <p>{p.desc}</p>
               {p.available
                 ? <a className="agent-unavailable" style={{ background: '#245edc', color: '#fff', borderColor: '#245edc', textDecoration: 'none' }} href={p.href}>{p.state}</a>
                 : <span className="agent-unavailable">{p.state}</span>}
+              {'local' in p && p.local ? <a className="agent-local-link" href={p.local}>ou serveur MCP local ↗</a> : null}
             </article>
           ))}
         </div>
-        <p className="notice">Sur ordinateur, le serveur MCP local récupère les transcriptions depuis votre propre connexion et les fournit directement à Claude Desktop, Cursor ou Gemini CLI.</p>
+        <p className="notice">Sur ordinateur, deux options : l’application ordinateur sert de relais au serveur MCP distant (Claude, ChatGPT), comme le téléphone ; le serveur MCP local récupère lui-même les transcriptions pour Claude Desktop, Cursor ou Gemini CLI, sans relais.</p>
       </section>
     </div>
   );

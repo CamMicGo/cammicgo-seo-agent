@@ -21,7 +21,7 @@ export async function GET(request:NextRequest){
  const url=new URL('https://commons.wikimedia.org/w/api.php');
  for(const [k,v] of Object.entries({action:'query',generator:'search',gsrsearch:'filetype:bitmap '+search,gsrnamespace:'6',gsrlimit:'8',prop:'imageinfo',iiprop:'url|extmetadata',iiurlwidth:'1200',format:'json',origin:'*'}))url.searchParams.set(k,v);
  try{
-  const response=await fetch(url,{next:{revalidate:86400},headers:{'User-Agent':'CamMicGoSEOAgent/0.1 (https://seo.cammicgo.com)'}});
+  const response=await fetch(url,{next:{revalidate:86400},headers:{'User-Agent':'CamMicGoSEOMCP/0.1 (https://seo.cammicgo.com)'}});
   if(!response.ok)throw Error('Photo search unavailable');
   const body=await response.json() as {query?:{pages?:Record<string,{title:string;imageinfo?:Array<{thumburl?:string;descriptionurl?:string;extmetadata?:Record<string,{value:string}>}>}>}};
   const matches=Object.values(body.query?.pages||{}).filter(page=>/\.(jpe?g|png|webp)$/i.test(page.title)).map(page=>({title:page.title,...page.imageinfo?.[0]}));

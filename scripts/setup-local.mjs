@@ -10,7 +10,7 @@ const path=resolve(process.cwd(),'.env.local');
 const validId=(s)=>/^[\w.-]+\.apps\.googleusercontent\.com$/.test(s)&&s.length<251;
 const encode=(s)=>JSON.stringify(s);
 try{
- console.log('\nCamMicGo SEO Agent — configuration locale Google (BYO)\n');
+ console.log('\nCamMicGo SEO MCP — configuration locale Google (BYO)\n');
  console.log('1. Google Cloud → activez Search Console API, Analytics Data API et Analytics Admin API.');
  console.log('2. Google Auth Platform → Audience → ajoutez votre compte comme testeur si nécessaire.');
  console.log('3. Clients → créez une application Web OAuth avec cette URL EXACTE :');

@@ -1,4 +1,4 @@
-name: Deploy SEO Agent to Vercel
+name: Deploy SEO MCP to Vercel
 on:
   workflow_dispatch:
   push:
