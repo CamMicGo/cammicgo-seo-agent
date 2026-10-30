@@ -2,7 +2,7 @@ import type {Metadata} from 'next';
 export const metadata:Metadata={title:'Google Cloud setup | Kamiko SEO MCP',description:'Configure your own Google OAuth client and quotas for Kamiko SEO MCP, hosted or local.'};
 const APIs=[
 {name:'Gmail API',id:'gmail.googleapis.com',state:'planned',detail:'Gmail access requires explicit scopes; dedicated remote MCP operations are not yet available.',logo:'/google-logos/gmail.png'},
-{name:'Google Drive API',id:'drive.googleapis.com',state:'planned',detail:'Enable only if you need Drive access; dedicated MCP tools are not yet available.',logo:'/google-logos/drive.svg'},
+{name:'Google Drive API',id:'drive.googleapis.com',state:'planned',detail:'Enable only if you need Drive access; dedicated MCP tools are not yet available.',logo:'/google-logos/drive.png'},
 {name:'Google Sheets API',id:'sheets.googleapis.com',state:'planned',detail:'Spreadsheet access planned; enabling the API alone does not add tools.',logo:'/google-logos/sheets.png'},
 {name:'Google Docs API',id:'docs.googleapis.com',state:'planned',detail:'Document access planned; dedicated MCP tools are not yet available.',logo:'/google-logos/docs.png'},
 {name:'Search Console',id:'webmasters.googleapis.com',state:'live',detail:'Search queries, clicks, CTR, impressions and positions.',logo:'/google-search-console.svg'},
