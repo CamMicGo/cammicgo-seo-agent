@@ -1,66 +1,182 @@
 package com.cammicgo.kamikoseo;
 
 import android.app.Activity;
-import android.os.Bundle;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Intent;
 import android.graphics.Color;
-import android.view.View;
-import android.widget.*;
-import android.text.method.ScrollingMovementMethod;
-import org.json.*;
-import java.net.*;
-import java.io.*;
-import java.nio.charset.StandardCharsets;
-import java.util.regex.*;
+import android.graphics.Typeface;
+import android.os.Bundle;
+import android.text.InputType;
+import android.view.Gravity;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
-  EditText input; TextView output; Button run;
-  static String read(String url) throws Exception {
-    HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();
-    c.setConnectTimeout(12000); c.setReadTimeout(15000);
-    c.setRequestProperty("User-Agent","Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36");
-    int status=c.getResponseCode(); if(status!=200)throw new IOException("HTTP "+status+" : YouTube refuse la requête.");
-    try(InputStream stream=c.getInputStream()){ByteArrayOutputStream b=new ByteArrayOutputStream();byte[] buf=new byte[8192];int n;while((n=stream.read(buf))!=-1){b.write(buf,0,n);if(b.size()>4000000)throw new IOException("Response too large");}return b.toString("UTF-8");}finally{c.disconnect();}
+  private final ExecutorService worker = Executors.newSingleThreadExecutor();
+  private EditText urlInput, langInput;
+  private TextView output;
+  private Button runButton, copyText, copyJson, share;
+  private TranscriptFetcher.Result last;
+
+  private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
+
+  @Override public void onCreate(Bundle state) {
+    super.onCreate(state);
+
+    LinearLayout root = new LinearLayout(this);
+    root.setOrientation(LinearLayout.VERTICAL);
+    root.setPadding(dp(16), dp(20), dp(16), dp(16));
+    root.setBackgroundColor(Color.WHITE);
+
+    LinearLayout header = new LinearLayout(this);
+    header.setOrientation(LinearLayout.HORIZONTAL);
+    header.setGravity(Gravity.CENTER_VERTICAL);
+    ImageView logo = new ImageView(this);
+    logo.setImageResource(R.mipmap.ic_launcher);
+    header.addView(logo, new LinearLayout.LayoutParams(dp(48), dp(48)));
+    TextView title = new TextView(this);
+    title.setText("CamMicGo SEO MCP\nTranscriptions YouTube");
+    title.setTextSize(18);
+    title.setTypeface(Typeface.DEFAULT_BOLD);
+    title.setTextColor(Color.rgb(20, 24, 60));
+    title.setPadding(dp(12), 0, 0, 0);
+    header.addView(title);
+    root.addView(header);
+
+    TextView note = new TextView(this);
+    note.setText("Collez ou partagez une URL YouTube. La transcription est récupérée depuis ce téléphone.");
+    note.setTextColor(Color.DKGRAY);
+    note.setPadding(0, dp(12), 0, dp(8));
+    root.addView(note);
+
+    urlInput = new EditText(this);
+    urlInput.setHint("https://www.youtube.com/watch?v=…");
+    urlInput.setSingleLine(true);
+    urlInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+    root.addView(urlInput);
+
+    LinearLayout langRow = new LinearLayout(this);
+    langRow.setGravity(Gravity.CENTER_VERTICAL);
+    TextView langLabel = new TextView(this);
+    langLabel.setText("Langue préférée : ");
+    langLabel.setTextColor(Color.DKGRAY);
+    langRow.addView(langLabel);
+    langInput = new EditText(this);
+    langInput.setText("en");
+    langInput.setSingleLine(true);
+    langInput.setEms(4);
+    langRow.addView(langInput);
+    root.addView(langRow);
+
+    runButton = new Button(this);
+    runButton.setText("Extraire la transcription");
+    root.addView(runButton);
+
+    LinearLayout actions = new LinearLayout(this);
+    copyText = new Button(this); copyText.setText("Copier");
+    copyJson = new Button(this); copyJson.setText("JSON");
+    share = new Button(this); share.setText("Partager");
+    LinearLayout.LayoutParams third = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+    actions.addView(copyText, third);
+    actions.addView(copyJson, new LinearLayout.LayoutParams(third));
+    actions.addView(share, new LinearLayout.LayoutParams(third));
+    root.addView(actions);
+
+    output = new TextView(this);
+    output.setTextColor(Color.BLACK);
+    output.setTextIsSelectable(true);
+    output.setTypeface(Typeface.MONOSPACE);
+    output.setTextSize(13);
+    output.setPadding(0, dp(8), 0, dp(8));
+    ScrollView scroll = new ScrollView(this);
+    scroll.addView(output);
+    root.addView(scroll, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
+
+    setContentView(root);
+    setActionsEnabled(false);
+
+    runButton.setOnClickListener(v -> extract());
+    copyText.setOnClickListener(v -> { if (last != null) copy(TranscriptFetcher.toText(last), "Transcription copiée"); });
+    copyJson.setOnClickListener(v -> { if (last != null) copy(TranscriptFetcher.toJson(last), "JSON copié"); });
+    share.setOnClickListener(v -> {
+      if (last == null) return;
+      Intent send = new Intent(Intent.ACTION_SEND);
+      send.setType("text/plain");
+      send.putExtra(Intent.EXTRA_SUBJECT, "Transcription YouTube " + last.videoId);
+      send.putExtra(Intent.EXTRA_TEXT, TranscriptFetcher.toText(last));
+      startActivity(Intent.createChooser(send, "Partager la transcription"));
+    });
+
+    handleShare(getIntent());
   }
-  static String id(String s) {
-    Matcher m=Pattern.compile("(?:v=|youtu\\.be/|shorts/|embed/)([A-Za-z0-9_-]{11})").matcher(s);
-    if(m.find())return m.group(1);
-    return s.matches("[A-Za-z0-9_-]{11}")?s:null;
+
+  @Override protected void onNewIntent(Intent intent) {
+    super.onNewIntent(intent);
+    setIntent(intent);
+    handleShare(intent);
   }
-  static String unescape(String s){return s.replace("\\u0026","&").replace("\\/","/");}
-  static String transcript(String video) throws Exception {
-    String html=read("https://www.youtube.com/watch?v="+video);
-    Matcher playerMarker=Pattern.compile("(?:var\\s+)?ytInitialPlayerResponse\\s*=").matcher(html);
-    int start=playerMarker.find()?playerMarker.end():-1;
-    if(start<0)throw new IOException("Métadonnées YouTube indisponibles. Vidéo restreinte ou accès bloqué.");
-    int brace=html.indexOf('{',start),depth=0,end=-1;boolean quote=false,escape=false;
-    if(brace<0 || brace-start>20)throw new IOException("Réponse YouTube non disponible.");
-    for(int i=brace;i<html.length();i++){char ch=html.charAt(i);if(quote){if(escape)escape=false;else if(ch=='\\')escape=true;else if(ch=='"')quote=false;}else{if(ch=='"')quote=true;else if(ch=='{')depth++;else if(ch=='}'&&--depth==0){end=i+1;break;}}}
-    if(end<0)throw new IOException("Invalid player metadata");
-    JSONObject root=new JSONObject(html.substring(brace,end));
-    JSONObject captions=root.optJSONObject("captions");
-    if(captions==null)throw new IOException("Aucune piste de sous-titres accessible. Vérifiez la présence du bouton CC sur YouTube.");
-    JSONArray tracks=captions.getJSONObject("playerCaptionsTracklistRenderer").getJSONArray("captionTracks");
-    JSONObject track=tracks.getJSONObject(0);
-    for(int i=0;i<tracks.length();i++){JSONObject t=tracks.getJSONObject(i);if(t.optString("languageCode").startsWith("fr")){track=t;break;}}
-    String base=unescape(track.getString("baseUrl"));
-    String xml=read(base);
-    StringBuilder result=new StringBuilder();
-    Matcher m=Pattern.compile("<(?:text|p)\\b([^>]*)>(.*?)</(?:text|p)>",Pattern.DOTALL).matcher(xml);
-    while(m.find()){String attr=m.group(1),text=m.group(2).replaceAll("<[^>]+>","").replace("&amp;","&").replace("&quot;","\\\"").replace("&#39;","'").replace("&lt;","<").replace("&gt;",">");Matcher t=Pattern.compile("(?:start|t)=\\\"([0-9.]+)\\\"").matcher(attr);String stamp=t.find()?t.group(1):"?";result.append("[").append(stamp).append("] ").append(text).append("\\n");}
-    if(result.length()==0)throw new IOException("Piste de sous-titres vide ou bloquée par YouTube.");
-    return result.toString();
+
+  @Override protected void onDestroy() {
+    worker.shutdownNow();
+    super.onDestroy();
   }
-  @Override public void onCreate(Bundle b){super.onCreate(b);LinearLayout l=new LinearLayout(this);l.setOrientation(1);l.setPadding(24,32,24,24);l.setBackgroundColor(Color.WHITE);
-    TextView title=new TextView(this);title.setText("CamMicGo SEO MCP — YouTube captions");title.setTextSize(22);title.setTextColor(Color.BLACK);l.addView(title);
-    TextView note=new TextView(this);note.setText("Collez ou partagez une URL YouTube. Les sous-titres disponibles seront affichés ci-dessous.");note.setTextColor(Color.DKGRAY);l.addView(note);
-    input=new EditText(this);input.setHint("https://www.youtube.com/watch?v=...");input.setSingleLine(true);l.addView(input);
-    run=new Button(this);run.setText("Extraire les sous-titres");l.addView(run);
-    Button copy=new Button(this);copy.setText("Copier le résultat");l.addView(copy);
-    output=new TextView(this);output.setTextColor(Color.BLACK);output.setTextIsSelectable(true);output.setMovementMethod(new ScrollingMovementMethod());ScrollView scroll=new ScrollView(this);scroll.addView(output);l.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));setContentView(l);
-    if(Intent.ACTION_SEND.equals(getIntent().getAction())&&"text/plain".equals(getIntent().getType()))input.setText(getIntent().getStringExtra(Intent.EXTRA_TEXT));
-    run.setOnClickListener(v->{String video=id(input.getText().toString());if(video==null){output.setText("URL YouTube invalide");return;}run.setEnabled(false);output.setText("Extraction en cours...");Executors.newSingleThreadExecutor().execute(()->{String result;try{result=transcript(video);}catch(Exception e){result="Échec de l’extraction\n\nCause : "+e.getMessage()+"\n\nVérifiez votre connexion, la présence des sous-titres (CC) et que la vidéo est publique. Si le problème persiste, YouTube peut bloquer l’accès direct depuis Android."; }final String text=result;runOnUiThread(()->{output.setText(text);run.setEnabled(true);});});});
-    copy.setOnClickListener(v->{android.content.ClipboardManager cm=(android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE);cm.setPrimaryClip(android.content.ClipData.newPlainText("YouTube transcript",output.getText()));Toast.makeText(this,"Copié",Toast.LENGTH_SHORT).show();});
+
+  private void handleShare(Intent intent) {
+    if (intent != null && Intent.ACTION_SEND.equals(intent.getAction()) && "text/plain".equals(intent.getType())) {
+      String text = intent.getStringExtra(Intent.EXTRA_TEXT);
+      if (text != null) {
+        urlInput.setText(text);
+        if (TranscriptFetcher.videoId(text) != null) extract();
+      }
+    }
+  }
+
+  private void extract() {
+    final String id = TranscriptFetcher.videoId(urlInput.getText().toString());
+    if (id == null) { output.setText("URL YouTube invalide."); return; }
+    final String lang = langInput.getText().toString();
+    runButton.setEnabled(false);
+    setActionsEnabled(false);
+    last = null;
+    output.setText("Extraction en cours…");
+    worker.execute(() -> {
+      String text;
+      TranscriptFetcher.Result result = null;
+      try {
+        result = TranscriptFetcher.fetch(id, lang);
+        text = TranscriptFetcher.toText(result);
+      } catch (Exception e) {
+        text = "Échec de l’extraction\n\n" + e.getMessage()
+            + "\n\nVérifiez la connexion, que la vidéo est publique et qu’elle a des sous-titres (bouton CC).";
+      }
+      final String shown = text;
+      final TranscriptFetcher.Result done = result;
+      runOnUiThread(() -> {
+        if (isFinishing()) return;
+        last = done;
+        output.setText(shown);
+        runButton.setEnabled(true);
+        setActionsEnabled(done != null);
+      });
+    });
+  }
+
+  private void setActionsEnabled(boolean on) {
+    copyText.setEnabled(on); copyJson.setEnabled(on); share.setEnabled(on);
+  }
+
+  private void copy(String text, String toast) {
+    ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+    cm.setPrimaryClip(ClipData.newPlainText("YouTube transcript", text));
+    Toast.makeText(this, toast, Toast.LENGTH_SHORT).show();
   }
 }
