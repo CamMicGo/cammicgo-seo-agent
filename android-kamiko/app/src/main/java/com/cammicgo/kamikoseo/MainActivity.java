@@ -30,7 +30,6 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.PopupMenu;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -179,6 +178,7 @@ public class MainActivity extends Activity {
     root.addView(header);
 
     buildPairingCard(root);
+    buildAskCard(root);
     buildTranscribeCard(root);
     buildResultCard(root);
 
@@ -189,12 +189,17 @@ public class MainActivity extends Activity {
   private void buildPairingCard(LinearLayout root) {
     LinearLayout c = card(root);
     text(c, "Connexion à votre assistant IA", 17, INK, true);
-    TextView sub = text(c, "Reliez ce téléphone au serveur MCP CamMicGo : votre assistant pourra alors lui demander des transcriptions.", 13, MUTED, false);
+    TextView sub = text(c, "YouTube bloque les serveurs cloud : votre assistant IA récupère donc les transcriptions en passant par ce téléphone. Il suffit de le relier une fois à votre compte.", 13, MUTED, false);
     sub.setPadding(0, dp(4), 0, dp(8));
 
     unpairedBox = new LinearLayout(this);
     unpairedBox.setOrientation(LinearLayout.VERTICAL);
-    step(unpairedBox, "1", "Demandez à votre assistant (Claude, ChatGPT…) : « Donne-moi un code d’appairage CamMicGo ».");
+    step(unpairedBox, "1", "Dans Claude ou ChatGPT connecté à CamMicGo, demandez : « Génère un code d’appairage CamMicGo ».");
+    Button copyAsk = secondary("📋  Copier cette demande");
+    copyAsk.setOnClickListener(v -> copy("Génère un code d'appairage CamMicGo pour mon application Android.", "Demande copiée : collez-la dans votre assistant"));
+    LinearLayout.LayoutParams askLp = gapTop(2);
+    askLp.leftMargin = dp(38);
+    unpairedBox.addView(copyAsk, askLp);
     step(unpairedBox, "2", "Saisissez ici le code reçu. Il est valable 10 minutes.");
     codeInput = field("ABCD-2345");
     codeInput.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
@@ -287,17 +292,48 @@ public class MainActivity extends Activity {
     resultMeta = text(resultCard, "", 13, MUTED, false);
     resultMeta.setPadding(0, dp(4), 0, dp(10));
     LinearLayout actions = new LinearLayout(this);
-    Button copy = secondary("Copier"), share = secondary("Partager"), export = primary("Exporter ▾");
+    Button copy = secondary("📋  Copier"), share = secondary("↗  Partager");
     actions.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
-    LinearLayout.LayoutParams mid = new LinearLayout.LayoutParams(0, -2, 1);
-    mid.setMargins(dp(8), 0, dp(8), 0);
-    actions.addView(share, mid);
-    actions.addView(export, new LinearLayout.LayoutParams(0, -2, 1));
+    LinearLayout.LayoutParams right = new LinearLayout.LayoutParams(0, -2, 1);
+    right.leftMargin = dp(8);
+    actions.addView(share, right);
     resultCard.addView(actions);
+
+    TextView exportTitle = text(resultCard, "Exporter", 14, INK, true);
+    exportTitle.setPadding(0, dp(14), 0, dp(6));
+    String[][] formats = {
+        {"SRT", "Sous-titres vidéo"}, {"VTT", "Sous-titres web"}, {"TXT", "Texte + horodatages"},
+        {"TEXTE", "Texte seul"}, {"JSON", "Format MCP"}};
+    LinearLayout row = null;
+    for (int i = 0; i < 5; i++) {
+      if (i % 3 == 0) { row = new LinearLayout(this); resultCard.addView(row, gapTop(i == 0 ? 0 : 8)); }
+      final int kind = i;
+      LinearLayout tile = new LinearLayout(this);
+      tile.setOrientation(LinearLayout.VERTICAL);
+      tile.setGravity(Gravity.CENTER);
+      tile.setPadding(dp(6), dp(10), dp(6), dp(10));
+      tile.setBackground(shape(FIELD, 14, Color.rgb(169, 202, 250)));
+      TextView fmt = text(tile, formats[i][0], 15, BLUE, true);
+      fmt.setGravity(Gravity.CENTER);
+      TextView desc = text(tile, formats[i][1], 11, MUTED, false);
+      desc.setGravity(Gravity.CENTER);
+      LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -2, 1);
+      if (i % 3 != 0) lp.leftMargin = dp(8);
+      row.addView(tile, lp);
+      tile.setOnClickListener(v -> export(kind));
+    }
+    // keep the last row's tiles the same width as the first row
+    if (row != null) for (int k = row.getChildCount(); k < 3; k++) {
+      View filler = new View(this);
+      LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, 1, 1);
+      lp.leftMargin = dp(8);
+      row.addView(filler, lp);
+    }
+
     output = text(resultCard, "", 14, INK, false);
     output.setTextIsSelectable(true);
     output.setLineSpacing(dp(3), 1f);
-    output.setPadding(dp(2), dp(14), dp(2), 0);
+    output.setPadding(dp(2), dp(16), dp(2), 0);
 
     copy.setOnClickListener(v -> { if (last != null) copy(TranscriptFetcher.toText(last), "Transcription copiée"); });
     share.setOnClickListener(v -> {
@@ -308,27 +344,49 @@ public class MainActivity extends Activity {
       send.putExtra(Intent.EXTRA_TEXT, TranscriptFetcher.toText(last));
       startActivity(Intent.createChooser(send, "Partager la transcription"));
     });
-    export.setOnClickListener(v -> {
-      if (last == null) return;
-      PopupMenu menu = new PopupMenu(this, export);
-      menu.getMenu().add(0, 1, 0, "Sous-titres SRT (.srt)");
-      menu.getMenu().add(0, 2, 1, "Sous-titres WebVTT (.vtt)");
-      menu.getMenu().add(0, 3, 2, "Texte avec horodatages (.txt)");
-      menu.getMenu().add(0, 4, 3, "Texte seul (.txt)");
-      menu.getMenu().add(0, 5, 4, "JSON format MCP (.json)");
-      menu.setOnMenuItemClickListener(item -> {
-        String id = last.videoId, lang = last.language;
-        switch (item.getItemId()) {
-          case 1: save(TranscriptFetcher.toSrt(last), "application/x-subrip", id + "." + lang + ".srt"); break;
-          case 2: save(TranscriptFetcher.toVtt(last), "text/vtt", id + "." + lang + ".vtt"); break;
-          case 3: save(TranscriptFetcher.toText(last), "text/plain", id + "." + lang + ".txt"); break;
-          case 4: save(TranscriptFetcher.toPlain(last), "text/plain", id + "." + lang + ".texte.txt"); break;
-          default: save(TranscriptFetcher.toJson(last), "application/json", id + "." + lang + ".json");
-        }
-        return true;
-      });
-      menu.show();
-    });
+  }
+
+  private void export(int kind) {
+    if (last == null) return;
+    String id = last.videoId, lang = last.language;
+    switch (kind) {
+      case 0: save(TranscriptFetcher.toSrt(last), "application/x-subrip", id + "." + lang + ".srt"); break;
+      case 1: save(TranscriptFetcher.toVtt(last), "text/vtt", id + "." + lang + ".vtt"); break;
+      case 2: save(TranscriptFetcher.toText(last), "text/plain", id + "." + lang + ".txt"); break;
+      case 3: save(TranscriptFetcher.toPlain(last), "text/plain", id + "." + lang + ".texte.txt"); break;
+      default: save(TranscriptFetcher.toJson(last), "application/json", id + "." + lang + ".json");
+    }
+  }
+
+  /** "Ask your assistant" examples, each with a copy button. */
+  private void buildAskCard(LinearLayout root) {
+    LinearLayout c = card(root);
+    text(c, "💬  Que demander à votre assistant ?", 17, INK, true);
+    TextView sub = text(c, "Une fois le téléphone appairé et le mode connecté actif, copiez une de ces demandes dans Claude ou ChatGPT. Gardez le téléphone actif pendant qu’il travaille.", 13, MUTED, false);
+    sub.setPadding(0, dp(4), 0, dp(8));
+    String[][] prompts = {
+        {"Transcrire une vidéo", "Récupère la transcription de cette vidéo YouTube et résume ses moments clés : "},
+        {"Dernière vidéo d’une chaîne", "Trouve la dernière vidéo de la chaîne principale de [nom], donne ses détails et sa transcription."},
+        {"Chaîne entière pour NotebookLM", "Récupère les 50 dernières vidéos de [chaîne] avec leurs transcriptions et donne-moi le lien du fichier CSV pour NotebookLM."},
+        {"Rechercher un sujet", "Dans les 50 dernières vidéos de [chaîne], trouve tous les moments où il parle de [sujet], avec les liens horodatés."},
+    };
+    for (String[] p : prompts) {
+      LinearLayout row = new LinearLayout(this);
+      row.setGravity(Gravity.CENTER_VERTICAL);
+      row.setPadding(dp(12), dp(10), dp(8), dp(10));
+      row.setBackground(shape(FIELD, 12, LINE));
+      LinearLayout texts = new LinearLayout(this);
+      texts.setOrientation(LinearLayout.VERTICAL);
+      text(texts, p[0], 13, BLUE, true);
+      text(texts, "« " + p[1].trim() + " »", 13, INK, false);
+      row.addView(texts, new LinearLayout.LayoutParams(0, -2, 1));
+      Button cp = new Button(this);
+      cp.setText("Copier"); cp.setAllCaps(false); cp.setTextColor(BLUE); cp.setTextSize(13);
+      cp.setBackgroundColor(Color.TRANSPARENT); cp.setStateListAnimator(null);
+      row.addView(cp);
+      cp.setOnClickListener(v -> copy(p[1], "Demande copiée"));
+      c.addView(row, gapTop(8));
+    }
   }
 
   // ---------- pairing / connected mode ----------
