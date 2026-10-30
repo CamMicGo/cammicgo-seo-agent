@@ -11,7 +11,7 @@ export default function AndroidDownloadPage() {
     <main className="site" style={{ minHeight: '100vh' }}>
       <header className="header">
         <a className="brand" href="/">
-          <img src="https://avatars.githubusercontent.com/u/322584442?v=4" alt="Logo CamMicGo" width="46" height="46" />
+          <img src="/cammicgo-android-icon.svg" alt="Logo CamMicGo" width="46" height="46" />
           <span>CamMicGo <b>SEO MCP</b></span>
         </a>
         <a href="/" style={{ color: '#285bd9', fontWeight: 700 }}>← Accueil</a>
@@ -19,7 +19,7 @@ export default function AndroidDownloadPage() {
       <section className="hero" style={{ paddingTop: 60, paddingBottom: 55 }}>
         <span className="eyebrow">🤖 ANDROID · APK EXPÉRIMENTALE</span>
         <div className="hero-logo">
-          <img src="https://avatars.githubusercontent.com/u/322584442?v=4" alt="CamMicGo" width="112" height="112" />
+          <img src="/cammicgo-android-icon.svg" alt="CamMicGo" width="112" height="112" />
         </div>
         <h1>CamMicGo sur <span>Android</span></h1>
         <p className="lead">Application Android de test pour extraire les transcriptions YouTube à partir de l’URL d’une vidéo. Collez ou partagez un lien pour tester les sous-titres disponibles, puis consultez et copiez le résultat.</p>
