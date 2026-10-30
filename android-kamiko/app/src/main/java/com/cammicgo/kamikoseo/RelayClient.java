@@ -51,12 +51,14 @@ public final class RelayClient {
     }
   }
 
-  /** Returns the next job ({id, videoId, language}) or null, plus the advised delay in pollAfter[0]. */
-  public static JSONObject poll(String token, long[] pollAfter) throws IOException {
+  /** Polls the relay: returns the full response ({job, progress, pollAfterMs}); stores progress for the UI. */
+  public static JSONObject poll(Context c, String token, boolean claim) throws IOException {
     try {
-      JSONObject res = new JSONObject(request("GET", "/api/devices/jobs", token, null));
-      pollAfter[0] = res.optLong("pollAfterMs", 4000);
-      return res.optJSONObject("job");
+      JSONObject res = new JSONObject(request("GET", "/api/devices/jobs" + (claim ? "" : "?claim=0"), token, null));
+      JSONObject progress = res.optJSONObject("progress");
+      prefs(c).edit().putString("progress", progress == null ? null : progress.toString())
+          .putLong("progressAt", System.currentTimeMillis()).apply();
+      return res;
     } catch (IOException e) {
       throw e;
     } catch (Exception e) {
@@ -68,8 +70,6 @@ public final class RelayClient {
     request("POST", "/api/devices/jobs/" + jobId, token, "{\"result\":" + transcriptJson + "}");
   }
 
-  /** Keeps the device marked online without taking a job (used while paused). */
-  public static void ping(String token) throws IOException { request("GET", "/api/devices/jobs?claim=0", token, null); }
 
   /** Puts a claimed job back in the queue so it is retried later. */
   public static void release(String token, String jobId) throws IOException {
@@ -95,7 +95,7 @@ public final class RelayClient {
       c.setReadTimeout(20000);
       c.setRequestMethod(method);
       c.setRequestProperty("Accept", "application/json");
-      c.setRequestProperty("User-Agent", "CamMicGoAndroid/0.3.0");
+      c.setRequestProperty("User-Agent", "CamMicGoAndroid/0.6.0");
       if (token != null) c.setRequestProperty("Authorization", "Bearer " + token);
       if (body != null) {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);

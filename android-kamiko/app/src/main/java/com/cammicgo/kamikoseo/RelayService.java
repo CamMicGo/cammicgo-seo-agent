@@ -85,25 +85,27 @@ public class RelayService extends Service {
   }
 
   private void run() {
-    long[] pollAfter = {4000};
     long backoff = 5000;
     while (running) {
       String token = RelayClient.token(this);
       if (token == null) break;
       try {
         long wait = pausedUntil - System.currentTimeMillis();
-        if (wait > 0) { RelayClient.ping(token); sleep(Math.min(wait, 60_000)); continue; }
-        JSONObject job = RelayClient.poll(token, pollAfter);
+        if (wait > 0) { RelayClient.poll(this, token, false); sleep(Math.min(wait, 30_000)); continue; }
+        JSONObject res = RelayClient.poll(this, token, true);
+        if (backoff > 5000) status("Connexion rétablie : reprise de la file d’attente.");
         backoff = 5000;
         RelayClient.prefs(this).edit().putLong("lastSync", System.currentTimeMillis()).apply();
+        JSONObject job = res.optJSONObject("job");
         if (job != null) handle(token, job);
-        sleep(pollAfter[0]);
+        else if (!isPausedStatus()) status(idleStatus());
+        sleep(job != null ? 300 : res.optLong("pollAfterMs", 4000));
       } catch (RelayClient.UnpairedException e) {
         RelayClient.forget(this);
         status("Appareil dissocié par le serveur. Appairez-le à nouveau.");
         break;
       } catch (IOException e) {
-        status("Connexion au serveur impossible, nouvel essai… (" + e.getMessage() + ")");
+        status("Connexion perdue, nouvel essai dans " + backoff / 1000 + " s. La file reprendra là où elle s’est arrêtée.");
         sleep(backoff);
         backoff = Math.min(backoff * 2, 60_000);
       }
@@ -111,17 +113,38 @@ public class RelayService extends Service {
     if (running) { RelayClient.prefs(this).edit().putBoolean("connected", false).apply(); shutdown(); }
   }
 
-  private void handle(String token, JSONObject job) throws IOException {
-    String id = job.optString("id"), videoId = job.optString("videoId"), lang = job.optString("language", "en");
-    status("Transcription en cours : " + videoId);
+  private boolean isPausedStatus() { return pausedUntil > System.currentTimeMillis(); }
+
+  private String idleStatus() {
     try {
-      TranscriptFetcher.Result r = TranscriptFetcher.fetch(videoId, lang);
-      RelayClient.sendResult(token, id, TranscriptFetcher.toJson(r, false));
-      SharedPreferences p = RelayClient.prefs(this);
-      p.edit().putInt("jobsDone", p.getInt("jobsDone", 0) + 1).apply();
-      status("Transcription envoyée : " + videoId + " (" + r.segments.size() + " segments)");
-    } catch (RelayClient.UnpairedException e) {
-      throw e;
+      String p = RelayClient.prefs(this).getString("progress", null);
+      if (p != null) {
+        JSONObject o = new JSONObject(p);
+        int left = o.optInt("pending") + o.optInt("working");
+        if (left > 0) return left + " transcription" + (left > 1 ? "s" : "") + " en attente…";
+        return "Terminé : " + o.optInt("done") + " / " + o.optInt("total") + " envoyées. En attente de nouvelles demandes.";
+      }
+    } catch (Exception ignored) {}
+    return "En attente des demandes de votre assistant";
+  }
+
+  /** Network trouble (not a YouTube refusal): the job goes back to the queue instead of failing. */
+  static boolean isNetwork(IOException e) {
+    if (e instanceof java.net.UnknownHostException || e instanceof java.net.SocketTimeoutException
+        || e instanceof java.net.ConnectException || e instanceof java.net.NoRouteToHostException
+        || e instanceof javax.net.ssl.SSLException || e instanceof java.net.SocketException) return true;
+    String m = e.getMessage() == null ? "" : e.getMessage().toLowerCase();
+    return m.contains("timeout") || m.contains("timed out") || m.contains("unable to resolve") || m.contains("connection reset")
+        || m.contains("failed to connect") || m.contains("network is unreachable");
+  }
+
+  private void handle(String token, JSONObject job) throws IOException {
+    String id = job.optString("id"), videoId = job.optString("videoId"), lang = job.optString("language", "original");
+    status("Transcription en cours : " + videoId);
+    current(videoId);
+    TranscriptFetcher.Result r;
+    try {
+      r = TranscriptFetcher.fetch(videoId, lang);
     } catch (IOException e) {
       String msg = e.getMessage() == null ? "" : e.getMessage();
       if (msg.contains("HTTP 429")) {
@@ -132,15 +155,73 @@ public class RelayService extends Service {
         pausedUntil = System.currentTimeMillis() + pause;
         status("YouTube limite temporairement ce téléphone. Reprise automatique à "
             + java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(new java.util.Date(pausedUntil)) + ".");
+        current(null);
         return;
       }
+      if (isNetwork(e)) {
+        // Connection dropped while reading YouTube: put the job back, it will be retried.
+        try { RelayClient.release(token, id); } catch (IOException ignored) { /* reclaimed automatically after 90 s */ }
+        current(null);
+        throw e;
+      }
       RelayClient.sendError(token, id, msg);
+      history(videoId, null, "failed", 0, firstLine(msg));
       status("Échec pour " + videoId + " : " + firstLine(msg));
+      current(null);
+      return;
     }
+    // Upload with retries so a short network drop does not lose a finished transcript.
+    String payload = TranscriptFetcher.toJson(r, false);
+    IOException lastError = null;
+    for (int attempt = 0; attempt < 4 && running; attempt++) {
+      try {
+        if (attempt > 0) { status("Envoi interrompu, nouvel essai (" + attempt + "/3)…"); sleep(5000L * attempt); }
+        RelayClient.sendResult(token, id, payload);
+        lastError = null;
+        break;
+      } catch (RelayClient.UnpairedException e) {
+        throw e;
+      } catch (IOException e) {
+        lastError = e;
+        if (!isNetwork(e)) break;
+      }
+    }
+    current(null);
+    if (lastError != null) {
+      if (isNetwork(lastError)) throw lastError;
+      history(videoId, r.title, "failed", r.segments.size(), firstLine(lastError.getMessage()));
+      status("Envoi refusé pour " + videoId + " : " + firstLine(lastError.getMessage()));
+      return;
+    }
+    SharedPreferences p = RelayClient.prefs(this);
+    p.edit().putInt("jobsDone", p.getInt("jobsDone", 0) + 1).apply();
+    history(videoId, r.title, "done", r.segments.size(), null);
+    status("Envoyée : " + (r.title != null ? r.title : videoId) + " (" + r.segments.size() + " segments)");
     rateLimitStrikes = 0;
   }
 
+  private void current(String videoId) {
+    RelayClient.prefs(this).edit().putString("current", videoId).apply();
+  }
+
+  /** Local list of what this device sent, newest first (max 60), shown in the app. */
+  private void history(String videoId, String title, String state, int segments, String error) {
+    SharedPreferences p = RelayClient.prefs(this);
+    try {
+      org.json.JSONArray old = new org.json.JSONArray(p.getString("history", "[]"));
+      org.json.JSONArray out = new org.json.JSONArray();
+      JSONObject e = new JSONObject();
+      e.put("videoId", videoId); e.put("title", title == null ? JSONObject.NULL : title); e.put("status", state);
+      e.put("segments", segments); e.put("at", System.currentTimeMillis());
+      if (error != null) e.put("error", error);
+      out.put(e);
+      for (int i = 0; i < old.length() && out.length() < 60; i++) out.put(old.get(i));
+      p.edit().putString("history", out.toString()).apply();
+    } catch (Exception ignored) {}
+  }
+
   private void status(String text) {
+    if (text.equals(RelayClient.prefs(this).getString("status", null))) return;
     RelayClient.prefs(this).edit().putString("status", text).apply();
     NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
     if (running && nm != null) nm.notify(NOTIFICATION_ID, notification(text));
@@ -160,6 +241,17 @@ public class RelayService extends Service {
         PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     PendingIntent stop = PendingIntent.getService(this, 1, new Intent(this, RelayService.class).setAction(ACTION_STOP),
         PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    try {
+      String pr = RelayClient.prefs(this).getString("progress", null);
+      if (pr != null) {
+        JSONObject o = new JSONObject(pr);
+        int total = o.optInt("total"), handled = o.optInt("done") + o.optInt("failed");
+        if (total > 1 && o.optInt("pending") + o.optInt("working") > 0) {
+          b.setProgress(total, handled, false);
+          b.setSubText(handled + " / " + total);
+        }
+      }
+    } catch (Exception ignored) {}
     return b.setSmallIcon(android.R.drawable.stat_notify_sync)
         .setContentTitle("CamMicGo SEO MCP")
         .setContentText(text)
