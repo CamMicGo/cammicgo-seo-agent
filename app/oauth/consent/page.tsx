@@ -9,6 +9,10 @@ function getSupabase(){
  return createClient('https://vfngxjsryklqldarkxhy.supabase.co',publicKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
 }
 type Details={client?:{name?:string;client_name?:string};scopes?:string[];redirect_uri?:string};
+const SCOPES_KEY='cmg_google_scopes';
+const KNOWN_SCOPE=/^https:\/\/www\.googleapis\.com\/auth\/[a-z.]+$/;
+/** Selection remembered from a previous visit in this browser, or null. */
+function savedScopes():string[]|null{try{const v=JSON.parse(localStorage.getItem(SCOPES_KEY)||'null');return Array.isArray(v)&&v.every(x=>typeof x==='string'&&KNOWN_SCOPE.test(x))?v:null}catch{return null}}
 export default function OAuthConsent(){
  const [id,setId]=useState('');
  const [details,setDetails]=useState<Details|null>(null);
@@ -23,6 +27,7 @@ export default function OAuthConsent(){
  const [selectedScopes,setSelectedScopes]=useState<string[]>(['https://www.googleapis.com/auth/webmasters.readonly','https://www.googleapis.com/auth/analytics.readonly','https://www.googleapis.com/auth/youtube.readonly','https://www.googleapis.com/auth/calendar.readonly']);
  const apiOptions=[{label:'Gmail',scope:'https://www.googleapis.com/auth/gmail.readonly'},{label:'Google Drive',scope:'https://www.googleapis.com/auth/drive.readonly'},{label:'Google Docs',scope:'https://www.googleapis.com/auth/documents.readonly'},{label:'Google Sheets',scope:'https://www.googleapis.com/auth/spreadsheets.readonly'},{label:'Google Tasks',scope:'https://www.googleapis.com/auth/tasks.readonly'},{label:'Google Slides',scope:'https://www.googleapis.com/auth/presentations.readonly'},{label:'Google Contacts',scope:'https://www.googleapis.com/auth/contacts.readonly'},{label:'Google Classroom',scope:'https://www.googleapis.com/auth/classroom.courses.readonly'},{label:'Google Chat',scope:'https://www.googleapis.com/auth/chat.spaces.readonly'},{label:'Apps Script',scope:'https://www.googleapis.com/auth/script.projects.readonly'},{label:'Search Console',scope:'https://www.googleapis.com/auth/webmasters.readonly'},{label:'Google Analytics 4',scope:'https://www.googleapis.com/auth/analytics.readonly'},{label:'YouTube',scope:'https://www.googleapis.com/auth/youtube.readonly'},{label:'Google Calendar',scope:'https://www.googleapis.com/auth/calendar.readonly'}];
  useEffect(()=>{
+  const remembered=savedScopes();if(remembered)setSelectedScopes(remembered);
   const authorizationId=new URLSearchParams(window.location.search).get('authorization_id')||'';
   setId(authorizationId);
   const reauth=new URLSearchParams(window.location.search).get('reauth')==='google';
@@ -31,7 +36,7 @@ export default function OAuthConsent(){
    if(!publicKey){setError('Supabase connection is not configured.');return;}
    const {data:{user}}=await getSupabase().auth.getUser();
    setLoggedIn(!!user);
-   if(user){try{const {data:{session}}=await getSupabase().auth.getSession();if(session){const status=await fetch('/api/mcp/google/status',{headers:{Authorization:'Bearer '+session.access_token},cache:'no-store'});if(status.ok){const body=await status.json() as {connected?:boolean};setGoogleConnected(body.connected===true);}}}catch{/* Google linking remains optional. */}}
+   if(user){try{const {data:{session}}=await getSupabase().auth.getSession();if(session){const status=await fetch('/api/mcp/google/status',{headers:{Authorization:'Bearer '+session.access_token},cache:'no-store'});if(status.ok){const body=await status.json() as {connected?:boolean;scopes?:string[]|null};setGoogleConnected(body.connected===true);if(!savedScopes()&&Array.isArray(body.scopes)){const granted=body.scopes.filter(x=>apiOptions.some(o=>o.scope===x));if(granted.length)setSelectedScopes(granted);}}}}catch{/* Google linking remains optional. */}}
    if(!authorizationId)return;
    const {data,error:err}=await getSupabase().auth.oauth.getAuthorizationDetails(authorizationId);
    if(err){setError(err.message);return;}
@@ -44,6 +49,7 @@ export default function OAuthConsent(){
   setBusy(false);
   setError(err?err.message:'Check your email for a secure sign-in link, then return to this page.');
  }
+ useEffect(()=>{try{localStorage.setItem(SCOPES_KEY,JSON.stringify(selectedScopes))}catch{}},[selectedScopes]);
  async function connectGoogle(){try{if(!selectedScopes.length)throw Error('Select at least one Google API');const {data}=await getSupabase().auth.getSession();if(!data.session)throw Error('Sign in first');const response=await fetch('/api/mcp/google/start',{method:'POST',headers:{Authorization:'Bearer '+data.session.access_token,'Content-Type':'application/json'},body:JSON.stringify({authorizationId:id,mode:googleMode,clientId:googleMode==='byo'?clientId:undefined,clientSecret:googleMode==='byo'?clientSecret:undefined,scopes:selectedScopes})});const result=await response.json();if(!response.ok||!result.url)throw Error(result.error||'Google OAuth failed');window.location.assign(result.url)}catch(e){setError(e instanceof Error?e.message:'Google connection failed')}}
  async function decide(approve:boolean){
   if(!id||busy)return;
@@ -68,7 +74,7 @@ export default function OAuthConsent(){
    <label>Email address<input type="email" value={email} onChange={e=>setEmail(e.target.value)} autoComplete="email" required/></label>
    <button className="primary connect-button" type="button" disabled={busy||!email.includes('@')} onClick={()=>void sendLink()}>Send sign-in link</button>
   </section>}
-  {loggedIn&&details&&<section className="connect-card" aria-label="Authorization steps" style={{display:'grid',gap:24}}>
+  {loggedIn&&(details||!id)&&<section className="connect-card" aria-label="Authorization steps" style={{display:'grid',gap:24}}>
    <div style={{display:'grid',gap:12}}>
     <h2 style={{margin:0,fontSize:'1.2rem'}}>Step 1 · Connect your Google account <span style={{fontSize:'.85rem',fontWeight:400,color:'#64748b'}}>(optional)</span></h2>
     <p style={{margin:0,color:'#64748b'}}>Choose the Google APIs you want to authorize, then connect your Google account. This permission is separate from agent authorization.</p>
@@ -83,6 +89,7 @@ export default function OAuthConsent(){
      </div>}
     </fieldset>
     <fieldset style={{border:'1px solid #e2e8f0',borderRadius:12,padding:16,display:'grid',gap:10}}><legend style={{fontWeight:700,padding:'0 6px'}}>Google APIs to authorize</legend>
+     <label style={{display:'flex',gap:10,alignItems:'center',fontWeight:700,paddingBottom:8,borderBottom:'1px solid #e2e8f0'}}><input type="checkbox" checked={apiOptions.every(o=>selectedScopes.includes(o.scope))} ref={el=>{if(el)el.indeterminate=selectedScopes.length>0&&!apiOptions.every(o=>selectedScopes.includes(o.scope))}} onChange={e=>setSelectedScopes(e.target.checked?apiOptions.map(o=>o.scope):[])}/>Select all · tout cocher</label>
      {apiOptions.map(option=><label key={option.scope} style={{display:'flex',gap:10,alignItems:'center'}}><input type="checkbox" checked={selectedScopes.includes(option.scope)} onChange={e=>setSelectedScopes(current=>e.target.checked?[...current,option.scope]:current.filter(scope=>scope!==option.scope))}/>{option.label}</label>)}
     </fieldset>
     {googleConnected&&<p role="status" style={{margin:0,color:'#166534',fontWeight:600}}>✓ Google account connected</p>}
