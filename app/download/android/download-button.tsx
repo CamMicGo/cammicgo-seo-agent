@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-const fallback = 'https://github.com/CamMicGo/cammicgo-seo-mcp/releases/download/android-test-latest/CamMicGo-SEO-MCP-Android-test.apk';
+const fallback = 'https://github.com/CamMicGo/cammicgo-seo-agent/releases/download/android-test-latest/CamMicGo-SEO-MCP-Android-test.apk';
 const filename = 'CamMicGo-SEO-MCP-Android-test.apk';
 
 export default function DownloadButton() {

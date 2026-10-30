@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 /** Stable download links for the desktop relay binaries, published by .github/workflows/desktop-relay.yml. */
-const BASE = 'https://github.com/CamMicGo/cammicgo-seo-mcp/releases/download/desktop-relay-latest/';
+const BASE = 'https://github.com/CamMicGo/cammicgo-seo-agent/releases/download/desktop-relay-latest/';
 const FILES: Record<string, string> = {
   windows: 'CamMicGo-Relay-Windows.exe',
   'macos-arm64': 'CamMicGo-Relay-macOS-arm64.zip',

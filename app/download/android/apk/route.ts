@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const releaseApi = 'https://api.github.com/repos/CamMicGo/cammicgo-seo-mcp/releases/tags/android-test-latest';
+const releaseApi = 'https://api.github.com/repos/CamMicGo/cammicgo-seo-agent/releases/tags/android-test-latest';
 const assetName = 'CamMicGo-SEO-MCP-Android-test.apk';
 
 export async function GET() {
