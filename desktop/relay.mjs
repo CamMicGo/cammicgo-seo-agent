@@ -125,7 +125,7 @@ function idleStatus() {
 }
 
 /** Network trouble (not a YouTube refusal): the job goes back to the queue instead of failing. */
-const isNetwork = e => /fetch failed|ECONN|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket|network|timed? ?out|aborted|TimeoutError/i.test(String(e?.message) + ' ' + String(e?.cause?.code || '') + ' ' + String(e?.name || ''));
+const isNetwork = e => /fetch failed|ECONN|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|getaddrinfo|unable to connect|Connection(Refused|Reset|Closed)|socket|network|timed? ?out|aborted|TimeoutError/i.test(String(e?.message) + ' ' + String(e?.cause?.code || '') + ' ' + String(e?.name || ''));
 
 function remember(entry) {
   cfg.history = [{ ...entry, at: Date.now() }, ...(cfg.history || [])].slice(0, 60);
