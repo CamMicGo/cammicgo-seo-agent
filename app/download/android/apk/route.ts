@@ -16,10 +16,10 @@ export async function GET() {
       return NextResponse.json({ error: 'APK not published yet', releaseStatus: release.status }, { status: 503 });
     }
     const data = await release.json();
-    const asset = (data.assets as Array<{ name: string; url: string }> | undefined)?.find(a => a.name === assetName);
+    const asset = (data.assets as Array<{ name: string; browser_download_url: string; size: number }> | undefined)?.find(a => a.name === assetName);
     if (!asset) return NextResponse.json({ error: 'APK asset not found in release' }, { status: 503 });
 
-    const upstream = await fetch(asset.url, {
+    const upstream = await fetch(asset.browser_download_url, {
       headers: {
         Accept: 'application/octet-stream',
         'User-Agent': 'CamMicGo-SEO-MCP',
@@ -27,9 +27,11 @@ export async function GET() {
       cache: 'no-store',
       redirect: 'follow',
     });
-    if (!upstream.ok || !upstream.body) {
+    if (!upstream.ok || !upstream.body || !asset.size || asset.size < 10000 || !upstream.url.startsWith('https://')) {
       return NextResponse.json({ error: 'APK download temporarily unavailable', upstreamStatus: upstream.status }, { status: 502 });
     }
+    const contentType = upstream.headers.get('content-type') || '';
+    if (contentType.includes('application/json') || contentType.includes('text/html')) return NextResponse.json({ error: 'GitHub returned an error document instead of APK' }, { status: 502 });
     const headers = new Headers({
       'Content-Type': 'application/vnd.android.package-archive',
       'Content-Disposition': 'attachment; filename="CamMicGo-SEO-MCP-Android-test.apk"',

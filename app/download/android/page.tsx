@@ -14,7 +14,7 @@ export default function AndroidDownloadPage() {
           <img src="https://avatars.githubusercontent.com/u/322584442?v=4" alt="Logo CamMicGo" width="46" height="46" />
           <span>CamMicGo <b>SEO MCP</b></span>
         </a>
-        <a href="/" style={{ color: '#285bd9', fontWeight: 700 }}>← Accueil</a>
+        <nav><a href="/">Accueil</a><a href="/#google-apis">Google APIs</a><a href="/setup/google-cloud">Setup guide</a><a href="/setup/local">Local MCP</a><a href="/connect">Connect Google</a><a href="https://github.com/CamMicGo/cammicgo-seo-agent" target="_blank" rel="noreferrer">GitHub ↗</a></nav>
       </header>
       <section className="hero" style={{ paddingTop: 60, paddingBottom: 55 }}>
         <span className="eyebrow">🤖 ANDROID · APK EXPÉRIMENTALE</span>
@@ -34,6 +34,7 @@ export default function AndroidDownloadPage() {
           <p>Installez uniquement un APK provenant d’une source en laquelle vous avez confiance.</p>
         </div>
       </section>
+      <footer><span>Built by <a href="https://www.cammicgo.com">CamMicGo</a></span><span><a href="/">Accueil</a> · <a href="/setup/local">Local MCP</a> · <a href="https://github.com/CamMicGo/cammicgo-seo-agent">Source code</a></span></footer>
     </main>
   );
 }
