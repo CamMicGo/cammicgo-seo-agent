@@ -15,14 +15,14 @@ export async function POST(req:NextRequest){
  if(!clientId||!clientSecret)return NextResponse.json({error:'Google OAuth credentials missing'},{status:400});
  if(byo&&(!clientId.endsWith('.apps.googleusercontent.com')||clientId.length>250||clientSecret.length>700))return NextResponse.json({error:'Invalid Google OAuth client credentials'},{status:400});
  const allowedScopes=["https://www.googleapis.com/auth/webmasters.readonly","https://www.googleapis.com/auth/analytics.readonly","https://www.googleapis.com/auth/youtube.readonly","https://www.googleapis.com/auth/calendar.readonly","https://www.googleapis.com/auth/gmail.readonly","https://www.googleapis.com/auth/drive.readonly","https://www.googleapis.com/auth/documents.readonly","https://www.googleapis.com/auth/spreadsheets.readonly","https://www.googleapis.com/auth/presentations.readonly","https://www.googleapis.com/auth/tasks.readonly","https://www.googleapis.com/auth/contacts.readonly","https://www.googleapis.com/auth/classroom.courses.readonly","https://www.googleapis.com/auth/chat.spaces.readonly","https://www.googleapis.com/auth/script.projects.readonly"];
- const scopes=payload.scopes?.length?payload.scopes:allowedScopes.slice(0,2);
+ const scopes=payload.scopes?.length?payload.scopes:['https://www.googleapis.com/auth/webmasters.readonly','https://www.googleapis.com/auth/analytics.readonly','https://www.googleapis.com/auth/youtube.readonly','https://www.googleapis.com/auth/calendar.readonly'];
  if(!Array.isArray(scopes)||scopes.length>allowedScopes.length||scopes.some(scope=>!allowedScopes.includes(scope)))return NextResponse.json({error:'Unsupported Google API scope'},{status:400});
  const state=randomBytes(24).toString('hex'),verifier=randomBytes(32).toString('base64url');
  const credentials:Credentials={clientId,clientSecret,mode:byo?'byo':'shared'};
  const pending:Pending&{mcpUserId:string;authorizationId?:string}={state,verifier,credentials,issuedAt:Date.now(),mcpUserId:user.id,authorizationId:payload.authorizationId};
  const challenge=createHash('sha256').update(verifier).digest('base64url');
  const url=new URL('https://accounts.google.com/o/oauth2/v2/auth');
- url.search=new URLSearchParams({client_id:clientId,redirect_uri:googleOAuthCallback(),response_type:'code',scope:scopes.join(' '),access_type:'offline',prompt:'consent',state,code_challenge:challenge,code_challenge_method:'S256'}).toString();
+ url.search=new URLSearchParams({client_id:clientId,redirect_uri:googleOAuthCallback(),response_type:'code',scope:scopes.join(' '),access_type:'offline',include_granted_scopes:'true',prompt:'consent',state,code_challenge:challenge,code_challenge_method:'S256'}).toString();
  const result=NextResponse.json({url:url.toString()});
  result.cookies.set(STATE_COOKIE,encrypt(pending),{...cookieOptions,maxAge:600});
  return result;

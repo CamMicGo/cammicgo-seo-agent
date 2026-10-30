@@ -10,6 +10,19 @@ const PAIRING_ALPHABET='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 export const DEVICE_ONLINE_MS=90_000;
 export const MAX_RESULT_SEGMENTS=4000;
 
+/** Compact, token-friendly rendering: one "[mm:ss] text" line per segment. */
+export function transcriptText(segments:Array<{start:number;text:string}>){
+ return segments.map(s=>{const t=Math.floor(s.start),h=Math.floor(t/3600),m=Math.floor(t%3600/60),sec=t%60;const p=(n:number)=>String(n).padStart(2,'0');return '['+(h?h+':'+p(m):p(m))+':'+p(sec)+'] '+s.text}).join('\n');
+}
+/** Shapes a stored transcript for the MCP: compact text by default, raw segments on request. */
+export function formatTranscript(result:unknown,format:'text'|'segments'){
+ if(!result||typeof result!=='object')return result;
+ const r=result as {segments?:Array<{start:number;duration:number;text:string}>}&Record<string,unknown>;
+ if(format==='segments'||!Array.isArray(r.segments))return r;
+ const {segments,...rest}=r;
+ return {...rest,segmentCount:segments.length,durationCovered:segments.length?transcriptText([segments[segments.length-1]]).slice(1,-1).split(']')[0]:null,transcript:transcriptText(segments)};
+}
+
 function headers(extra?:Record<string,string>){const key=process.env.SUPABASE_SECRET_KEY;if(!key)throw Error('SUPABASE_SECRET_KEY missing');return {apikey:key,Authorization:'Bearer '+key,'Content-Type':'application/json',...extra};}
 async function sb<T=unknown>(path:string,init?:RequestInit&{prefer?:string}):Promise<T>{
  const r=await fetch(url+path,{...init,headers:headers(init?.prefer?{Prefer:init.prefer}:undefined),cache:'no-store',signal:AbortSignal.timeout(8000)});
@@ -61,8 +74,10 @@ export const isOnline=(d:Device)=>!!d.last_seen_at&&Date.now()-Date.parse(d.last
 // ---------- jobs ----------
 /** A transcript already fetched by any device in the last 30 days (public captions). */
 export async function cachedTranscript(videoId:string,language:string){
+ if(language==='original')return null; // resolved per request; never reuse an unresolved guess
  const since=new Date(Date.now()-30*86_400_000).toISOString();
- const rows=await sb<Array<{result:unknown}>>('/rest/v1/cmg_transcript_jobs?video_id=eq.'+videoId+'&language=eq.'+encodeURIComponent(language)+'&status=eq.done&completed_at=gt.'+encodeURIComponent(since)+'&select=result&order=completed_at.desc&limit=1');
+ const base=language.split('-')[0];
+ const rows=await sb<Array<{result:unknown}>>('/rest/v1/cmg_transcript_jobs?video_id=eq.'+videoId+'&status=eq.done&completed_at=gt.'+encodeURIComponent(since)+'&or='+encodeURIComponent('(result->>language.eq.'+language+',result->>language.like.'+base+'-*)')+'&select=result&order=completed_at.desc&limit=1');
  return rows[0]?.result??null;
 }
 export async function createJob(userId:string,videoId:string,language:string){

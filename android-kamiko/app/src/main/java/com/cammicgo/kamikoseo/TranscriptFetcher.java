@@ -81,7 +81,7 @@ public final class TranscriptFetcher {
     try {
       player = innertubePlayer(videoId, apiKey);
       JSONArray tracks = tracksOf(player);
-      if (tracks != null && tracks.length() > 0) return download(videoId, tracks, lang, "innertube-android");
+      if (tracks != null && tracks.length() > 0) return download(videoId, tracks, lang, "innertube-android", originalTrackIndex(player));
       diagnostics.append("innertube-android : ").append(statusOf(player)).append('\n');
     } catch (IOException e) {
       diagnostics.append("innertube-android : ").append(e.getMessage()).append('\n');
@@ -94,7 +94,7 @@ public final class TranscriptFetcher {
         if (json != null) {
           JSONObject webPlayer = new JSONObject(json);
           JSONArray tracks = tracksOf(webPlayer);
-          if (tracks != null && tracks.length() > 0) return download(videoId, tracks, lang, "watch-page");
+          if (tracks != null && tracks.length() > 0) return download(videoId, tracks, lang, "watch-page", originalTrackIndex(webPlayer));
           diagnostics.append("watch-page : ").append(statusOf(webPlayer)).append('\n');
         } else if (html.contains("consent.youtube.com")) {
           diagnostics.append("watch-page : page de consentement YouTube\n");
@@ -237,8 +237,8 @@ public final class TranscriptFetcher {
 
   // ---------- track selection + download ----------
 
-  static Result download(String videoId, JSONArray tracks, String lang, String method) throws IOException {
-    JSONObject chosen = pickTrack(tracks, lang);
+  static Result download(String videoId, JSONArray tracks, String lang, String method, int originalIndex) throws IOException {
+    JSONObject chosen = pickTrack(tracks, lang, originalIndex);
     String tlang = null;
     // Requested language missing: ask YouTube to translate the best source track into it.
     if (!"original".equals(lang) && !matches(chosen, lang) && chosen.optBoolean("isTranslatable", false)) tlang = lang;
@@ -284,7 +284,31 @@ public final class TranscriptFetcher {
    * A language code: that language (manual, then auto-generated). If absent, the best source to
    * translate from: a human-made track first, then the original-audio track, then the first one.
    */
-  static JSONObject pickTrack(JSONArray tracks, String lang) {
+  /**
+   * Index of the caption track that matches the video's original audio: the default caption
+   * track of the default audio track, else a true speech-recognition track (vssId "a.xx").
+   * Returns -1 when unknown.
+   */
+  static int originalTrackIndex(JSONObject player) {
+    if (player == null) return -1;
+    JSONObject captions = player.optJSONObject("captions");
+    JSONObject renderer = captions == null ? null : captions.optJSONObject("playerCaptionsTracklistRenderer");
+    if (renderer == null) return -1;
+    JSONArray audio = renderer.optJSONArray("audioTracks");
+    if (audio != null && audio.length() > 0) {
+      JSONObject a = audio.optJSONObject(Math.max(0, Math.min(audio.length() - 1, renderer.optInt("defaultAudioTrackIndex", 0))));
+      if (a != null && a.has("defaultCaptionTrackIndex")) return a.optInt("defaultCaptionTrackIndex", -1);
+    }
+    JSONArray tracks = renderer.optJSONArray("captionTracks");
+    if (tracks != null) for (int i = 0; i < tracks.length(); i++) {
+      JSONObject t = tracks.optJSONObject(i);
+      if (t != null && "asr".equals(t.optString("kind")) && t.optString("vssId").startsWith("a.")) return i;
+    }
+    return -1;
+  }
+
+  static JSONObject pickTrack(JSONArray tracks, String lang, int originalIndex) {
+    JSONObject original = originalIndex >= 0 && originalIndex < tracks.length() ? tracks.optJSONObject(originalIndex) : null;
     JSONObject manualExact = null, autoExact = null, manualPrefix = null, autoPrefix = null, asr = null, manual = null;
     String base = lang.split("-")[0];
     for (int i = 0; i < tracks.length(); i++) {
@@ -297,12 +321,13 @@ public final class TranscriptFetcher {
       if (code.equals(lang)) { if (auto) { if (autoExact == null) autoExact = t; } else if (manualExact == null) manualExact = t; }
       else if (code.split("-")[0].equals(base)) { if (auto) { if (autoPrefix == null) autoPrefix = t; } else if (manualPrefix == null) manualPrefix = t; }
     }
-    if ("original".equals(lang)) return asr != null ? asr : tracks.optJSONObject(0);
+    if ("original".equals(lang)) return original != null ? original : manual != null ? manual : asr != null ? asr : tracks.optJSONObject(0);
     if (manualExact != null) return manualExact;
     if (autoExact != null) return autoExact;
     if (manualPrefix != null) return manualPrefix;
     if (autoPrefix != null) return autoPrefix;
     if (manual != null && manual.optBoolean("isTranslatable", false)) return manual;
+    if (original != null && original.optBoolean("isTranslatable", false)) return original;
     if (asr != null) return asr;
     return tracks.optJSONObject(0);
   }
