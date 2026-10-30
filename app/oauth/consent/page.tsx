@@ -99,7 +99,7 @@ export default function OAuthConsent(){
     </button>
    </div>
    {id?<div style={{borderTop:'1px solid #e2e8f0',paddingTop:20,display:'grid',gap:12}}>
-    <h2 style={{margin:0,fontSize:'1.2rem'}}>Step 2 · Authorize {details.client?.name||details.client?.client_name||'your AI agent'}</h2>
+    <h2 style={{margin:0,fontSize:'1.2rem'}}>Step 2 · Authorize {details?.client?.name||details?.client?.client_name||'your AI agent'}</h2>
     <p style={{margin:0,color:'#64748b'}}>Grant this agent access to your CamMicGo account. You can authorize the agent without connecting Google, but Google reports will remain unavailable.</p>
     <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:12}}>
      <button className="primary connect-button" type="button" disabled={busy} onClick={()=>void decide(true)} style={{minHeight:48,borderRadius:12,padding:'12px 22px',fontWeight:700}}>✓ Authorize agent</button>
