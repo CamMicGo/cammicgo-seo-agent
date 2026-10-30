@@ -20,10 +20,6 @@ const tools = [
 export default function McpConnect() {
   return (
     <div className="site">
-      <header className="header">
-        <a className="brand" href="/"><img src={LOGO} alt="CamMicGo logo" width="46" height="46" /><span>CamMicGo <b>SEO MCP</b></span></a>
-        <a href="/" style={{ color: '#285bd9', fontWeight: 700 }}>← Home</a>
-      </header>
 
       <section className="hero" style={{ paddingTop: 56, paddingBottom: 40 }}>
         <span className="eyebrow">REMOTE MCP · STEP BY STEP</span>

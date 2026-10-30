@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+/* Accessibility reader shared with cammicgo.com */
+:root{--status-good:#16a34a;--status-warning:#f59e0b;--status-critical:#dc2626;--a11y-focus:#1d4ed8;--a11y-focus-outer:#facc15;--a11y-reader-bar-height:0px}
+/* Accessibility: Okabe Ito Mode. The three semantic state colors below are
+   selected from the wider Okabe–Ito palette and activate only when requested. */
+html[data-colorblind="true"] {
+  --status-good: #0072B2;
+  --status-warning: #F0E442;
+  --status-critical: #D55E00;
+}
+html[data-colorblind="true"] [class*="text-emerald"],
+html[data-colorblind="true"] [class*="text-lime"] { color: #0072B2 !important; }
+html[data-colorblind="true"] [class*="bg-emerald"],
+html[data-colorblind="true"] [class*="bg-lime"] { background-color: #0072B2 !important; }
+html[data-colorblind="true"] [class*="text-yellow"],
+html[data-colorblind="true"] [class*="text-orange"] { color: #9a8700 !important; }
+html[data-colorblind="true"] [class*="bg-yellow"],
+html[data-colorblind="true"] [class*="bg-orange"] { background-color: #F0E442 !important; }
+html[data-colorblind="true"] [class*="text-red"],
+html[data-colorblind="true"] [class*="text-rose"] { color: #D55E00 !important; }
+html[data-colorblind="true"] [class*="bg-red"],
+html[data-colorblind="true"] [class*="bg-rose"] { background-color: #D55E00 !important; }
+html[data-colorblind="true"] .okabe-accent-bg { background-color: #0072B2 !important; }
+html[data-colorblind="true"] .okabe-accent-border { border-color: #0072B2 !important; }
+html[data-colorblind="true"] .okabe-accent-text { color: #0072B2 !important; }
+html[data-colorblind="true"] .a11y-status-good {
+  color: #fff;
+  background-color: #0072B2;
+  background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.18) 0 3px, transparent 3px 8px);
+}
+html[data-colorblind="true"] .a11y-status-warning {
+  color: #161616;
+  background-color: #F0E442;
+  background-image: repeating-linear-gradient(0deg, rgba(0,0,0,.12) 0 2px, transparent 2px 8px);
+}
+html[data-colorblind="true"] .a11y-status-critical {
+  color: #fff;
+  background-color: #D55E00;
+  background-image: repeating-linear-gradient(45deg, rgba(255,255,255,.2) 0 2px, transparent 2px 7px);
+}
+
+/* Strong focus treatment for keyboard users. */
+html[data-enhanced-focus="true"] :where(a,button,input,select,textarea,[tabindex]):focus-visible {
+  outline: 4px solid var(--a11y-focus) !important;
+  outline-offset: 3px !important;
+  box-shadow: 0 0 0 7px color-mix(in srgb, var(--a11y-focus-outer) 75%, transparent), 0 0 22px rgba(29,78,216,.35) !important;
+  border-radius: .75rem;
+}
+html[data-enhanced-focus="true"] :where(main section,main article,.card,[data-a11y-region]):focus-within {
+  outline: 3px solid color-mix(in srgb, var(--a11y-focus) 75%, transparent);
+  outline-offset: 4px;
+}
+
+/* Read-aloud focus: the exact section/card currently spoken is visibly framed. */
+[data-a11y-reading="true"] {
+  position: relative;
+  outline: 4px solid #2563eb !important;
+  outline-offset: 5px !important;
+  box-shadow: 0 0 0 8px rgba(37,99,235,.16), 0 0 30px rgba(37,99,235,.28) !important;
+  border-radius: .9rem;
+  z-index: 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,*::before,*::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}

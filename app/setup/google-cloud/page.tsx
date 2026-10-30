@@ -14,7 +14,7 @@ const APIs=[
 ] as const;
 export default function SetupGoogle(){
 return <main className="setup-guide">
- <header className="setup-top"><a className="brand" href="/"><img src="https://avatars.githubusercontent.com/u/322584442?v=4" width="42" height="42" alt="CamMicGo"/><span>CamMicGo <b>SEO MCP</b></span></a><a href="/connect">Connect Google ↗</a></header>
+ 
  <span className="kicker">STEP-BY-STEP GUIDE</span><h1>Use your own Google Cloud project</h1>
  <p className="lead">Connect the web dashboard or run a development instance on your own computer, using your own Google OAuth client and the applicable Google API project quotas. You do not have to generate or paste access tokens manually.</p>
  <div className="setup-alert"><strong>Know the difference:</strong> The hosted dashboard and local Next.js browser dashboard support Google OAuth for Search Console and GA4. A local MCP <code>stdio</code> server and guided installer are available in the repository. For YouTube, use your own Google Cloud quota; local captions require yt-dlp.</div>

@@ -1,7 +1,6 @@
 'use client';
 import {useEffect,useState,type ReactNode} from 'react';
 import {useT} from '../../lang-provider';
-import SiteHeader from '../../site-header';
 import {localCopy,type LocalCopy} from '@/lib/copy/local';
 import {commonCopy} from '@/lib/copy/common';
 
@@ -53,7 +52,6 @@ function Terminal({os,lines,dir}:{os:Os;lines:Line[];dir?:boolean}){
 export function LocalChooser(){
  const t=useT(localCopy);
  return <div className="site">
-  <SiteHeader active="local"/>
   <section className="hero lg-hero">
    <span className="eyebrow">{t.kicker}</span>
    <h1>{t.title}</h1>
@@ -123,7 +121,6 @@ export function LocalGuide({os}:{os:Os}){
  const [title,text]=t.steps[step];
  const name=os==='windows'?'Windows':os==='macos'?'macOS':'Linux';
  return <div className="site">
-  <SiteHeader active="local"/>
   <main className="lg-guide" id="lg-top">
    <a className="lg-back" href="/setup/local">← {c.ui.menu}</a>
    <div className="lg-guide-head"><span className="lg-os-icon"><OsIcon os={os}/></span><div><span className="kicker">{t.kicker}</span><h1>{name}</h1><p>{t.os[os]}</p></div></div>

@@ -10,13 +10,6 @@ export const metadata: Metadata = {
 export default function AndroidDownloadPage() {
   return (
     <main className="site" style={{ minHeight: '100vh' }}>
-      <header className="header">
-        <a className="brand" href="/">
-          <img src="https://avatars.githubusercontent.com/u/322584442?v=4" alt="Logo CamMicGo" width="46" height="46" />
-          <span>CamMicGo <b>SEO MCP</b></span>
-        </a>
-        <a href="/" style={{ color: '#285bd9', fontWeight: 700 }}>← Accueil</a>
-      </header>
       <section className="hero" style={{ paddingTop: 60, paddingBottom: 55 }}>
         <span className="eyebrow">🤖 ANDROID · APK EXPÉRIMENTALE</span>
         <div className="hero-logo">

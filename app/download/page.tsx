@@ -20,13 +20,6 @@ const platforms = [
 export default function DownloadPage() {
   return (
     <div className="site">
-      <header className="header">
-        <a className="brand" href="/">
-          <img src={LOGO} alt="CamMicGo logo" width="46" height="46" />
-          <span>CamMicGo <b>SEO MCP</b></span>
-        </a>
-        <a href="/" style={{ color: '#285bd9', fontWeight: 700 }}>← Accueil</a>
-      </header>
 
       <section className="hero" style={{ paddingTop: 60, paddingBottom: 50 }}>
         <span className="eyebrow">TÉLÉCHARGEMENT · APPLICATION ANDROID</span>

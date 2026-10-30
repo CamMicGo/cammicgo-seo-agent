@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import SiteHeader from '../../site-header';
 
 export const metadata: Metadata = {
   title: 'Application ordinateur (Windows, macOS, Linux) | CamMicGo SEO MCP',
@@ -33,7 +32,6 @@ const OS = [
 export default function DesktopDownloadPage() {
   return (
     <main className="site" style={{ minHeight: '100vh' }}>
-      <SiteHeader active="android" />
       <section className="hero" style={{ paddingTop: 54, paddingBottom: 30 }}>
         <span className="eyebrow">ORDINATEUR · RELAIS POUR LE MCP DISTANT</span>
         <div className="dk-logos" aria-hidden="true">
