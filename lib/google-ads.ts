@@ -9,7 +9,13 @@ export const ADS_VERSION=process.env.GOOGLE_ADS_API_VERSION||'v25';
 export const ADS_BASE='https://googleads.googleapis.com/'+ADS_VERSION;
 export const ADS_SCOPE='https://www.googleapis.com/auth/adwords';
 
-export const GEO:Record<string,number>={FR:2250,BE:2056,CH:2756,LU:2442,CA:2124,US:2840,GB:2826,DE:2276,ES:2724,IT:2380,NL:2528,PT:2620,MA:2504,DZ:2012,TN:2788,JP:2392,KR:2410,AU:2036,IE:2372,AT:2040};
+/** ISO 3166-1 numeric codes: a country's Google Ads geo target constant is 2000 + this code (France 250 → 2250). */
+const ISO_NUMERIC:Record<string,number>={FR:250,BE:56,CH:756,LU:442,MC:492,CA:124,US:840,GB:826,IE:372,DE:276,AT:40,NL:528,ES:724,PT:620,IT:380,
+ SE:752,NO:578,DK:208,FI:246,PL:616,CZ:203,SK:703,HU:348,RO:642,BG:100,GR:300,HR:191,SI:705,EE:233,LV:428,LT:440,CY:196,MT:470,IS:352,UA:804,TR:792,
+ MA:504,DZ:12,TN:788,SN:686,CI:384,CM:120,MG:450,EG:818,ZA:710,NG:566,KE:404,IL:376,AE:784,SA:682,QA:634,JO:400,LB:422,
+ MX:484,CO:170,AR:32,CL:152,PE:604,EC:218,UY:858,PY:600,BO:68,VE:862,CR:188,PA:591,GT:320,HN:340,SV:222,NI:558,DO:214,PR:630,BR:76,
+ JP:392,KR:410,TW:158,HK:344,SG:702,TH:764,VN:704,ID:360,MY:458,PH:608,IN:356,PK:586,BD:50,AU:36,NZ:554};
+export const GEO:Record<string,number>=Object.fromEntries(Object.entries(ISO_NUMERIC).map(([k,v])=>[k,2000+v]));
 export const LANG:Record<string,number>={en:1000,de:1001,fr:1002,es:1003,it:1004,ja:1005,nl:1010,ko:1012,pt:1014,'zh-CN':1017,ar:1019,ru:1031};
 
 export const cleanCid=(v:string)=>v.replace(/[^0-9]/g,'');
@@ -54,7 +60,7 @@ export function rowsOf(body:unknown){
 }
 
 export type CampaignInput={customerId:string;loginCustomerId?:string;name:string;finalUrl:string;totalBudget:number;startDate:string;endDate:string;
- keywords:Array<{text:string;matchType:'EXACT'|'PHRASE'|'BROAD'}>;headlines:string[];descriptions:string[];path1?:string;path2?:string;
+ keywords:Array<{text:string;matchType:'EXACT'|'PHRASE'|'BROAD'}>;negativeKeywords?:Array<{text:string;matchType:'EXACT'|'PHRASE'|'BROAD'}>;headlines:string[];descriptions:string[];path1?:string;path2?:string;
  countries:string[];languages:string[];maxCpc?:number};
 
 /** Validates the request and returns the period length, or an error message. */
@@ -73,6 +79,7 @@ export function checkCampaign(c:CampaignInput,today=new Date()){
  if(c.headlines.length<3||c.headlines.length>15||c.headlines.some(h=>!h.trim()||h.length>30))return {error:'Provide 3 to 15 headlines of at most 30 characters.'};
  if(c.descriptions.length<2||c.descriptions.length>4||c.descriptions.some(h=>!h.trim()||h.length>90))return {error:'Provide 2 to 4 descriptions of at most 90 characters.'};
  if(!c.keywords.length||c.keywords.length>50||c.keywords.some(k=>!k.text.trim()||k.text.length>80))return {error:'Provide 1 to 50 keywords (80 characters max).'};
+ if((c.negativeKeywords?.length??0)>50||c.negativeKeywords?.some(k=>!k.text.trim()||k.text.length>80))return {error:'Provide at most 50 negative keywords (80 characters max).'};
  if(c.path1&&c.path1.length>15||c.path2&&c.path2.length>15)return {error:'path1/path2: 15 characters max.'};
  const badGeo=c.countries.filter(x=>!GEO[x]);if(!c.countries.length||badGeo.length)return {error:'Unsupported countries: '+badGeo.join(', ')+'. Supported: '+Object.keys(GEO).join(', ')};
  const badLang=c.languages.filter(x=>!LANG[x]);if(!c.languages.length||badLang.length)return {error:'Unsupported languages: '+badLang.join(', ')+'. Supported: '+Object.keys(LANG).join(', ')};
@@ -93,6 +100,7 @@ export function campaignOperations(c:CampaignInput){
    containsEuPoliticalAdvertising:'DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING'}}},
   ...c.countries.map(x=>({campaignCriterionOperation:{create:{campaign,location:{geoTargetConstant:'geoTargetConstants/'+GEO[x]}}}})),
   ...c.languages.map(x=>({campaignCriterionOperation:{create:{campaign,language:{languageConstant:'languageConstants/'+LANG[x]}}}})),
+  ...(c.negativeKeywords??[]).map(k=>({campaignCriterionOperation:{create:{campaign,negative:true,keyword:{text:k.text.trim(),matchType:k.matchType}}}})),
   {adGroupOperation:{create:{resourceName:adGroup,name:c.name+' · groupe 1',campaign,status:'ENABLED',type:'SEARCH_STANDARD'}}},
   ...c.keywords.map(k=>({adGroupCriterionOperation:{create:{adGroup,status:'ENABLED',keyword:{text:k.text.trim(),matchType:k.matchType}}}})),
   {adGroupAdOperation:{create:{adGroup,status:'ENABLED',ad:{finalUrls:[c.finalUrl],responsiveSearchAd:{headlines:c.headlines.map(text=>({text})),descriptions:c.descriptions.map(text=>({text})),...(c.path1?{path1:c.path1}:{}),...(c.path2?{path2:c.path2}:{})}}}}},

@@ -463,6 +463,16 @@ Remote and local MCP tools: `science_search`, `science_latest`, `science_paper`,
 - **Local MCP:** put `SEMANTIC_SCHOLAR_API_KEY`, `OPENALEX_API_KEY` and `NCBI_API_KEY` in `.env.local`; they stay on your computer. `npm run local:doctor` shows which keys are set. The science tools do not need Google sign-in.
 - `lib/science.mjs` is generated from `lib/science.ts` for the local server: run `npm run build:science` after editing (`npm test` fails if it is stale). The GitHub workflow *Science sources live check* queries the real APIs and posts the results as a commit comment.
 
+### Search Console, GA4 and Google Ads tools (November 2026)
+
+Read-only, existing permissions (`webmasters.readonly`, `analytics.readonly`):
+
+- `search_console_report`: queries, pages, countries, devices, dates or search appearance; web, image, video, news, **Discover** and **Google News**; AND filters (contains, equals, regex…); up to 25,000 rows per call with `startRow` pagination; optional fresh data.
+- `search_console_changes`: what moved between a period and the previous one (click gains and losses, new and lost queries or pages, CTR drops, position gains and losses), computed on the server so assistants do not read large tables.
+- `search_console_inspect_url` (index status, last crawl, robots.txt, Google vs declared canonical, sitemaps, rich results; up to 5 URLs per call) and `search_console_sitemaps`.
+- `ga4_report`: any GA4 dimensions and metrics (channels, source/medium, landing pages, events, key events, engagement…), filters, sorting, pagination and comparison with the previous period; `ga4_realtime`: active users in the last 30 minutes.
+- `ads_create_paused_campaign` now accepts campaign-level negative keywords and about 90 countries (2000 + ISO numeric geo targets).
+
 ### YouTube statistics of your own channels (November 2026)
 
 Read-only tools on the remote MCP, using the **YouTube Analytics API** (`yt-analytics.readonly`, box "YouTube Analytics" on `/account` or the consent page) for channels owned by the connected Google account:
