@@ -4,6 +4,7 @@ import {createClient} from '@supabase/supabase-js';
 import {useT} from '../../lang-provider';
 import {consentCopy} from '@/lib/copy/consent';
 import {accountCopy} from '@/lib/copy/account';
+import {consentSteps} from '@/lib/google-scopes';
 
 const publicKey=process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 // Do not instantiate Supabase at module scope: Next.js prerenders client pages during builds.
@@ -117,6 +118,7 @@ export default function OAuthConsent(){
     <fieldset style={{border:'1px solid #e2e8f0',borderRadius:12,padding:16,display:'grid',gap:10}}><legend style={{fontWeight:700,padding:'0 6px'}}>{t.apis}</legend>
      <label style={{display:'flex',gap:10,alignItems:'center',fontWeight:700,paddingBottom:8,borderBottom:'1px solid #e2e8f0'}}><input type="checkbox" checked={safeAll.every(x=>selectedScopes.includes(x))} ref={el=>{if(el)el.indeterminate=selectedScopes.length>0&&!safeAll.every(x=>selectedScopes.includes(x))}} onChange={e=>setSelectedScopes(e.target.checked?[...safeAll,...selectedScopes.filter(x=>!safeAll.includes(x))]:[])}/>{t.selectAll}</label>
      {apiOptions.map(option=><label key={option.scope} style={{display:'flex',gap:10,alignItems:'center'}}><input type="checkbox" checked={selectedScopes.includes(option.scope)} onChange={e=>setSelectedScopes(current=>e.target.checked?[...current,option.scope]:current.filter(scope=>scope!==option.scope))}/>{option.label}</label>)}
+     {consentSteps(selectedScopes)>1&&<p role="note" style={{margin:0,color:'#64748b',fontSize:13}}>ℹ️ {t.twoScreens}</p>}
     </fieldset>
     {googleConnected&&<p role="status" style={{margin:0,color:'#166534',fontWeight:600}}>{t.connected}</p>}
     <button type="button" disabled={busy||!selectedScopes.length||(googleMode==='byo'&&!savedClient&&(!clientId||!clientSecret))} onClick={()=>void connectGoogle()} style={{display:'inline-flex',alignItems:'center',justifyContent:'center',gap:12,width:'fit-content',minHeight:48,padding:'10px 20px',borderRadius:12,border:'1px solid #d1d5db',background:'#fff',color:'#202124',fontSize:'1rem',fontWeight:600,cursor:busy?'wait':'pointer',boxShadow:'0 2px 8px rgba(15,23,42,.06)'}}>

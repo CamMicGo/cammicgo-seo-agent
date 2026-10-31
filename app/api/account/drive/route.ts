@@ -1,6 +1,6 @@
 import {NextRequest,NextResponse} from 'next/server';
 import {verifySupabaseMcpUser} from '@/lib/supabase-mcp-auth';
-import {readGoogle,consumeQuota} from '@/lib/mcp-google-store';
+import {readGoogle,readDriveWrite,consumeQuota} from '@/lib/mcp-google-store';
 import {isAdmin} from '@/lib/account';
 import {authorizedAccessToken,googleFetch} from '@/lib/google-session';
 import {computeQuota,driveError,DRIVE_API,DRIVE_READ_SCOPE,DRIVE_FULL_SCOPE,DRIVE_FILE_SCOPE,type StorageQuota} from '@/lib/google-drive';
@@ -13,10 +13,15 @@ export async function GET(req:NextRequest){
  if(!u)return NextResponse.json({error:'unauthorized'},{status:401,headers:noStore});
  try{
   const admin=await isAdmin(u.id);
-  const session=await readGoogle(u.id);
-  if(!session||!(admin||session.credentials.mode==='byo'))return NextResponse.json({connected:false,reason:'google_not_connected'},{headers:noStore});
-  const scopes=session.scopes??[];
-  const driveScopes={read:scopes.includes(DRIVE_READ_SCOPE)||scopes.includes(DRIVE_FULL_SCOPE),write:scopes.includes(DRIVE_FILE_SCOPE)||scopes.includes(DRIVE_FULL_SCOPE)};
+  const allowed=<T extends {credentials:{mode:string}}>(s:T|null)=>s&&(admin||s.credentials.mode==='byo')?s:null;
+  const main=allowed(await readGoogle(u.id));
+  // Drive writing has its own Google grant (Google refuses drive.file together with YouTube scopes).
+  const write=allowed(await readDriveWrite(u.id).catch(()=>null));
+  if(!main&&!write)return NextResponse.json({connected:false,reason:'google_not_connected'},{headers:noStore});
+  const has=(sc:string[]|undefined,...want:string[])=>!!sc&&want.some(w=>sc.includes(w));
+  const scopes=[...(main?.scopes??[]),...(write?.scopes??[])];
+  const driveScopes={read:has(scopes,DRIVE_READ_SCOPE,DRIVE_FULL_SCOPE),write:has(scopes,DRIVE_FILE_SCOPE,DRIVE_FULL_SCOPE)};
+  const session=main&&(!main.scopes||has(main.scopes,DRIVE_READ_SCOPE,DRIVE_FULL_SCOPE,DRIVE_FILE_SCOPE))?main:write??main!;
   if(session.scopes&&!driveScopes.read&&!driveScopes.write)return NextResponse.json({connected:true,drive:false,reason:'missing_drive_permission',driveScopes},{headers:noStore});
   if(!await consumeQuota(u.id,2000))return NextResponse.json({connected:true,drive:true,reason:'quota_exceeded'},{status:429,headers:noStore});
   const {token}=await authorizedAccessToken(session);

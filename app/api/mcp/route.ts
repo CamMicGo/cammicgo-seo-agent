@@ -68,7 +68,7 @@ async function handler(req:NextRequest){
      return {isError:true,content:[{type:'text',text:JSON.stringify({error:'tool_failed',tool:name,message:msg,instructions:'Tell the user briefly that this source failed and offer to retry.'})}]};}
     finally{logCall(name,performance.now()-t0,ok);}
    });
-   server.registerTool('service_info',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Authenticated MCP status',description:'Check connected Google account.',inputSchema:z.object({})},async()=>{const session=await readGoogle(user.id);let devices:Array<{name:string;online:boolean}>|string=[];try{devices=(await relay.listDevices(user.id)).map(d=>({name:d.name,online:relay.isOnline(d)}))}catch(e){devices=e instanceof Error?e.message:'unavailable'}const usage=await account.usageToday(user.id,admin).catch(()=>null);return asText({authenticated:true,administrator:admin,camMicGoUsageToday:usage?{used:usage.used,limit:usage.limit,perMinute:usage.perMinute,resetsAt:usage.resetsAt,details:account.ACCOUNT_URL}:null,googleConnected:!!session,...(session?{}:{connectGoogle:CONNECT_GOOGLE.messageForUser}),googleQuota:session?(session.credentials.mode==='byo'?'own Google Cloud project':'shared CamMicGo project'):null,googleScopes:session?.scopes?session.scopes.filter(x=>x.includes('googleapis.com/auth/')).map(x=>x.split('/auth/')[1]):'unknown (connected before scope tracking)',reauthorizeGoogle:REAUTH_URL,transcriptDevices:devices,build:process.env.VERCEL_GIT_COMMIT_SHA?.slice(0,7)??null})});
+   server.registerTool('service_info',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Authenticated MCP status',description:'Check connected Google account.',inputSchema:z.object({})},async()=>{const session=await readGoogle(user.id);let devices:Array<{name:string;online:boolean}>|string=[];try{devices=(await relay.listDevices(user.id)).map(d=>({name:d.name,online:relay.isOnline(d)}))}catch(e){devices=e instanceof Error?e.message:'unavailable'}const usage=await account.usageToday(user.id,admin).catch(()=>null);return asText({authenticated:true,administrator:admin,camMicGoUsageToday:usage?{used:usage.used,limit:usage.limit,perMinute:usage.perMinute,resetsAt:usage.resetsAt,details:account.ACCOUNT_URL}:null,googleConnected:!!session,...(session?{}:{connectGoogle:CONNECT_GOOGLE.messageForUser}),googleQuota:session?(session.credentials.mode==='byo'?'own Google Cloud project':'shared CamMicGo project'):null,googleScopes:session?.scopes?session.scopes.filter(x=>x.includes('googleapis.com/auth/')).map(x=>x.split('/auth/')[1]):'unknown (connected before scope tracking)',driveWriteGrant:await store.readDriveWrite(user.id).then(w=>w?.scopes?.filter(x=>x.includes('/auth/drive')).map(x=>x.split('/auth/')[1])??null).catch(()=>null),reauthorizeGoogle:REAUTH_URL,transcriptDevices:devices,build:process.env.VERCEL_GIT_COMMIT_SHA?.slice(0,7)??null})});
    server.registerTool('list_google_properties',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Google Search Console and GA4 properties',description:'List properties accessible to the linked Google account.',inputSchema:z.object({})},async()=>{
     try{
      const session=await readGoogle(user.id);if(!session)return asText(CONNECT_GOOGLE);
@@ -245,8 +245,17 @@ async function handler(req:NextRequest){
    });
    // ---------- Google Drive (read: drive.readonly · write: drive.file) ----------
    /** Authenticated Drive request for the signed-in user only; returns the raw Response or an error object for the agent. */
-   const driveFetch=async(url:string,init?:RequestInit):Promise<{response:Response}|{failure:Record<string,unknown>}>=>{
-    const session=await readGoogle(user.id);if(!session)return {failure:CONNECT_GOOGLE};
+   // Drive uses two grants: the main Google connection (reading) and, if the user allowed it, a separate
+   // Drive write grant (drive.file / drive) that Google refuses to combine with YouTube in one authorization.
+   const hasDriveWrite=(sc?:string[])=>!!sc&&(sc.includes(drive.DRIVE_FILE_SCOPE)||sc.includes(drive.DRIVE_FULL_SCOPE));
+   const hasDriveRead=(sc?:string[])=>!sc||sc.includes(drive.DRIVE_READ_SCOPE)||sc.includes(drive.DRIVE_FULL_SCOPE);
+   const writeGrant=async()=>{try{const s=await store.readDriveWrite(user.id);return s&&(admin||s.credentials.mode==='byo')?s:null;}catch{return null;}};
+   const driveFetch=async(url:string,init?:RequestInit,write=false):Promise<{response:Response}|{failure:Record<string,unknown>}>=>{
+    const main=await readGoogle(user.id);
+    let session=main;
+    if(write&&!hasDriveWrite(main?.scopes))session=await writeGrant()??null;
+    else if(!write&&(!main||!hasDriveRead(main.scopes))){const w=await writeGrant();if(w)session=w;}
+    if(!session)return {failure:write&&main?driveScopeMessage(true):CONNECT_GOOGLE};
     if(!await consumeQuota(user.id,quotaLimit(session)))return {failure:{error:'Daily quota exceeded'}};
     const {token}=await authorizedAccessToken(session);
     return {response:await googleFetch(url,token,init)};
@@ -258,7 +267,7 @@ async function handler(req:NextRequest){
     instructions:'Relay messageForUser to the user in their language with the link.'});
    const driveFailure=async(response:Response,write=false)=>{const body=await response.json().catch(()=>({}));const e=drive.driveError(response.status,body);return e.error==='missing_google_permission'?driveScopeMessage(write):e;};
    const driveJson=async<T,>(url:string,init?:RequestInit,write=false):Promise<{data:T}|{failure:Record<string,unknown>}>=>{
-    const r=await driveFetch(url,init);if('failure' in r)return r;
+    const r=await driveFetch(url,init,write);if('failure' in r)return r;
     if(!r.response.ok)return {failure:await driveFailure(r.response,write)};
     return {data:await r.response.json() as T};
    };
@@ -330,7 +339,7 @@ async function handler(req:NextRequest){
    });
 
    // Writing: drive.file (create items; change only what CamMicGo created) or, if the user opted in, drive (full access).
-   const driveAccess=async()=>{const s=await readGoogle(user.id);const sc=s?.scopes;return {write:!!s&&(!sc||sc.includes(drive.DRIVE_FILE_SCOPE)||sc.includes(drive.DRIVE_FULL_SCOPE)),full:!!sc&&sc.includes(drive.DRIVE_FULL_SCOPE)};};
+   const driveAccess=async()=>{const s=await readGoogle(user.id);const w=await writeGrant();const sc=[...(s?.scopes??[]),...(w?.scopes??[])];return {write:hasDriveWrite(sc),full:sc.includes(drive.DRIVE_FULL_SCOPE)};};
    const canWriteDrive=async()=>(await driveAccess()).write;
    /** Names already used in a folder (to never overwrite or duplicate silently). */
    const namesIn=async(parentId:string,name:string,folderOnly=false)=>{
@@ -434,12 +443,12 @@ async function handler(req:NextRequest){
     }else{
      // Resumable upload: one session, then the bytes in a single PUT (Drive accepts it; retries restart the session).
      fields.set('uploadType','resumable');
-     const start=await driveFetch(drive.DRIVE_UPLOAD_API+'/files?'+fields,{method:'POST',headers:{'Content-Type':'application/json; charset=UTF-8','X-Upload-Content-Type':mime,'X-Upload-Content-Length':String(content.length)},body:JSON.stringify(metadata)});
+     const start=await driveFetch(drive.DRIVE_UPLOAD_API+'/files?'+fields,{method:'POST',headers:{'Content-Type':'application/json; charset=UTF-8','X-Upload-Content-Type':mime,'X-Upload-Content-Length':String(content.length)},body:JSON.stringify(metadata)},true);
      if('failure' in start)return asText(start.failure);
      if(!start.response.ok)return asText({...await driveFailure(start.response,true),note:DRIVE_FILE_LIMIT_NOTE});
      const location=start.response.headers.get('location');
      if(!location||!location.startsWith(drive.DRIVE_UPLOAD_API))return asText({error:'upload_session_failed'});
-     const put=await driveFetch(location,{method:'PUT',headers:{'Content-Type':mime,'Content-Length':String(content.length)},body:new Uint8Array(content)});
+     const put=await driveFetch(location,{method:'PUT',headers:{'Content-Type':mime,'Content-Length':String(content.length)},body:new Uint8Array(content)},true);
      res='failure' in put?put:put.response.ok?{data:await put.response.json() as drive.DriveFile}:{failure:await driveFailure(put.response,true)};
     }
     if('failure' in res)return asText({...res.failure,note:DRIVE_FILE_LIMIT_NOTE});

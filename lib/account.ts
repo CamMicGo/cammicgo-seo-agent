@@ -77,6 +77,7 @@ export async function clientCredentials(userId:string):Promise<(Credentials&{pro
 export async function deleteClient(userId:string){
  await sb('/rest/v1/cmg_google_clients?user_id=eq.'+userId,{method:'DELETE'});
  await sb('/rest/v1/mcp_google_connections?user_id=eq.'+userId,{method:'DELETE'});
+ await sb('/rest/v1/cmg_google_drive_write?user_id=eq.'+userId,{method:'DELETE'});
 }
 
 // ---------- MCP call allowance ----------

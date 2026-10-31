@@ -1,6 +1,7 @@
 import {NextRequest,NextResponse} from 'next/server';
 import {verifySupabaseMcpUser} from '@/lib/supabase-mcp-auth';
-import {readGoogle} from '@/lib/mcp-google-store';
+import {readGoogle,readDriveWrite} from '@/lib/mcp-google-store';
+import {isDriveWriteScope} from '@/lib/google-scopes';
 import {clientSummary,deleteClient,isAdmin,REMOTE_REDIRECT_URI,saveClient,usageToday,validateClient,verifyClientWithGoogle} from '@/lib/account';
 export const runtime='nodejs';
 const noStore={'Cache-Control':'no-store'};
@@ -13,9 +14,12 @@ export async function GET(req:NextRequest){
  const u=await user(req);if(!u)return NextResponse.json({error:'unauthorized'},{status:401,headers:noStore});
  try{
   const admin=await isAdmin(u.id);
-  const [client,session,usage]=await Promise.all([clientSummary(u.id),readGoogle(u.id).catch(()=>null),usageToday(u.id,admin)]);
+  const [client,session,usage,write]=await Promise.all([clientSummary(u.id),readGoogle(u.id).catch(()=>null),usageToday(u.id,admin),readDriveWrite(u.id).catch(()=>null)]);
   const googleMode=session?.credentials.mode??null;
-  return NextResponse.json({admin,client,redirectUri:REMOTE_REDIRECT_URI,google:{connected:!!session&&(admin||googleMode==='byo'),mode:googleMode,scopes:session?.scopes??null},usage},{headers:noStore});
+  // Drive writing: the separate write grant (Google refuses drive.file with YouTube), or an older main grant that already had it.
+  const usable=<T extends {credentials:{mode:string}}>(x:T|null)=>x&&(admin||x.credentials.mode==='byo')?x:null;
+  const driveWriteScopes=[...new Set([...(usable(session)?.scopes??[]),...(usable(write)?.scopes??[])].filter(isDriveWriteScope))];
+  return NextResponse.json({admin,client,redirectUri:REMOTE_REDIRECT_URI,google:{connected:!!session&&(admin||googleMode==='byo'),mode:googleMode,scopes:session?.scopes??null,driveWrite:driveWriteScopes.length?driveWriteScopes:null},usage},{headers:noStore});
  }catch(e){return NextResponse.json({error:e instanceof Error?e.message:'unavailable'},{status:503,headers:noStore})}
 }
 

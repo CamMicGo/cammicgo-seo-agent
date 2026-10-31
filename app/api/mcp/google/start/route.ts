@@ -1,8 +1,7 @@
 import {NextRequest,NextResponse} from 'next/server';
-import {createHash,randomBytes} from 'node:crypto';
-import {encrypt,STATE_COOKIE,cookieOptions,type Credentials,type Pending} from '@/lib/google-session';
+import {encrypt,STATE_COOKIE,cookieOptions,type Credentials} from '@/lib/google-session';
+import {googleAuthRequest,splitScopes} from '@/lib/google-oauth-url';
 import {verifySupabaseMcpUser} from '@/lib/supabase-mcp-auth';
-import {googleOAuthCallback} from '@/lib/oauth-callback';
 import {clientCredentials,isAdmin} from '@/lib/account';
 const ALLOWED_SCOPES=["https://www.googleapis.com/auth/webmasters.readonly","https://www.googleapis.com/auth/analytics.readonly","https://www.googleapis.com/auth/youtube.readonly","https://www.googleapis.com/auth/calendar.readonly","https://www.googleapis.com/auth/gmail.readonly","https://www.googleapis.com/auth/drive.readonly","https://www.googleapis.com/auth/drive.file","https://www.googleapis.com/auth/drive","https://www.googleapis.com/auth/documents.readonly","https://www.googleapis.com/auth/spreadsheets.readonly","https://www.googleapis.com/auth/presentations.readonly","https://www.googleapis.com/auth/tasks.readonly","https://www.googleapis.com/auth/contacts.readonly","https://www.googleapis.com/auth/classroom.courses.readonly","https://www.googleapis.com/auth/chat.spaces.readonly","https://www.googleapis.com/auth/script.projects.readonly","https://www.googleapis.com/auth/adwords"];
 const DEFAULT_SCOPES=ALLOWED_SCOPES.slice(0,4);
@@ -31,12 +30,11 @@ export async function POST(req:NextRequest){
  const scopes=payload.scopes?.length?payload.scopes:DEFAULT_SCOPES;
  if(!Array.isArray(scopes)||scopes.length>ALLOWED_SCOPES.length||scopes.some(scope=>!ALLOWED_SCOPES.includes(scope)))return NextResponse.json({error:'Unsupported Google API scope'},{status:400});
  const returnTo=payload.returnTo==='/account'?'/account':undefined;
- const state=randomBytes(24).toString('hex'),verifier=randomBytes(32).toString('base64url');
- const pending:Pending&{mcpUserId:string;authorizationId?:string;returnTo?:string}={state,verifier,credentials,issuedAt:Date.now(),mcpUserId:user.id,authorizationId:payload.authorizationId,returnTo};
- const challenge=createHash('sha256').update(verifier).digest('base64url');
- const url=new URL('https://accounts.google.com/o/oauth2/v2/auth');
- url.search=new URLSearchParams({client_id:credentials.clientId,redirect_uri:googleOAuthCallback(),response_type:'code',scope:scopes.join(' '),access_type:'offline',include_granted_scopes:'true',prompt:'consent',state,code_challenge:challenge,code_challenge_method:'S256'}).toString();
- const result=NextResponse.json({url:url.toString()});
+ // Drive writing (drive.file / drive) is granted separately: Google refuses it together with YouTube scopes.
+ const {main,write}=splitScopes(scopes);
+ const first=main.length?{scopes:main,kind:'main' as const,followUp:write.length?write:undefined}:{scopes:write,kind:'drive_write' as const,followUp:undefined};
+ const {url,pending}=googleAuthRequest(credentials,first.scopes,{mcpUserId:user.id,authorizationId:payload.authorizationId,returnTo,kind:first.kind,followUp:first.followUp});
+ const result=NextResponse.json({url,steps:first.followUp?2:1});
  result.cookies.set(STATE_COOKIE,encrypt(pending),{...cookieOptions,maxAge:600});
  return result;
 }
