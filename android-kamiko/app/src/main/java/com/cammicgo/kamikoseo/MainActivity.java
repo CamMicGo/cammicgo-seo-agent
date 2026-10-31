@@ -2,6 +2,7 @@ package com.cammicgo.kamikoseo;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Intent;
@@ -87,6 +88,7 @@ public class MainActivity extends Activity {
   private ProgressBar progressBar;
   private LinearLayout progressStats;
   private String historyShown;
+  private Button clearHistory;
   // extract tab
   private EditText urlInput;
   private Spinner langSpinner;
@@ -419,6 +421,32 @@ public class MainActivity extends Activity {
     historyList = new LinearLayout(this);
     historyList.setOrientation(LinearLayout.VERTICAL);
     h.addView(historyList);
+    clearHistory = flat("🗑  Vider la liste", RED);
+    clearHistory.setOnClickListener(v -> new AlertDialog.Builder(this)
+        .setTitle("Vider la liste ?")
+        .setMessage("Les vidéos envoyées disparaissent de cette liste. Les transcriptions déjà transmises à votre assistant ne sont pas touchées.")
+        .setPositiveButton("Vider", (d, w) -> editHistory(null, 0))
+        .setNegativeButton("Annuler", null)
+        .show());
+    h.addView(clearHistory, new LinearLayout.LayoutParams(-1, -2));
+  }
+
+  /** Removes one entry (videoId + time) or, with videoId null, the whole list. */
+  private void editHistory(String videoId, long at) {
+    SharedPreferences p = RelayClient.prefs(this);
+    JSONArray out = new JSONArray();
+    if (videoId != null) {
+      try {
+        JSONArray old = new JSONArray(p.getString("history", "[]"));
+        for (int i = 0; i < old.length(); i++) {
+          JSONObject e = old.optJSONObject(i);
+          if (e != null && !(videoId.equals(e.optString("videoId")) && e.optLong("at") == at)) out.put(e);
+        }
+      } catch (Exception ignored) {}
+    }
+    p.edit().putString("history", out.toString()).apply();
+    historyShown = null;
+    refreshHistory(p);
   }
 
   private TextView stat(LinearLayout row, int color, String label) {
@@ -708,6 +736,7 @@ public class MainActivity extends Activity {
     historyList.removeAllViews();
     JSONArray h;
     try { h = new JSONArray(raw); } catch (Exception e) { h = new JSONArray(); }
+    clearHistory.setVisibility(h.length() == 0 ? View.GONE : View.VISIBLE);
     if (h.length() == 0) {
       TextView empty = text(historyList, "Rien pour l’instant. Chaque transcription envoyée à votre assistant apparaîtra ici.", 13, MUTED, false);
       empty.setPadding(dp(12), dp(10), dp(12), dp(10));
@@ -737,7 +766,14 @@ public class MainActivity extends Activity {
       d.setMaxLines(1); d.setEllipsize(TextUtils.TruncateAt.END);
       row.addView(texts, new LinearLayout.LayoutParams(0, -2, 1));
       final String vid = e.optString("videoId");
+      final long at = e.optLong("at");
       row.setOnClickListener(v -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=" + vid))));
+      row.setOnLongClickListener(v -> {
+        new AlertDialog.Builder(this).setMessage("Retirer cette vidéo de la liste ?")
+            .setPositiveButton("Retirer", (d, w) -> editHistory(vid, at))
+            .setNegativeButton("Annuler", null).show();
+        return true;
+      });
       historyList.addView(row);
       if (i < max - 1) {
         View sep = new View(this);

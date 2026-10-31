@@ -95,7 +95,7 @@ public final class RelayClient {
       c.setReadTimeout(20000);
       c.setRequestMethod(method);
       c.setRequestProperty("Accept", "application/json");
-      c.setRequestProperty("User-Agent", "CamMicGoAndroid/0.6.0");
+      c.setRequestProperty("User-Agent", "CamMicGoAndroid/0.6.1");
       if (token != null) c.setRequestProperty("Authorization", "Bearer " + token);
       if (body != null) {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
