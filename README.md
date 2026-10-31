@@ -447,3 +447,18 @@ The **local** MCP server does not need it: it fetches transcripts itself.
 - Users sign in on `/account` with their email (Supabase magic link), save project ID + client ID + secret (checked against Google), then click **Connect Google**. The same form appears in the agent authorization window.
 - Allowance per account: 100 counted MCP tool calls per day, 10 per minute (30 calls/min in total), global cap 5,000/day. Status tools (`service_info`, `youtube_transcript_status`, `youtube_batch_status`, pairing) do not count. Override with `MCP_DAILY_LIMIT`, `MCP_MINUTE_LIMIT`, `MCP_MINUTE_TOTAL_LIMIT`, `MCP_GLOBAL_DAILY_LIMIT`, `MCP_ADMIN_DAILY_LIMIT`.
 - Local MCP for Cursor / Gemini CLI: `npm run install:local`, then `npm run agent:setup -- cursor` or `npm run agent:setup -- gemini`.
+
+## Scientific publications (OpenAlex, Semantic Scholar, arXiv, PubMed, HAL)
+
+Remote and local MCP tools: `science_search`, `science_latest`, `science_paper`, `science_author`, `science_sources`. Results from the five sources are merged and deduplicated (DOI, arXiv ID, PMID, title). Google Scholar has no official API and is not used.
+
+| Source | Without a key | With your own free key |
+|---|---|---|
+| OpenAlex | small daily budget, shared by every user of the remote server | ≈ 1,000 searches/day for you ([get a key](https://openalex.org/settings/api)) |
+| Semantic Scholar (Ai2) | one public pool shared worldwide, often saturated | 1 request/second reserved for you ([request form](https://www.semanticscholar.org/product/api#api-key-form)) |
+| PubMed (NCBI) | 3 requests/second shared by all users of the remote server | 10 requests/second for you ([NCBI account settings](https://account.ncbi.nlm.nih.gov/settings/)) |
+| arXiv, HAL | free for everyone | no key needed |
+
+- **Remote MCP:** each user saves their keys on <https://seo.cammicgo.com/account> (encrypted with AES-256-GCM, shown only as the last 4 characters, never sent to the assistant). Guide: <https://seo.cammicgo.com/setup/science>.
+- **Local MCP:** put `SEMANTIC_SCHOLAR_API_KEY`, `OPENALEX_API_KEY` and `NCBI_API_KEY` in `.env.local`; they stay on your computer. `npm run local:doctor` shows which keys are set. The science tools do not need Google sign-in.
+- `lib/science.mjs` is generated from `lib/science.ts` for the local server: run `npm run build:science` after editing (`npm test` fails if it is stale). The GitHub workflow *Science sources live check* queries the real APIs and posts the results as a commit comment.

@@ -4,6 +4,7 @@ import {NextRequest,NextResponse} from 'next/server';
 import {makeCampaignDraft} from '@/lib/ads-campaign';
 import * as ads from '@/lib/google-ads';
 import * as drive from '@/lib/google-drive';
+import * as sci from '@/lib/science';
 import {gumCatalog} from '@/lib/gum-operation-catalog';
 import {getYouTubeTranscript} from '@/lib/youtube-transcript';
 import {verifyMcpAccess} from '@/lib/mcp-access';
@@ -20,6 +21,7 @@ const SERVER_INSTRUCTIONS=[
  'Google tools use the user\'s own Google Cloud project (OAuth client ID and secret saved at https://seo.cammicgo.com/account, then "Connect Google"). If a tool answers google_not_connected, relay its messageForUser. Each user has a daily CamMicGo allowance (about 100 tool calls; status checks are free): prefer one youtube_channel_batch over many single transcript calls.',
  'Google Ads: ads_accounts, ads_report (read-only) and ads_create_paused_campaign. Campaigns are always created PAUSED with a total budget that is never exceeded over a fixed period: first call it with confirm=false, show the validated summary, and use confirm=true only after the user explicitly approves. Never promise that a campaign is live: the user enables it in Google Ads. Keyword Planner is not available (Explorer access).',
  'Google Drive: drive_list_files, drive_search_files, drive_read_file (bounded text windows: continue with offset=nextOffset, never paste whole documents) and drive_storage_quota are read-only (drive.readonly). drive_create_folder and drive_upload_file create NEW items only (drive.file permission): never overwrite, and only upload content the user asked for.',
+ 'Science: science_search (OpenAlex, Semantic Scholar, arXiv, PubMed, HAL; merged), science_latest (newest papers on a topic), science_paper (details by DOI/arXiv/PMID/HAL ID) and science_author. Cite papers with their links; never invent references. If keyTip is present, mention once that free personal keys raise the limits.',
  'Whole channels: youtube_channel_batch builds ONE document (details + full transcripts of every video) with a stable URL, ideal as a single NotebookLM source; follow it with youtube_batch_status. Never paste whole documents into the chat.',
 ].join(' ');
 
@@ -403,6 +405,70 @@ async function handler(req:NextRequest){
     }
     if('failure' in res)return asText({...res.failure,note:DRIVE_FILE_LIMIT_NOTE});
     return asText({created:true,fileId:res.data.id,file:drive.slimFile(res.data),parent:parent.name,bytes:content.length,renamed:res.data.name!==name?res.data.name:undefined,convertedTo:target??undefined});
+   });
+
+   // ---------- Scientific literature (OpenAlex, Semantic Scholar, arXiv, PubMed, HAL) ----------
+   const sciKeys=async()=>{try{const {userKeys}=await import('@/lib/science-keys');return await userKeys(user.id);}catch{return {};}};
+   const sourceList=z.array(z.enum(['openalex','semanticscholar','arxiv','pubmed','hal'])).min(1).max(5).optional().describe('Default: all five. pubmed = biomedical, arxiv = preprints (CS, physics, maths…), hal = French open archive.');
+   const keyStatus=(keys:Record<string,string|undefined>,used:Array<{source:string}>)=>[...new Set(used.map(u=>u.source))].map(s=>{const info=sci.SOURCE_INFO[s as keyof typeof sci.SOURCE_INFO];const has=!!(info.keyProvider&&keys[info.keyProvider]);
+    return {source:info.name,key:info.keyProvider?(has?'your key':'none'):'not needed',limit:has?info.withKey:info.withoutKey};});
+   const runSearch=async(query:string,o:{sources?:Array<'openalex'|'semanticscholar'|'arxiv'|'pubmed'|'hal'>;sort:'relevance'|'date'|'citations';from?:string;to?:string;openAccessOnly:boolean;limit:number;page:number})=>{
+    const keys=await sciKeys();const sources=o.sources??sci.SOURCES;
+    const q={query,sort:o.sort,from:o.from,to:o.to,openAccessOnly:o.openAccessOnly,limit:o.limit,offset:(o.page-1)*o.limit};
+    const results=await Promise.all(sources.map(s=>sci.searchSource(s,q,keys)));
+    const merged=sci.mergePapers(results.map(r=>r.papers),o.sort,query).slice(0,60);
+    const missingKeys=results.filter(r=>!r.usedKey&&sci.SOURCE_INFO[r.source].keyProvider).map(r=>sci.SOURCE_INFO[r.source].name);
+    return {query,sort:o.sort,from:o.from??null,to:o.to??null,page:o.page,count:merged.length,
+     papers:merged.map(p=>sci.compact(p,400)),
+     sources:results.map(r=>({source:r.source,found:r.papers.length,total:r.total,usedYourKey:r.usedKey,error:r.error,note:r.note})),
+     limits:keyStatus(keys,results),
+     keyTip:missingKeys.length?'Without a personal key, '+missingKeys.join(', ')+' use(s) a shared, limited quota. Free keys can be added on '+account.ACCOUNT_URL+' (guide: https://seo.cammicgo.com/setup/science).':undefined,
+     next:'Use science_paper with a paper id for the full abstract, TL;DR and citing papers. Next page: page='+(o.page+1)+'.'};
+   };
+
+   server.registerTool('science_search',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Search scientific publications',
+    description:'Search scientific papers across OpenAlex, Semantic Scholar (Ai2), arXiv, PubMed and HAL (French open archive) at once; duplicates are merged. Sort by relevance, date (newest first) or citations; filter by publication dates and open access. Returns title, authors, date, venue, citations, DOI/arXiv/PMID, links to the paper and free PDF, and a short abstract. Uses the user\'s own API keys when saved on /account, otherwise each source\'s shared free quota.',
+    inputSchema:z.object({query:z.string().min(2).max(300),sources:sourceList,sort:z.enum(['relevance','date','citations']).default('relevance'),
+     from:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Published on or after (YYYY-MM-DD)'),to:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+     openAccessOnly:z.boolean().default(false),limit:z.number().int().min(1).max(20).default(5).describe('Results per source'),page:z.number().int().min(1).max(20).default(1)})},async args=>asText(await runSearch(args.query,args)));
+
+   server.registerTool('science_latest',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Latest scientific publications on a topic',
+    description:'Newest papers on a topic published in the last N days (default 30), from OpenAlex, Semantic Scholar, arXiv, PubMed and HAL, newest first, duplicates merged. Ideal for a research watch ("veille scientifique").',
+    inputSchema:z.object({topic:z.string().min(2).max(300),days:z.number().int().min(1).max(365).default(30),sources:sourceList,openAccessOnly:z.boolean().default(false),limit:z.number().int().min(1).max(20).default(8).describe('Results per source')})},async args=>{
+    const from=new Date(Date.now()-args.days*86_400_000).toISOString().slice(0,10);
+    return asText(await runSearch(args.topic,{sources:args.sources,sort:'date',from,openAccessOnly:args.openAccessOnly,limit:args.limit,page:1}));
+   });
+
+   server.registerTool('science_paper',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Scientific paper details',
+    description:'Full details of one paper from its DOI, arXiv ID, PubMed ID (PMID), OpenAlex ID (W…), Semantic Scholar ID or HAL ID (or their URLs): full abstract, TL;DR (Semantic Scholar), authors, venue, citation count, free PDF link, identifiers. Set citingPapers=true to also list recent papers that cite it.',
+    inputSchema:z.object({id:z.string().min(3).max(300),citingPapers:z.boolean().default(false)})},async args=>{
+    const pid=sci.parsePaperId(args.id);if(!pid)return asText({error:'unknown_identifier',messageForUser:'Give a DOI (10.xxxx/…), an arXiv ID (2401.01234), a PMID, an OpenAlex ID (W…), a Semantic Scholar ID or a HAL ID (hal-…), or their URL.'});
+    const keys=await sciKeys();const d=await sci.paperDetails(pid,keys);
+    if(!d.paper)return asText({error:'not_found',id:args.id,notes:d.notes});
+    let citing:unknown;
+    if(args.citingPapers&&d.s2PaperId){
+     try{const r=await fetch('https://api.semanticscholar.org/graph/v1/paper/'+d.s2PaperId+'/citations?'+new URLSearchParams({fields:'title,year,publicationDate,citationCount,externalIds,url',limit:'50'}),{headers:keys.semanticscholar?{'x-api-key':keys.semanticscholar}:{},cache:'no-store',signal:AbortSignal.timeout(12000)});
+      if(r.ok){const b=await r.json() as {data?:Array<{citingPaper?:Record<string,unknown>}>};
+       citing=(b.data??[]).map(c=>sci.parseS2Paper(c.citingPaper as never)).filter(Boolean).sort((a,b)=>(b!.date??String(b!.year??'')).localeCompare(a!.date??String(a!.year??''))).slice(0,15).map(p=>sci.compact(p!,0));}
+      else citing={error:sci.sourceError('semanticscholar',r.status,!!keys.semanticscholar)};}catch{citing={error:'unavailable'};}
+    }
+    const p=d.paper;
+    return asText({paper:{...sci.compact(p,20000),abstract:sci.shorten(p.abstract,20000),authors:p.authors.slice(0,100)},citingPapers:citing,notes:d.notes.length?d.notes:undefined});
+   });
+
+   server.registerTool('science_author',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Researcher profile and latest papers',
+    description:'Find a researcher by name (OpenAlex, Semantic Scholar as fallback): candidates with institution, ORCID, works, citations, h-index and topics, plus the latest papers of the best match. Several researchers can share a name: show the candidates and call again with authorId (OpenAlex A… or Semantic Scholar numeric ID) if needed.',
+    inputSchema:z.object({name:z.string().min(2).max(120).optional(),authorId:z.string().regex(/^(A\d{4,12}|\d{1,12})$/i).optional(),latest:z.number().int().min(1).max(25).default(10)})},async args=>{
+    if(!args.name&&!args.authorId)return asText({error:'Give a name or an authorId.'});
+    const r=await sci.authorLookup(args,await sciKeys());
+    return asText({candidates:r.candidates,selectedAuthorId:r.selected,latestPapers:r.latest.map(p=>sci.compact(p,0)),notes:r.notes.length?r.notes:undefined});
+   });
+
+   server.registerTool('science_sources',{annotations:{readOnlyHint:true,openWorldHint:false},title:'Scientific sources and API keys',
+    description:'Which scientific sources are available, whether the user saved a personal key for each, and the quota that applies (free status check).',inputSchema:z.object({})},async()=>{
+    const keys=await sciKeys();
+    return asText({sources:sci.SOURCES.map(s=>{const i=sci.SOURCE_INFO[s];const has=!!(i.keyProvider&&keys[i.keyProvider]);return {source:i.name,keyNeeded:!!i.keyProvider,yourKey:i.keyProvider?has:null,limit:has?i.withKey:i.withoutKey,getAKey:i.keyUrl};}),
+     manageKeys:account.ACCOUNT_URL,guide:'https://seo.cammicgo.com/setup/science'});
    });
    server.registerTool('ads_accounts',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Google Ads accounts',description:'List the Google Ads accounts the connected Google user can access (ID, name, currency, time zone, manager or not). Requires the Google Ads permission (adwords scope).',inputSchema:z.object({})},async()=>{
     const list=await googleRequest(ads.ADS_BASE+'/customers:listAccessibleCustomers') as {resourceNames?:string[];error?:string};

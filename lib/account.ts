@@ -82,7 +82,7 @@ export async function deleteClient(userId:string){
 // ---------- MCP call allowance ----------
 export type CallResult={ok:boolean;reason:'daily'|'minute'|'global'|null;used:number;limit:number};
 /** Tools that are polled or free (status, pairing) only count towards the per-minute safety limit. */
-export const FREE_TOOLS=new Set(['service_info','youtube_transcript_status','youtube_batch_status','device_pairing_code','device_revoke']);
+export const FREE_TOOLS=new Set(['service_info','youtube_transcript_status','youtube_batch_status','device_pairing_code','device_revoke','science_sources']);
 
 export async function consumeCall(userId:string,tool:string,admin:boolean):Promise<CallResult>{
  const cost=FREE_TOOLS.has(tool)?0:1;

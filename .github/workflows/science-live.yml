@@ -1,0 +1,41 @@
+name: Science sources live check
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'lib/science.ts'
+      - 'lib/science.mjs'
+      - 'scripts/local-mcp.mjs'
+      - 'tests/live/local-science-live.mjs'
+      - 'tests/live/science-live.ts'
+      - '.github/workflows/science-live.yml'
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Query OpenAlex, Semantic Scholar, arXiv, PubMed and HAL (no keys)
+        env:
+          LIVE_OUT: science-live.txt
+        run: node --experimental-strip-types --no-warnings tests/live/science-live.ts
+      - name: Install dependencies for the local MCP
+        if: always()
+        run: npm ci --no-audit --no-fund
+      - name: Local stdio MCP science tools (compiled lib/science.mjs)
+        if: always()
+        env:
+          LIVE_OUT: science-live.txt
+        run: node tests/live/local-science-live.mjs
+      - name: Post the results as a commit comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test -f science-live.txt || echo "no output" > science-live.txt
+          printf '### Science sources live check\n```\n%s\n```\n' "$(cat science-live.txt)" > body.md
+          gh api repos/${{ github.repository }}/commits/${{ github.sha }}/comments -F body=@body.md >/dev/null
