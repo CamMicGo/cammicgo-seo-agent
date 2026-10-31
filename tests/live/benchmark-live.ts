@@ -1,12 +1,14 @@
 // Live check of the benchmark scorer against the real APIs (run in CI with tsx, which resolves the '@/' alias).
 import {appendFileSync} from 'node:fs';
-import {scoreAnswer} from '@/lib/benchmark';
-import * as sci from '@/lib/science';
 const file = process.env.LIVE_OUT ?? 'science-live.txt';
 const log = (l: string) => { appendFileSync(file, l + '\n'); console.log(l); };
-const show = (name: string, m: Awaited<ReturnType<typeof scoreAnswer>>) => log(`BENCH ${name}: ids=${m.identifiers} verified=${m.verified} invalid=${m.invalid.length} onTarget=${m.onTarget} offTarget=${m.offTarget} recall=${m.recall} ref=${m.referenceSize} correct=${m.correct} accuracy=${m.accuracy} ${JSON.stringify(m.details).slice(0, 160)}`);
+type M = {identifiers: number; verified: number; invalid: string[]; onTarget: number; offTarget: number; recall: number | null; referenceSize: number | null; correct: boolean | null; accuracy: number | null; details: Record<string, unknown>};
+const show = (name: string, m: M) => log(`BENCH ${name}: ids=${m.identifiers} verified=${m.verified} invalid=${m.invalid.length} onTarget=${m.onTarget} offTarget=${m.offTarget} recall=${m.recall} ref=${m.referenceSize} correct=${m.correct} accuracy=${m.accuracy} ${JSON.stringify(m.details).slice(0, 160)}`);
 
-try {
+async function main() {
+ try {
+  const {scoreAnswer} = await import('@/lib/benchmark');
+  const sci = await import('@/lib/science');
   // A "good" answer built from the real bibliography, and a "bad" one with invented DOIs.
   const res = await sci.resolveAuthor('0000-0002-9670-711X', [], {});
   const bib = res.status === 'resolved' ? await sci.authorBibliography(res.profiles, {}, {}) : null;
@@ -19,4 +21,6 @@ try {
   const citing = cites.work ? await sci.citedBy(cites.work.id!.replace('https://openalex.org/', ''), {}, {sort: 'newest', page: 1, perPage: 10, from: '2026-01-01'}) : null;
   show('citing good', await scoreAnswer('citing-papers', (citing?.works ?? []).map((w, i) => `${i + 1}. ${w.title} https://doi.org/${w.doi}`).join('\n'), {}));
   show('most-cited sample', await scoreAnswer('most-cited', '1. Retrieval-Augmented Generation for Large Language Models: A Survey https://doi.org/10.48550/arxiv.2312.10997\n2. https://arxiv.org/abs/2005.11401', {}));
-} catch (e) { log('BENCH CRASH ' + (e instanceof Error ? e.stack : String(e))); process.exitCode = 1; }
+ } catch (e) { log('BENCH CRASH ' + (e instanceof Error ? e.stack : String(e))); process.exitCode = 1; }
+}
+void main();

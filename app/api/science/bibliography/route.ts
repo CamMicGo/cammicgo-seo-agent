@@ -9,7 +9,8 @@ export async function GET(req:NextRequest){
  const g=(k:string)=>req.nextUrl.searchParams.get(k)??undefined;
  const p:ExportParams={a:g('a')??'',f:(g('f')??'') as ExportFormat,s:(g('s')??'newest') as WorkSort,from:g('from'),to:g('to'),q:g('q'),h:g('h') as '0'|'1'|undefined,u:g('u')};
  if(!/^A\d{4,12}(,A\d{4,12}){0,4}$/i.test(p.a)||!(p.f in EXPORT_FORMATS)||!['newest','oldest','citations','title'].includes(p.s))return NextResponse.json({error:'invalid_parameters'},{status:400});
- if(!checkExport(p,req.nextUrl.searchParams.get('sig')))return NextResponse.json({error:'invalid_signature'},{status:403});
+ let valid=false;try{valid=checkExport(p,req.nextUrl.searchParams.get('sig'));}catch{return NextResponse.json({error:'export_unavailable'},{status:503});}
+ if(!valid)return NextResponse.json({error:'invalid_signature'},{status:403});
  let keys={};
  if(p.u&&/^[0-9a-f-]{36}$/.test(p.u)){try{const {userKeys}=await import('@/lib/science-keys');keys=await userKeys(p.u);}catch{/* keys are optional */}}
  try{

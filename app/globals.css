@@ -357,3 +357,4 @@ body:has(#a11y-dialog) .sh-wrap{z-index:170}
 .bm-medians div{background:#f4f8ff;border:1px solid #dfe8f7;border-radius:12px;padding:8px 14px;display:grid}.bm-medians span{font-size:12px;color:#5c6c89}.bm-medians b{font:800 22px ui-monospace,monospace}
 .bm-table-wrap{overflow-x:auto;margin:10px 0}.bm-table{border-collapse:collapse;width:100%;font-size:14px;min-width:720px}.bm-table th,.bm-table td{padding:8px 10px;border-bottom:1px solid #e7eef9;text-align:start;white-space:nowrap}
 .bm-table th{font-size:12px;color:#5c6c89;font-weight:700}.bm-bad{color:#dc2626;font-weight:800}
+.bm a.acc-btn{color:#fff;text-decoration:none;display:inline-flex}

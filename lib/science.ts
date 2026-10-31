@@ -399,7 +399,7 @@ const oaKeyParam=(keys:Keys)=>keys.openalex?'&api_key='+encodeURIComponent(keys.
 /** Resolves an author reference to OpenAlex profile(s). A name resolves only when exactly one candidate matches it. */
 export async function resolveAuthor(input:string,extraIds:string[],keys:Keys,f:Fetcher=fetch):Promise<AuthorResolution>{
  const notes:string[]=[];const ref=parseAuthorRef(input);const sel='?select='+AUTHOR_SELECT+'&mailto='+CONTACT_EMAIL+oaKeyParam(keys);
- const byPath=async(path:string)=>{const r=await getText(f,'https://api.openalex.org/authors/'+path+sel);if(r.ok)return parseAuthorProfile(await r.json());if(r.status!==404)notes.push('OpenAlex: '+sourceError('openalex',r.status,!!keys.openalex));return null;};
+ const byPath=async(path:string)=>{try{const r=await getText(f,'https://api.openalex.org/authors/'+path+sel);if(r.ok)return parseAuthorProfile(await r.json());if(r.status!==404)notes.push('OpenAlex: '+sourceError('openalex',r.status,!!keys.openalex));}catch{notes.push('OpenAlex: unavailable');}return null;};
  const extras=async()=>(await Promise.all(extraIds.filter(x=>/^A\d{4,12}$/i.test(x)).slice(0,4).map(x=>byPath(x.toUpperCase())))).filter((p):p is AuthorProfile=>!!p);
  let main:AuthorProfile|null=null;let via:string=ref.kind;
  if(ref.kind==='openalex')main=await byPath(ref.value);
@@ -407,13 +407,15 @@ export async function resolveAuthor(input:string,extraIds:string[],keys:Keys,f:F
   if(!validOrcid(ref.value))return {status:'not_found',candidates:[],notes:['Invalid ORCID checksum: '+ref.value]};
   main=await byPath('orcid:'+ref.value);if(!main)notes.push('This ORCID has no OpenAlex profile yet.');
  }else if(ref.kind==='s2'){
-  const r=await getText(f,'https://api.semanticscholar.org/graph/v1/author/'+ref.value+'?fields=name,externalIds',keys.semanticscholar?{'x-api-key':keys.semanticscholar}:{});
-  if(r.ok){const a=await r.json() as {name?:string;externalIds?:{ORCID?:string}};const o=a.externalIds?.ORCID;
+  const r=await getText(f,'https://api.semanticscholar.org/graph/v1/author/'+ref.value+'?fields=name,externalIds',keys.semanticscholar?{'x-api-key':keys.semanticscholar}:{}).catch(()=>null);
+  if(!r)notes.push('Semantic Scholar: unavailable');
+  else if(r.ok){const a=await r.json() as {name?:string;externalIds?:{ORCID?:string}};const o=a.externalIds?.ORCID;
    if(o&&validOrcid(o)){main=await byPath('orcid:'+o);via='s2→orcid';}
    if(!main&&a.name)return resolveAuthor(a.name,extraIds,keys,f);}
   else notes.push('Semantic Scholar: '+sourceError('semanticscholar',r.status,!!keys.semanticscholar));
  }else{
-  const r=await getText(f,'https://api.openalex.org/authors?'+new URLSearchParams({search:ref.value,'per-page':'10',select:AUTHOR_SELECT,mailto:CONTACT_EMAIL})+oaKeyParam(keys));
+  const r=await getText(f,'https://api.openalex.org/authors?'+new URLSearchParams({search:ref.value,'per-page':'10',select:AUTHOR_SELECT,mailto:CONTACT_EMAIL})+oaKeyParam(keys)).catch(()=>null);
+  if(!r){notes.push('OpenAlex: unavailable');return {status:'not_found',candidates:[],notes};}
   if(!r.ok){notes.push('OpenAlex: '+sourceError('openalex',r.status,!!keys.openalex));return {status:'not_found',candidates:[],notes};}
   const all=((await r.json() as {results?:OAAuthorFull[]}).results??[]).map(parseAuthorProfile).filter((p):p is AuthorProfile=>!!p);
   const exact=all.filter(p=>sameName(p.name,ref.value)||p.alternativeNames.some(n=>sameName(n,ref.value)));
@@ -463,7 +465,8 @@ export function authorWorksUrl(ids:string[],keys:Keys,cursor:string,o:{from?:str
 export async function fetchAuthorWorks(ids:string[],keys:Keys,o:{from?:string;to?:string;query?:string;maxWorks?:number}={},f:Fetcher=fetch){
  const out:BibWork[]=[];let cursor='*';let total:number|null=null;const max=o.maxWorks??2000;const notes:string[]=[];
  for(let i=0;i<Math.ceil(max/200)&&cursor;i++){
-  const r=await getText(f,authorWorksUrl(ids,keys,cursor,o));
+  const r=await getText(f,authorWorksUrl(ids,keys,cursor,o)).catch(()=>null);
+  if(!r){notes.push('OpenAlex: unavailable');break;}
   if(!r.ok){notes.push('OpenAlex: '+sourceError('openalex',r.status,!!keys.openalex));break;}
   const b=await r.json() as {meta?:{count?:number;next_cursor?:string|null};results?:OABibWork[]};
   total??=b.meta?.count??null;for(const w of b.results??[]){const p=parseBibWork(w);if(p)out.push(p);}
@@ -666,11 +669,14 @@ export async function verifyReference(input:string,keys:Keys,f:Fetcher=fetch):Pr
  const text=input.trim().slice(0,1000);const base={input:text,doi:null,title:null,year:null,authors:[] as string[],venue:null,similarity:null,url:null};
  const yearIn=Number(/\b(19|20)\d{2}\b/.exec(text)?.[0]??0)||null;
  const pid=parsePaperId(text)??(cleanDoi(text)?{kind:'doi' as const,value:cleanDoi(text)!}:null);
+ const low0=text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+ const authorIn=(authors:string[])=>authors.some(a=>{const fam=splitName(a).family.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');return fam.length>=3&&low0.includes(fam);});
  const finish=(w:{doi:string|null;title:string|null;year:number|null;authors:string[];venue:string|null},retracted=false):Verification=>{
   const textOnly=text.replace(/10\.\d{4,9}\/\S+/g,'').replace(/https?:\/\/\S+/g,'');
   const sim=w.title&&tokens(textOnly).size>=3?titleSimilarity(textOnly,w.title):null;
   const yearOk=!yearIn||!w.year||Math.abs(yearIn-w.year)<=1;
-  const status:Verification['status']=retracted?'retracted':sim==null?'verified':sim>=0.75&&yearOk?'verified':sim>=0.5?'probable':'mismatch';
+  // Same title and a matching author: the work exists even if a database records another year (e.g. a re-indexed version).
+  const status:Verification['status']=retracted?'retracted':sim==null?'verified':sim>=0.75&&(yearOk||(sim>=0.9&&authorIn(w.authors)))?'verified':sim>=0.5?'probable':'mismatch';
   return {...base,...w,similarity:sim==null?null:Math.round(sim*100)/100,url:w.doi?'https://doi.org/'+w.doi:null,status,
    note:status==='mismatch'?'The identifier exists but points to a different work than the cited title (typical of an invented or mixed-up reference).':status==='retracted'?'This work has been RETRACTED.':!yearOk?'Year differs from the cited one.':undefined};
  };
