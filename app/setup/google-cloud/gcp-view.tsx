@@ -10,11 +10,11 @@ const APIS=[
  {k:'admin',name:'Google Analytics Admin',id:'analyticsadmin.googleapis.com',live:true,logo:'/api/assets/google-analytics'},
  {k:'yt',name:'YouTube Data API v3',id:'youtube.googleapis.com',live:true,logo:'/google-logos/youtube.svg'},
  {k:'cal',name:'Google Calendar',id:'calendar-json.googleapis.com',live:true,logo:'/google-logos/calendar.png'},
- {k:'gmail',name:'Gmail API',id:'gmail.googleapis.com',live:false,logo:'/google-logos/gmail.png'},
- {k:'drive',name:'Google Drive API',id:'drive.googleapis.com',live:false,logo:'/google-logos/drive.png'},
+ {k:'gmail',name:'Gmail API',id:'gmail.googleapis.com',live:true,logo:'/google-logos/gmail.png'},
+ {k:'drive',name:'Google Drive API',id:'drive.googleapis.com',live:true,logo:'/google-logos/drive.png'},
  {k:'sheets',name:'Google Sheets API',id:'sheets.googleapis.com',live:false,logo:'/google-logos/sheets.png'},
  {k:'docs',name:'Google Docs API',id:'docs.googleapis.com',live:false,logo:'/google-logos/docs.png'},
- {k:'ads',name:'Google Ads',id:'googleads.googleapis.com',live:false,logo:'/google-logos/google-ads.png'},
+ {k:'ads',name:'Google Ads',id:'googleads.googleapis.com',live:true,logo:'/google-logos/google-ads.png'},
 ] as const;
 
 export default function GcpView(){
