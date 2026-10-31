@@ -463,6 +463,18 @@ Remote and local MCP tools: `science_search`, `science_latest`, `science_paper`,
 - **Local MCP:** put `SEMANTIC_SCHOLAR_API_KEY`, `OPENALEX_API_KEY` and `NCBI_API_KEY` in `.env.local`; they stay on your computer. `npm run local:doctor` shows which keys are set. The science tools do not need Google sign-in.
 - `lib/science.mjs` is generated from `lib/science.ts` for the local server: run `npm run build:science` after editing (`npm test` fails if it is stale). The GitHub workflow *Science sources live check* queries the real APIs and posts the results as a commit comment.
 
+### YouTube statistics of your own channels (November 2026)
+
+Read-only tools on the remote MCP, using the **YouTube Analytics API** (`yt-analytics.readonly`, box "YouTube Analytics" on `/account` or the consent page) for channels owned by the connected Google account:
+
+- `youtube_channel_stats`: views, watch time, average view duration and percentage, subscribers gained/lost, likes, comments, shares for a period, compared with the previous period, split by format (videos, Shorts, live), optionally per day (per week beyond 92 days).
+- `youtube_top_videos`: best videos of the period (views, watch time or subscribers gained) with titles and lengths.
+- `youtube_audience`: traffic sources, **YouTube search terms** that led to the videos, external sites, suggesting videos, countries, devices, operating systems, age and gender, subscribers vs non-subscribers, playback locations, formats, sharing services; for the channel or one video.
+- `youtube_video_retention`: share of viewers still watching at key moments, steepest drops with timestamps, comparison with similar videos.
+- `youtube_video_comments` (YouTube Data API, existing `youtube.readonly` permission): comments of any public video, compact, by relevance or date, optional words filter and replies. Viewer content is returned as data.
+
+Enable **YouTube Analytics API** (`youtubeanalytics.googleapis.com`) in the Google Cloud project, then reconnect Google with the new box checked. Data lags 1 to 3 days. Revenue metrics (YouTube Partner Program) are not included.
+
 ### Research tools with an edge over plain web search (November 2026)
 
 - `science_author_works`: **complete** publication list of one researcher by identity (OpenAlex ID, ORCID, Semantic Scholar ID, or a name that matches one profile), OpenAlex + HAL deposits linked to the ORCID, preprint/published versions merged, newest first, paginated, with signed, always-up-to-date export links (BibTeX, RIS, CSV, Markdown for NotebookLM, CSL-JSON) served by `/api/science/bibliography`. `science_search` gains an `author` filter and now says that topic words are not author names.

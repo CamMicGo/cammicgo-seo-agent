@@ -2,6 +2,7 @@
 import {useT} from '../../lang-provider';
 import {gcpCopy} from '@/lib/copy/setup';
 import Rich from '../../rich';
+import Link from 'next/link';
 
 const REDIRECT='https://seo.cammicgo.com/api/auth/google/callback';
 const APIS=[
@@ -9,6 +10,7 @@ const APIS=[
  {k:'ga4',name:'Google Analytics Data',id:'analyticsdata.googleapis.com',live:true,logo:'/api/assets/google-analytics'},
  {k:'admin',name:'Google Analytics Admin',id:'analyticsadmin.googleapis.com',live:true,logo:'/api/assets/google-analytics'},
  {k:'yt',name:'YouTube Data API v3',id:'youtube.googleapis.com',live:true,logo:'/google-logos/youtube.svg'},
+ {k:'yta',name:'YouTube Analytics API',id:'youtubeanalytics.googleapis.com',live:true,logo:'/google-logos/youtube.svg'},
  {k:'cal',name:'Google Calendar',id:'calendar-json.googleapis.com',live:true,logo:'/google-logos/calendar.png'},
  {k:'gmail',name:'Gmail API',id:'gmail.googleapis.com',live:true,logo:'/google-logos/gmail.png'},
  {k:'drive',name:'Google Drive API',id:'drive.googleapis.com',live:true,logo:'/google-logos/drive.png'},
@@ -39,7 +41,7 @@ export default function GcpView(){
   <p><a href="/account">{t.connect}</a></p>
   <h2>{t.s6t}</h2><p><Rich text={t.s6p}/></p>
   <p><a href="https://console.cloud.google.com/apis/dashboard" target="_blank" rel="noreferrer">{t.dash}</a></p>
-  <div className="setup-alert"><strong>{t.localT}</strong> <Rich text={t.localP}/> <a href="/setup/local">{t.localLink}</a></div>
+  <div className="setup-alert"><strong>{t.localT}</strong> <Rich text={t.localP}/> <Link href="/setup/local">{t.localLink}</Link></div>
   <footer className="setup-footer"><a href="/account">{t.connect}</a><a href="https://github.com/CamMicGo/cammicgo-seo-mcp">{t.source}</a></footer>
  </main>;
 }
