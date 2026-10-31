@@ -24,7 +24,7 @@ test('OpenAlex: URL (filters, sort, key) and parsing with inverted abstract', ()
   const u = new URL(s.openAlexUrl(q({sort: 'date', from: '2026-01-01', openAccessOnly: true, limit: 20, offset: 20}), 'KEY'));
   assert.equal(u.searchParams.get('sort'), 'publication_date:desc');
   const today = new Date().toISOString().slice(0, 10);
-  assert.equal(u.searchParams.get('filter'), 'title_and_abstract.search:large AND language AND models,from_publication_date:2026-01-01,to_publication_date:' + today + ',is_oa:true');
+  assert.equal(u.searchParams.get('filter'), 'title_and_abstract.search:"large language models",from_publication_date:2026-01-01,to_publication_date:' + today + ',is_oa:true');
   assert.equal(u.searchParams.get('search'), null);
   assert.equal(new URL(s.openAlexUrl(q())).searchParams.get('search'), 'large language models');
   assert.equal(u.searchParams.get('page'), '2');
@@ -52,7 +52,8 @@ test('Semantic Scholar: relevance vs bulk (sorted) URLs and parsing', () => {
   assert.equal(bulk.pathname, '/graph/v1/paper/search/bulk');
   assert.equal(bulk.searchParams.get('sort'), 'citationCount:desc');
   assert.equal(bulk.searchParams.get('openAccessPdf'), '');
-  assert.equal(bulk.searchParams.get('query'), 'large + language + models');
+  assert.equal(bulk.searchParams.get('query'), '"large language models"');
+  assert.equal(new URL(s.semanticScholarUrl(q({sort: 'date', query: 'retrieval augmented generation for search engines'}))).searchParams.get('query'), 'retrieval + augmented + generation + for + search + engines');
   const data = Array.from({length: 30}, (_, i) => ({paperId: 'p' + i, title: 'Paper ' + i, year: 2020, externalIds: {DOI: '10.5555/X' + i, ArXiv: '2001.0000' + i}, citationCount: i}));
   const parsed = s.parseSemanticScholar({total: 30, data}, q({sort: 'date', limit: 5, offset: 10}));
   assert.equal(parsed.papers.length, 5);
@@ -63,7 +64,7 @@ test('Semantic Scholar: relevance vs bulk (sorted) URLs and parsing', () => {
 
 test('arXiv: query building and Atom parsing', () => {
   const u = new URL(s.arxivUrl(q({query: 'graph "neural" networks', sort: 'date', from: '2026-10-01'})));
-  assert.equal(u.searchParams.get('search_query'), '(all:graph AND all:neural AND all:networks) AND submittedDate:[202610010000 TO 299912312359]');
+  assert.equal(u.searchParams.get('search_query'), '((ti:"graph neural networks" OR abs:"graph neural networks")) AND submittedDate:[202610010000 TO 299912312359]');
   assert.equal(u.searchParams.get('sortBy'), 'submittedDate');
   const xml = `<feed><opensearch:totalResults>1234</opensearch:totalResults><entry><id>http://arxiv.org/abs/2410.12345v2</id><published>2024-10-16T17:59:59Z</published>
 <title>Large Language
@@ -98,7 +99,8 @@ test('PubMed: search URL with key, summary and abstract parsing', () => {
 
 test('HAL: Solr-safe query, filters and parsing', () => {
   const u = new URL(s.halUrl(q({query: 'référencement (SEO): "web"', sort: 'date', from: '2025-01-01', openAccessOnly: true})));
-  assert.equal(u.searchParams.get('q'), 'référencement AND SEO AND web');
+  assert.equal(u.searchParams.get('q'), 'title_t:"référencement SEO web" OR abstract_t:"référencement SEO web"');
+  assert.equal(new URL(s.halUrl(q({query: 'référencement (SEO): "web"'}))).searchParams.get('q'), 'référencement AND SEO AND web');
   assert.equal(u.searchParams.get('sort'), 'producedDate_tdate desc');
   assert.deepEqual(u.searchParams.getAll('fq'), ['producedDate_tdate:[2025-01-01T00:00:00Z TO *]', 'openAccess_bool:true']);
   const r = s.parseHal({response: {numFound: 7, docs: [{halId_s: 'hal-04500000', title_s: ['Le référencement naturel'], authFullName_s: ['Marie Curie'], producedDate_s: '2025-05',

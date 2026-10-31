@@ -4,6 +4,7 @@ import {useT} from '../lang-provider';
 import {accountCopy} from '@/lib/copy/account';
 import {supabaseBrowser,supabaseConfigured} from '@/lib/supabase-browser';
 import DriveStorage from './drive-storage';
+import ScienceKeys from './science-keys';
 
 type Client={projectId:string|null;clientId:string;secretHint:string;verifiedAt:string|null;updatedAt:string};
 type Account={admin:boolean;client:Client|null;redirectUri:string;google:{connected:boolean;mode:'shared'|'byo'|null;scopes:string[]|null};usage:{used:number;limit:number;perMinute:number;resetsAt:string}};
@@ -123,6 +124,8 @@ export default function AccountView(){
    </section>
 
    <DriveStorage token={token} googleConnected={!!acc?.google.connected}/>
+
+   <ScienceKeys token={token}/>
   </>}
 
   <section className="acc-card"><h2>{t.urlsTitle}</h2><p>{t.urlsLead}</p>

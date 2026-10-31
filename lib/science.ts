@@ -36,6 +36,8 @@ export function shorten(s:string|null,max:number){if(!s)return null;return s.len
 const isoDay=(d:string)=>/^\d{4}-\d{2}-\d{2}$/.test(d)?d:null;
 /** Plain words of a query (operators and punctuation removed). */
 export const queryWords=(q:string)=>q.replace(/[()"':+|\-!{}[\]^~*?\\/&]/g,' ').split(/\s+/).filter(w=>w&&!/^(and|or|not)$/i.test(w)).slice(0,12);
+/** Newest-first lists ignore relevance, so short topics (≤ 4 words) are matched as an exact phrase to stay on topic. */
+export const asPhrase=(q:string)=>{const w=queryWords(q);return w.length>=2&&w.length<=4;};
 /** Newest-first lists stop at today (some publishers announce future dates). */
 const untilToday=(q:SearchQuery)=>q.to&&isoDay(q.to)?q.to:q.sort==='date'?new Date().toISOString().slice(0,10):undefined;
 const yearOf=(d:string|null)=>d&&/^\d{4}/.test(d)?Number(d.slice(0,4)):null;
@@ -72,7 +74,7 @@ export function openAlexUrl(q:SearchQuery,key?:string){
  const p=new URLSearchParams({'per-page':String(per),page:String(Math.floor(q.offset/per)+1),
   select:'id,doi,display_name,publication_date,publication_year,cited_by_count,authorships,primary_location,open_access,best_oa_location,abstract_inverted_index,type,ids',mailto:CONTACT_EMAIL});
  // Sorted lists ignore relevance: match the words in title and abstract only, so recent full-text noise is excluded.
- if(q.sort==='relevance')p.set('search',q.query);else filters.unshift('title_and_abstract.search:'+queryWords(q.query).join(' AND ').replace(/,/g,' '));
+ if(q.sort==='relevance')p.set('search',q.query);else filters.unshift('title_and_abstract.search:'+(asPhrase(q.query)?'"'+queryWords(q.query).join(' ')+'"':queryWords(q.query).join(' AND ')));
  if(filters.length)p.set('filter',filters.join(','));
  if(q.sort==='date')p.set('sort','publication_date:desc');else if(q.sort==='citations')p.set('sort','cited_by_count:desc');
  if(key)p.set('api_key',key);
@@ -101,7 +103,7 @@ export function semanticScholarUrl(q:SearchQuery){
  if(q.sort==='relevance'){p.set('limit',String(Math.min(100,Math.max(1,q.limit))));p.set('offset',String(q.offset));return 'https://api.semanticscholar.org/graph/v1/paper/search?'+p;}
  // Bulk search is the only endpoint that sorts (by date or citations); it returns up to 1000 rows, trimmed afterwards.
  p.set('sort',q.sort==='date'?'publicationDate:desc':'citationCount:desc');
- p.set('query',queryWords(q.query).join(' + ')||q.query); // bulk syntax: + = AND
+ p.set('query',asPhrase(q.query)?'"'+queryWords(q.query).join(' ')+'"':queryWords(q.query).join(' + ')||q.query); // bulk syntax: "…" = phrase, + = AND
  const to=untilToday(q);p.set('publicationDateOrYear',(q.from&&isoDay(q.from)?q.from:'')+':'+(to??''));
  return 'https://api.semanticscholar.org/graph/v1/paper/search/bulk?'+p;
 }
@@ -125,7 +127,7 @@ export function parseSemanticScholar(body:{total?:number;data?:S2Paper[]},q:Sear
 // ---------- arXiv ----------
 export function arxivUrl(q:SearchQuery){
  const words=queryWords(q.query);
- let sq=words.map(w=>'all:'+w).join(' AND ')||'all:*';
+ let sq=q.sort!=='relevance'&&asPhrase(q.query)?'(ti:"'+words.join(' ')+'" OR abs:"'+words.join(' ')+'")':words.map(w=>'all:'+w).join(' AND ')||'all:*';
  if(q.from||q.to){const f=(q.from&&isoDay(q.from)?q.from.replace(/-/g,''):'19910101')+'0000',t=(q.to&&isoDay(q.to)?q.to.replace(/-/g,''):'29991231')+'2359';sq='('+sq+') AND submittedDate:['+f+' TO '+t+']';}
  const p=new URLSearchParams({search_query:sq,start:String(q.offset),max_results:String(Math.min(50,Math.max(1,q.limit))),
   sortBy:q.sort==='relevance'?'relevance':'submittedDate',sortOrder:'descending'});
@@ -152,7 +154,7 @@ export function parseArxiv(xml:string){
 const ncbi=(path:string,p:URLSearchParams,key?:string)=>{p.set('tool','cammicgo');p.set('email',CONTACT_EMAIL);if(key)p.set('api_key',key);return 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/'+path+'?'+p;};
 export function pubmedSearchUrl(q:SearchQuery,key?:string){
  const words=queryWords(q.query);
- const base=q.sort==='relevance'||!words.length?q.query:words.map(w=>w+'[tiab]').join(' AND ');
+ const base=q.sort==='relevance'||!words.length?q.query:asPhrase(q.query)?'"'+words.join(' ')+'"[tiab]':words.map(w=>w+'[tiab]').join(' AND ');
  const term=base+(q.openAccessOnly?' AND free full text[sb]':'');
  const p=new URLSearchParams({db:'pubmed',term,retmode:'json',retmax:String(Math.min(50,Math.max(1,q.limit))),retstart:String(q.offset),sort:q.sort==='relevance'?'relevance':'pub_date'});
  if(q.from||q.to){p.set('datetype','pdat');p.set('mindate',(q.from&&isoDay(q.from)?q.from:'1800-01-01').replace(/-/g,'/'));p.set('maxdate',(q.to&&isoDay(q.to)?q.to:'3000-12-31').replace(/-/g,'/'));}
@@ -182,7 +184,8 @@ export function parsePubmedAbstract(xml:string){
 // ---------- HAL ----------
 export const HAL_FIELDS='halId_s,title_s,authFullName_s,producedDate_s,publicationDate_s,uri_s,doiId_s,docType_s,journalTitle_s,conferenceTitle_s,fileMain_s,abstract_s,openAccess_bool,language_s';
 export function halUrl(q:SearchQuery){
- const text=queryWords(q.query).join(' AND ')||'*';
+ const w=queryWords(q.query);
+ const text=q.sort!=='relevance'&&asPhrase(q.query)?'title_t:"'+w.join(' ')+'" OR abstract_t:"'+w.join(' ')+'"':w.join(' AND ')||'*';
  const p=new URLSearchParams({q:text,wt:'json',rows:String(Math.min(50,Math.max(1,q.limit))),start:String(q.offset),fl:HAL_FIELDS});
  if(q.sort==='date')p.set('sort','producedDate_tdate desc');
  if(q.from||q.to)p.append('fq','producedDate_tdate:['+(q.from&&isoDay(q.from)?q.from+'T00:00:00Z':'*')+' TO '+(q.to&&isoDay(q.to)?q.to+'T23:59:59Z':'*')+']');
