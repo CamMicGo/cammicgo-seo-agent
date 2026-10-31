@@ -1,8 +1,12 @@
 // Live smoke test against the real APIs (run in CI, where outbound internet is available).
 import * as s from '../../lib/science.ts';
 
-const out: string[] = [];
-const log = (line: string) => { out.push(line); console.log(line); };
+import {appendFileSync, writeFileSync} from 'node:fs';
+const file = process.env.LIVE_OUT ?? 'science-live.txt';
+writeFileSync(file, '');
+const log = (line: string) => { appendFileSync(file, line + '\n'); console.log(line); };
+process.on('uncaughtException', e => { log('CRASH ' + (e instanceof Error ? e.stack : String(e))); process.exit(1); });
+process.on('unhandledRejection', e => { log('CRASH ' + (e instanceof Error ? e.stack : String(e))); process.exit(1); });
 const q = (over: Partial<s.SearchQuery> = {}): s.SearchQuery => ({query: 'search engine optimization', sort: 'relevance', limit: 3, offset: 0, ...over});
 
 for (const sort of ['relevance', 'date'] as const) {
@@ -25,5 +29,3 @@ log(`author: ${a.candidates.length} candidates, first ${a.candidates[0]?.name} (
 const merged = s.mergePapers((await Promise.all(s.SOURCES.map(src => s.searchSource(src, q({query: 'attention is all you need', limit: 5}), {})))).map(r => r.papers), 'relevance', 'attention is all you need');
 log(`merged "attention is all you need": ${merged.length} unique, top: ${merged[0]?.title} [${merged[0]?.sources.join('+')}]`);
 
-const fs = await import('node:fs');
-fs.writeFileSync(process.env.LIVE_OUT ?? 'science-live.txt', out.join('\n'));
