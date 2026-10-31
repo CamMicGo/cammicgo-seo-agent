@@ -199,6 +199,31 @@ async function handler(req:NextRequest){
     if(args.query)params.set('q',args.query);if(args.timeMin)params.set('timeMin',args.timeMin);if(args.timeMax)params.set('timeMax',args.timeMax);
     return asText(await googleRequest('https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(args.calendarId)+'/events?'+params));
    });
+   server.registerTool('gmail_search',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Search Gmail (read-only)',description:'Search the signed-in user\'s Gmail with Gmail search syntax (e.g. from:ads-noreply@google.com subject:"API" newer_than:30d). Returns sender, subject, date and snippet. Requires gmail.readonly. Never sends, deletes or modifies mail.',inputSchema:z.object({query:z.string().max(300),maxResults:z.number().int().min(1).max(15).default(8)})},async args=>{
+    const list=await googleRequest('https://gmail.googleapis.com/gmail/v1/users/me/messages?'+new URLSearchParams({q:args.query,maxResults:String(args.maxResults)})) as {messages?:Array<{id:string}>;error?:string};
+    if(list.error)return asText(list);
+    const out=[];
+    for(const m of list.messages??[]){
+     const msg=await googleRequest('https://gmail.googleapis.com/gmail/v1/users/me/messages/'+m.id+'?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date') as {id?:string;snippet?:string;payload?:{headers?:Array<{name:string;value:string}>};error?:string};
+     if(msg.error){out.push({id:m.id,error:msg.error});continue;}
+     const h=(n:string)=>msg.payload?.headers?.find(x=>x.name.toLowerCase()===n.toLowerCase())?.value??null;
+     out.push({id:m.id,from:h('From'),subject:h('Subject'),date:h('Date'),snippet:msg.snippet});
+    }
+    return asText({count:out.length,messages:out,next:'Call gmail_read with an id to read the full text.'});
+   });
+   server.registerTool('gmail_read',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Read one Gmail message (read-only)',description:'Read the text of one Gmail message found with gmail_search (plain text, HTML converted to text, links kept). Requires gmail.readonly.',inputSchema:z.object({messageId:z.string().regex(/^[A-Za-z0-9]{6,40}$/)})},async args=>{
+    type Part={mimeType?:string;body?:{data?:string};parts?:Part[];filename?:string};
+    const msg=await googleRequest('https://gmail.googleapis.com/gmail/v1/users/me/messages/'+args.messageId+'?format=full') as {id?:string;payload?:Part&{headers?:Array<{name:string;value:string}>};error?:string};
+    if(msg.error)return asText(msg);
+    const decode=(d?:string)=>d?Buffer.from(d.replace(/-/g,'+').replace(/_/g,'/'),'base64').toString('utf8'):'';
+    let plain='',html='';const files:string[]=[];
+    const walk=(p?:Part)=>{if(!p)return;if(p.filename)files.push(p.filename);if(p.mimeType==='text/plain'&&!plain)plain=decode(p.body?.data);else if(p.mimeType==='text/html'&&!html)html=decode(p.body?.data);for(const c of p.parts??[])walk(c);};
+    walk(msg.payload);
+    const fromHtml=(x:string)=>x.replace(/<(script|style)[\s\S]*?<\/\1>/gi,'').replace(/<a\s[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi,'$2 ($1)').replace(/<br\s*\/?>|<\/(p|div|tr|li|h\d)>/gi,'\n').replace(/<[^>]+>/g,'').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#39;/g,"'").replace(/&quot;/g,'"').replace(/[ \t]+/g,' ').replace(/\n\s*\n+/g,'\n\n').trim();
+    const text=(plain||fromHtml(html)).slice(0,30000);
+    const h=(n:string)=>msg.payload?.headers?.find(x=>x.name.toLowerCase()===n.toLowerCase())?.value??null;
+    return asText({id:msg.id,from:h('From'),to:h('To'),subject:h('Subject'),date:h('Date'),attachments:files,text});
+   });
    server.registerTool('search_console_report',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Google Search Console report',description:'Read clicks, impressions, CTR and positions by country, date or query for a verified site.',inputSchema:z.object({siteUrl:z.string().min(1).max(300),startDate:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),endDate:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),dimensions:z.array(z.enum(['country','date','query','page','device'])).min(1).max(3).default(['country']),rowLimit:z.number().int().min(1).max(1000).default(100)})},async args=>{
     const sites=await googleRequest('https://www.googleapis.com/webmasters/v3/sites') as {siteEntry?:Array<{siteUrl:string}>;error?:string};
     if(sites.error)return asText(sites);if(!(sites.siteEntry||[]).some(site=>site.siteUrl===args.siteUrl))return asText({error:'Site not authorized'});
