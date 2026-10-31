@@ -2,6 +2,7 @@ import {createMcpHandler} from 'mcp-handler';
 import {z} from 'zod';
 import {NextRequest,NextResponse} from 'next/server';
 import {makeCampaignDraft} from '@/lib/ads-campaign';
+import * as ads from '@/lib/google-ads';
 import {gumCatalog} from '@/lib/gum-operation-catalog';
 import {getYouTubeTranscript} from '@/lib/youtube-transcript';
 import {verifyMcpAccess} from '@/lib/mcp-access';
@@ -16,6 +17,7 @@ const SERVER_INSTRUCTIONS=[
  'Always remind the user to keep the app open in "Mode connecté" and the device awake while you fetch transcripts.',
  'youtube_get_transcript returns the original spoken language by default (compact [mm:ss] text): translate it yourself. To find a person\'s main channel use youtube_find_channels; several channels can share a name, ask the user if unsure.',
  'Google tools use the user\'s own Google Cloud project (OAuth client ID and secret saved at https://seo.cammicgo.com/account, then "Connect Google"). If a tool answers google_not_connected, relay its messageForUser. Each user has a daily CamMicGo allowance (about 100 tool calls; status checks are free): prefer one youtube_channel_batch over many single transcript calls.',
+ 'Google Ads: ads_accounts, ads_report (read-only) and ads_create_paused_campaign. Campaigns are always created PAUSED with a total budget that is never exceeded over a fixed period: first call it with confirm=false, show the validated summary, and use confirm=true only after the user explicitly approves. Never promise that a campaign is live: the user enables it in Google Ads. Keyword Planner is not available (Explorer access).',
  'Whole channels: youtube_channel_batch builds ONE document (details + full transcripts of every video) with a stable URL, ideal as a single NotebookLM source; follow it with youtube_batch_status. Never paste whole documents into the chat.',
 ].join(' ');
 
@@ -95,7 +97,7 @@ async function handler(req:NextRequest){
     const response=await googleFetch(url,token,init);
     const body=await response.json().catch(()=>({}));
     if(response.status===403&&JSON.stringify(body).includes('SCOPE_INSUFFICIENT')){
-     const api=url.includes('youtube')?'YouTube':url.includes('calendar')?'Google Calendar':url.includes('analytics')?'Google Analytics':url.includes('webmasters')||url.includes('searchconsole')?'Search Console':'this Google API';
+     const api=url.includes('googleads')?'Google Ads':url.includes('youtube')?'YouTube':url.includes('calendar')?'Google Calendar':url.includes('analytics')?'Google Analytics':url.includes('webmasters')||url.includes('searchconsole')?'Search Console':'this Google API';
      return {error:'missing_google_permission',api,reauthorizeUrl:REAUTH_URL,
       messageForUser:'Your Google authorization does not include '+api+'. Open '+REAUTH_URL+' , sign in, keep '+api+' checked and click "Reconnect Google". Then ask me again (no need to reconnect the assistant).',
       instructions:'Relay messageForUser to the user in their language with the link.'};
@@ -223,6 +225,48 @@ async function handler(req:NextRequest){
     const text=(plain||fromHtml(html)).slice(0,30000);
     const h=(n:string)=>msg.payload?.headers?.find(x=>x.name.toLowerCase()===n.toLowerCase())?.value??null;
     return asText({id:msg.id,from:h('From'),to:h('To'),subject:h('Subject'),date:h('Date'),attachments:files,text});
+   });
+   server.registerTool('ads_accounts',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Google Ads accounts',description:'List the Google Ads accounts the connected Google user can access (ID, name, currency, time zone, manager or not). Requires the Google Ads permission (adwords scope).',inputSchema:z.object({})},async()=>{
+    const list=await googleRequest(ads.ADS_BASE+'/customers:listAccessibleCustomers') as {resourceNames?:string[];error?:string};
+    if(list.error)return asText(list);
+    const out=[];
+    for(const rn of (list.resourceNames??[]).slice(0,15)){
+     const cid=rn.split('/')[1];
+     const info=await googleRequest(ads.ADS_BASE+'/customers/'+cid+'/googleAds:search',{method:'POST',headers:ads.adsHeaders(),body:JSON.stringify({query:'SELECT customer.id, customer.descriptive_name, customer.currency_code, customer.time_zone, customer.manager, customer.test_account FROM customer LIMIT 1'})}) as {results?:Array<{customer?:Record<string,unknown>}>;error?:string;details?:unknown};
+     out.push(info.results?.[0]?.customer??{id:cid,note:'Details unavailable (may require loginCustomerId of a manager account)',errors:ads.adsErrors(info.details)});
+    }
+    return asText({apiVersion:ads.ADS_VERSION,accounts:out});
+   });
+   server.registerTool('ads_report',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Google Ads report',description:'Read Google Ads performance (impressions, clicks, CTR, average CPC, cost, conversions) by campaign, ad group, keyword or search term, or run a custom read-only GAQL SELECT. Costs are converted from micros to currency units.',inputSchema:z.object({customerId:z.string().max(20),loginCustomerId:z.string().max(20).optional(),level:z.enum(['campaign','ad_group','keyword','search_term']).default('campaign'),during:z.enum(ads.DURING).default('LAST_30_DAYS'),query:z.string().max(4000).optional().describe('Optional custom GAQL SELECT (read-only)')})},async args=>{
+    if(!ads.isCid(args.customerId))return asText({error:'customerId must be a 10-digit Google Ads account ID'});
+    const query=args.query?ads.safeCustomQuery(args.query):ads.presetQuery(args.level,args.during);
+    if(!query)return asText({error:'Only a single GAQL SELECT is allowed'});
+    const body=await googleRequest(ads.ADS_BASE+'/customers/'+ads.cleanCid(args.customerId)+'/googleAds:searchStream',{method:'POST',headers:ads.adsHeaders(args.loginCustomerId),body:JSON.stringify({query})}) as {error?:string;details?:unknown};
+    if(body&&!Array.isArray(body)&&body.error)return asText({...body,googleAdsErrors:ads.adsErrors(body.details)});
+    const rows=ads.rowsOf(body);
+    return asText({query,rowCount:rows.length,rows,note:'Monetary values are in the account currency (micros already converted).'});
+   });
+   server.registerTool('ads_create_paused_campaign',{annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},title:'Create a PAUSED Google Ads Search campaign',description:'Create a Google Search campaign that is ALWAYS created PAUSED, with a campaign TOTAL budget that can never be exceeded over a fixed period (startDate to endDate), Maximize clicks bidding (optional max CPC), country and language targeting, one ad group with keywords and one responsive search ad. First call with confirm=false: Google validates everything without creating anything and you show the summary to the user. Only after the user explicitly approves, call again with confirm=true. Nothing is ever enabled: the user reviews and enables the campaign in Google Ads. totalBudget and maxCpc are in the account currency.',inputSchema:z.object({
+     customerId:z.string().max(20),loginCustomerId:z.string().max(20).optional(),name:z.string().min(3).max(120),finalUrl:z.string().url().max(500),
+     totalBudget:z.number().positive().describe('Maximum total spend for the whole period, in account currency'),startDate:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),endDate:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+     keywords:z.array(z.object({text:z.string().min(1).max(80),matchType:z.enum(['EXACT','PHRASE','BROAD']).default('PHRASE')})).min(1).max(50),
+     headlines:z.array(z.string().max(30)).min(3).max(15),descriptions:z.array(z.string().max(90)).min(2).max(4),path1:z.string().max(15).optional(),path2:z.string().max(15).optional(),
+     countries:z.array(z.string().length(2)).min(1).max(10).default(['FR']),languages:z.array(z.string().max(5)).min(1).max(6).default(['fr']),maxCpc:z.number().positive().max(100).optional(),
+     confirm:z.boolean().default(false).describe('false = validate only (nothing created); true = create the PAUSED campaign after the user approved')})},async args=>{
+    const check=ads.checkCampaign(args);
+    if('error' in check)return asText({error:check.error});
+    const cid=ads.cleanCid(args.customerId);
+    const cur=await googleRequest(ads.ADS_BASE+'/customers/'+cid+'/googleAds:search',{method:'POST',headers:ads.adsHeaders(args.loginCustomerId),body:JSON.stringify({query:'SELECT customer.currency_code, customer.descriptive_name, customer.time_zone FROM customer LIMIT 1'})}) as {results?:Array<{customer?:{currencyCode?:string;descriptiveName?:string;timeZone?:string}}>};
+    const customer=cur.results?.[0]?.customer;
+    const summary={account:(customer?.descriptiveName??'')+' ('+cid+')',currency:customer?.currencyCode??'?',timeZone:customer?.timeZone??'?',status:'PAUSED (you enable it yourself in Google Ads)',type:'Search, Google search only (no Display, no partners)',
+     totalBudget:args.totalBudget+' '+(customer?.currencyCode??''),budgetType:'Campaign total budget: Google will not spend more than this amount over the whole period',period:args.startDate+' → '+args.endDate+' ('+check.days+' days)',averagePerDay:Math.floor(args.totalBudget/check.days*100)/100,
+     bidding:'Maximize clicks'+(args.maxCpc?' with max CPC '+args.maxCpc:''),countries:args.countries,languages:args.languages,keywords:args.keywords.map(k=>k.text+' ['+k.matchType+']'),headlines:args.headlines,descriptions:args.descriptions,finalUrl:args.finalUrl};
+    const body=await googleRequest(ads.ADS_BASE+'/customers/'+cid+'/googleAds:mutate',{method:'POST',headers:ads.adsHeaders(args.loginCustomerId),body:JSON.stringify({mutateOperations:ads.campaignOperations(args),validateOnly:!args.confirm,partialFailure:false})}) as {error?:string;details?:unknown;mutateOperationResponses?:Array<Record<string,{resourceName?:string}>>};
+    if(body.error)return asText({created:false,validated:false,summary,error:body.error,googleAdsErrors:ads.adsErrors(body.details)??body.details});
+    if(!args.confirm)return asText({created:false,validated:true,summary,next:'Show this summary to the user. If they approve, call ads_create_paused_campaign again with the same arguments and confirm=true.'});
+    const campaign=(body.mutateOperationResponses??[]).map(r=>Object.values(r)[0]?.resourceName).find(n=>n?.includes('/campaigns/'));
+    const campaignId=campaign?.split('/').pop();
+    return asText({created:true,status:'PAUSED',summary,campaign,campaignId,reviewUrl:'https://ads.google.com/aw/campaigns?__e='+cid,messageForUser:'The campaign "'+args.name+'" was created PAUSED in account '+cid+'. Review it in Google Ads, then enable it yourself when you are ready.'});
    });
    server.registerTool('search_console_report',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Google Search Console report',description:'Read clicks, impressions, CTR and positions by country, date or query for a verified site.',inputSchema:z.object({siteUrl:z.string().min(1).max(300),startDate:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),endDate:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),dimensions:z.array(z.enum(['country','date','query','page','device'])).min(1).max(3).default(['country']),rowLimit:z.number().int().min(1).max(1000).default(100)})},async args=>{
     const sites=await googleRequest('https://www.googleapis.com/webmasters/v3/sites') as {siteEntry?:Array<{siteUrl:string}>;error?:string};
