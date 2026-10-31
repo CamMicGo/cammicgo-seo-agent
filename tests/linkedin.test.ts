@@ -1,4 +1,5 @@
 // Unit tests for lib/linkedin.ts — run with: npm test
+/* eslint-disable @typescript-eslint/no-explicit-any -- loose JSON bodies in assertions */
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import * as li from '../lib/linkedin.ts';
@@ -16,18 +17,48 @@ test('authorization URL asks exactly for sign-in and posting, with the fixed red
  assert.equal(u.searchParams.get('state'),'state123');
  assert.equal(li.tokenBody('c','id','s').get('grant_type'),'authorization_code');
 });
-test('post bodies: text, image and link preview', ()=>{
+test('Posts API bodies: text, image, video and link preview on the member profile', ()=>{
  const author=li.personUrn('abc123');assert.equal(author,'urn:li:person:abc123');
- const text=li.ugcPostBody({author,text:'Hello',visibility:'PUBLIC'}) as any;
- assert.equal(text.specificContent['com.linkedin.ugc.ShareContent'].shareMediaCategory,'NONE');
- assert.equal(text.visibility['com.linkedin.ugc.MemberNetworkVisibility'],'PUBLIC');
- const img=li.ugcPostBody({author,text:'Pic',visibility:'CONNECTIONS',media:{kind:'IMAGE',asset:'urn:li:digitalmediaAsset:X'}}) as any;
- assert.deepEqual(img.specificContent['com.linkedin.ugc.ShareContent'].media,[{status:'READY',media:'urn:li:digitalmediaAsset:X'}]);
- const link=li.ugcPostBody({author,text:'Read',visibility:'PUBLIC',link:{url:'https://www.cammicgo.com',title:'CamMicGo'}}) as any;
- assert.equal(link.specificContent['com.linkedin.ugc.ShareContent'].shareMediaCategory,'ARTICLE');
- assert.equal(link.specificContent['com.linkedin.ugc.ShareContent'].media[0].originalUrl,'https://www.cammicgo.com');
- assert.deepEqual(li.registerUploadBody(author,'VIDEO').registerUploadRequest.recipes,['urn:li:digitalmediaRecipe:feedshare-video']);
+ const text=li.postBody({author,text:'Hello',visibility:'PUBLIC'}) as any;
+ assert.deepEqual(text,{author,commentary:'Hello',visibility:'PUBLIC',distribution:{feedDistribution:'MAIN_FEED',targetEntities:[],thirdPartyDistributionChannels:[]},lifecycleState:'PUBLISHED',isReshareDisabledByAuthor:false});
+ const img=li.postBody({author,text:'Pic',visibility:'CONNECTIONS',media:{kind:'IMAGE',id:'urn:li:image:C4E'}}) as any;
+ assert.deepEqual(img.content,{media:{id:'urn:li:image:C4E'}});assert.equal(img.visibility,'CONNECTIONS');
+ const vid=li.postBody({author,text:'Clip',visibility:'PUBLIC',media:{kind:'VIDEO',id:'urn:li:video:C5',title:'Demo'}}) as any;
+ assert.deepEqual(vid.content,{media:{id:'urn:li:video:C5',title:'Demo'}});
+ const link=li.postBody({author,text:'Read',visibility:'PUBLIC',link:{url:'https://www.cammicgo.com/fr/',description:'Test'}}) as any;
+ assert.deepEqual(link.content,{article:{source:'https://www.cammicgo.com/fr/',title:'www.cammicgo.com/fr',description:'Test'}});
+ assert.deepEqual(li.imageInitBody(author),{initializeUploadRequest:{owner:author}});
+ assert.deepEqual(li.videoInitBody(author,5000),{initializeUploadRequest:{owner:author,fileSizeBytes:5000,uploadCaptions:false,uploadThumbnail:false}});
+ assert.deepEqual(li.finalizeVideoBody('urn:li:video:C5','',['e1','e2']),{finalizeUploadRequest:{video:'urn:li:video:C5',uploadToken:'',uploadedPartIds:['e1','e2']}});
  assert.equal(li.postUrl('urn:li:share:123'),'https://www.linkedin.com/feed/update/urn%3Ali%3Ashare%3A123/');
+});
+test('post text: reserved characters escaped, hashtags kept clickable', ()=>{
+ assert.equal(li.littleText('Test (webcam) & micro [gratuit] @home *new* a_b ~ok | x\\y <3 {z}'),
+  'Test \\(webcam\\) & micro \\[gratuit\\] \\@home \\*new\\* a\\_b \\~ok \\| x\\\\y \\<3 \\{z\\}');
+ assert.equal(li.littleText('Nouveau #webcam et #testMicro2026 !'),'Nouveau {hashtag|\\#|webcam} et {hashtag|\\#|testMicro2026} !');
+ assert.equal(li.littleText('#début'),'{hashtag|\\#|début}');
+ assert.equal(li.littleText('C# et page#3 et &#123;'),'C\\# et page\\#3 et &\\#123;');
+ assert.equal(li.littleText('# seul'),'\\# seul');
+});
+test('LinkedIn-Version candidates: last month first, inside the one-year window', ()=>{
+ assert.deepEqual(li.versionCandidates(Date.parse('2026-11-01T00:30:00Z'),3),['202610','202609','202608']);
+ assert.deepEqual(li.versionCandidates(Date.parse('2026-01-15T00:00:00Z'),2),['202512','202511']);
+});
+test('video parts must be LinkedIn hosts covering the file exactly', ()=>{
+ const u=(n:number)=>'https://www.linkedin.com/dms-uploads/sp/v2/V'+n;
+ assert.deepEqual(li.videoParts([{uploadUrl:u(2),firstByte:4,lastByte:9},{uploadUrl:u(1),firstByte:0,lastByte:3}],10),[{url:u(1),first:0,last:3},{url:u(2),first:4,last:9}]);
+ assert.equal(li.videoParts([{uploadUrl:u(1),firstByte:0,lastByte:3}],10),null);
+ assert.equal(li.videoParts([{uploadUrl:u(1),firstByte:0,lastByte:4},{uploadUrl:u(2),firstByte:4,lastByte:9}],10),null);
+ assert.equal(li.videoParts([{uploadUrl:'https://uploads.example.com/x',firstByte:0,lastByte:9}],10),null);
+ assert.equal(li.videoParts(undefined,10),null);
+});
+test('LinkedIn refusals are explained', ()=>{
+ const acc='https://seo.cammicgo.com/account';
+ assert.match(li.problemMessage(401,'',acc),/reconnect LinkedIn/);
+ assert.match(li.problemMessage(403,'',acc),/Share on LinkedIn/);
+ assert.match(li.problemMessage(422,'{"code":"DUPLICATE_POST"}',acc),/identical/);
+ assert.match(li.problemMessage(429,'',acc),/daily limit/);
+ assert.equal(li.problemMessage(500,'',acc),'LinkedIn answered HTTP 500.');
 });
 test('posts are checked: length, one media or one link, types and sizes', ()=>{
  assert.equal('ok' in li.checkPost({text:' Bonjour '}),true);

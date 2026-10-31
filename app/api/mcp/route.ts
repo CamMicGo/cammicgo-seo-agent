@@ -816,27 +816,58 @@ async function handler(req:NextRequest){
      next:'Show this exact post to the user. Publish only after the user explicitly says yes in a NEW message: call linkedin_post again with the same arguments, confirm=true and this confirmationToken.'});
     const check=confirmFlow('linkedin',bound,args.confirmationToken);if(!check.ok||!args.confirmationToken)return asText(tokenProblem(check.ok?'missing':check.reason));
     const author=li.personUrn(conn.memberId);
-    const liFetch=(url:string,init:RequestInit={})=>fetch(url,{...init,headers:{Authorization:'Bearer '+conn.accessToken,'X-Restli-Protocol-Version':'2.0.0',...(init.headers??{})},cache:'no-store',signal:AbortSignal.timeout(45000)});
-    const liError=async(r:Response)=>{const body=await r.text().catch(()=>'');return {error:'linkedin_error',status:r.status,details:body.slice(0,500),
-     messageForUser:r.status===401?'LinkedIn refused the connection (expired or revoked): reconnect LinkedIn at '+account.ACCOUNT_URL+'.':r.status===403?'LinkedIn refused the publication: check that your app has the "Share on LinkedIn" product.':r.status===429?'LinkedIn daily limit reached for your app: try again tomorrow.':'LinkedIn answered HTTP '+r.status+'.'};};
+    const auth={Authorization:'Bearer '+conn.accessToken};
+    // Versioned REST calls; an inactive LinkedIn-Version (HTTP 426, nothing processed) moves to an older month.
+    const liRest=async(path:string,init:RequestInit={})=>{
+     const tried=new Set<string>();let last:Response|null=null;
+     for(const v of [li.liVersionCache.value,...li.versionCandidates()]){
+      if(!v||tried.has(v))continue;tried.add(v);if(tried.size>6)break;
+      last=await fetch(li.LI_REST+path,{...init,headers:{...auth,'LinkedIn-Version':v,'X-Restli-Protocol-Version':'2.0.0',...(init.body?{'Content-Type':'application/json'}:{})},cache:'no-store',signal:AbortSignal.timeout(30000)});
+      if(last.status!==426){li.liVersionCache.value=v;return last;}
+     }
+     return last as Response;
+    };
+    const liError=async(r:Response)=>{const body=await r.text().catch(()=>'');return {error:'linkedin_error',status:r.status,details:body.slice(0,500),messageForUser:li.problemMessage(r.status,body,account.ACCOUNT_URL)};};
+    const uploadFailed={error:'linkedin_upload_failed',messageForUser:'LinkedIn did not give usable upload addresses. Nothing was published.'};
+    // li.uploadTarget / li.videoParts only accept https LinkedIn hosts: the member token never goes anywhere else.
+    const putPart=(url:string,bytes:Uint8Array<ArrayBuffer>,mime:string)=>fetch(url,{method:'PUT',headers:{...auth,'Content-Type':mime},body:bytes,signal:AbortSignal.timeout(40000)});
     return asText(await publishOnce('linkedin',args.confirmationToken,async():Promise<Attempt>=>{
      let mediaPart:li.PostInput['media'];
      if(media){
       const file=await mediaBytes(media.src,media.kind==='VIDEO'?li.LI_VIDEO_MAX:li.LI_IMAGE_MAX);if('error' in file)return {ok:false,response:file};
       const ok=li.checkPost({text:pre.text,media:{kind:media.kind,mime:file.mime,bytes:file.content.length}});if('error' in ok)return {ok:false,response:ok};
-      const reg=await liFetch(li.LI_API+'/assets?action=registerUpload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(li.registerUploadBody(author,media.kind))});
-      if(!reg.ok)return {ok:false,response:await liError(reg)};
-      const rb=await reg.json().catch(()=>({})) as {value?:{asset?:string;uploadMechanism?:Record<string,{uploadUrl?:string;headers?:Record<string,string>}>}};
-      const mech=rb.value?.uploadMechanism?.['com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest'];const asset=rb.value?.asset;
-      const target=li.uploadTarget(mech?.uploadUrl);
-      if(!target||!asset)return {ok:false,response:{error:'linkedin_upload_failed',messageForUser:'LinkedIn did not give a usable upload address. Nothing was published.'}};
-      // uploadTarget only accepts https LinkedIn hosts: the member token never goes anywhere else.
-      const up=await fetch(target.url,{method:'PUT',headers:{...(mech?.headers??{}),Authorization:'Bearer '+conn.accessToken,'Content-Type':file.mime??'application/octet-stream'},body:new Uint8Array(file.content),signal:AbortSignal.timeout(50000)});
-      if(!up.ok)return {ok:false,response:await liError(up)};
-      mediaPart={kind:media.kind,asset};
+      if(media.kind==='IMAGE'){
+       const init=await liRest('/images?action=initializeUpload',{method:'POST',body:JSON.stringify(li.imageInitBody(author))});
+       if(!init.ok)return {ok:false,response:await liError(init)};
+       const v=((await init.json().catch(()=>({}))) as {value?:{uploadUrl?:string;image?:string}}).value;
+       const target=li.uploadTarget(v?.uploadUrl);if(!target||!v?.image)return {ok:false,response:uploadFailed};
+       const up=await putPart(target.url,new Uint8Array(file.content),file.mime??'application/octet-stream');
+       if(!up.ok)return {ok:false,response:await liError(up)};
+       mediaPart={kind:'IMAGE',id:v.image};
+      }else{
+       const init=await liRest('/videos?action=initializeUpload',{method:'POST',body:JSON.stringify(li.videoInitBody(author,file.content.length))});
+       if(!init.ok)return {ok:false,response:await liError(init)};
+       const v=((await init.json().catch(()=>({}))) as {value?:{video?:string;uploadToken?:string;uploadInstructions?:Array<{uploadUrl?:string;firstByte?:number;lastByte?:number}>}}).value;
+       const parts=li.videoParts(v?.uploadInstructions,file.content.length);if(!v?.video||!parts)return {ok:false,response:uploadFailed};
+       const etags:string[]=[];
+       for(let i=0;i<parts.length;i+=4){
+        const sent=await Promise.all(parts.slice(i,i+4).map(x=>putPart(x.url,new Uint8Array(file.content.subarray(x.first,x.last+1)),'application/octet-stream')));
+        for(const res of sent){const tag=res.headers.get('etag');if(!res.ok)return {ok:false,response:await liError(res)};if(!tag)return {ok:false,response:uploadFailed};etags.push(tag);}
+       }
+       const fin=await liRest('/videos?action=finalizeUpload',{method:'POST',body:JSON.stringify(li.finalizeVideoBody(v.video,v.uploadToken??'',etags))});
+       if(!fin.ok)return {ok:false,response:await liError(fin)};
+       for(let n=0;n<6;n++){
+        const st=await liRest('/videos/'+encodeURIComponent(v.video)).catch(()=>null);
+        const status=st?.ok?((await st.json().catch(()=>({}))) as {status?:string}).status:null;
+        if(status==='AVAILABLE')break;
+        if(status==='PROCESSING_FAILED')return {ok:false,response:{error:'linkedin_video_failed',messageForUser:'LinkedIn could not process this video (format or encoding). Nothing was published.'}};
+        await new Promise(res=>setTimeout(res,2500));
+       }
+       mediaPart={kind:'VIDEO',id:v.video};
+      }
      }
      let r:Response;
-     try{r=await liFetch(li.LI_API+'/ugcPosts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(li.ugcPostBody({author,text:pre.text,visibility:args.visibility,media:mediaPart,link:args.link}))});}
+     try{r=await liRest('/posts',{method:'POST',body:JSON.stringify(li.postBody({author,text:pre.text,visibility:args.visibility,media:mediaPart,link:args.link}))});}
      catch{return {ok:false,uncertain:true,response:{error:'linkedin_no_answer',messageForUser:'LinkedIn did not answer in time: the post may have been published. Check your LinkedIn profile before trying again.'}};}
      if(!r.ok)return {ok:false,uncertain:r.status>=500,response:await liError(r)};
      const urn=r.headers.get('x-restli-id')??((await r.json().catch(()=>({}))) as {id?:string}).id??null;

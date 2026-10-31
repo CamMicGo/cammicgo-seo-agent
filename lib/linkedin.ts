@@ -5,7 +5,7 @@
  */
 export const LI_AUTHORIZE='https://www.linkedin.com/oauth/v2/authorization';
 export const LI_TOKEN='https://www.linkedin.com/oauth/v2/accessToken';
-export const LI_API='https://api.linkedin.com/v2';
+export const LI_API='https://api.linkedin.com/v2'; // OpenID Connect userinfo
 export const LI_REDIRECT='https://seo.cammicgo.com/api/auth/linkedin/callback';
 export const LI_SCOPES=['openid','profile','email','w_member_social'];
 export const LI_TEXT_MAX=3000;
@@ -32,24 +32,71 @@ export const personUrn=(memberId:string)=>'urn:li:person:'+memberId;
 export const postUrl=(urn:string)=>'https://www.linkedin.com/feed/update/'+encodeURIComponent(urn)+'/';
 
 export type MediaKind='IMAGE'|'VIDEO';
-export function registerUploadBody(author:string,kind:MediaKind){
- return {registerUploadRequest:{recipes:['urn:li:digitalmediaRecipe:feedshare-'+(kind==='IMAGE'?'image':'video')],owner:author,
-  serviceRelationships:[{relationshipType:'OWNER',identifier:'urn:li:userGeneratedContent'}]}};
+
+/**
+ * Versioned REST API (Posts, Images, Videos), the replacement of the legacy ugcPosts and assets endpoints.
+ * Every call carries LinkedIn-Version (YYYYMM); each version stays active for at least a year.
+ */
+export const LI_REST='https://api.linkedin.com/rest';
+/** The version that last worked on this server instance (an inactive one answers HTTP 426). */
+export const liVersionCache:{value:string|null}={value:null};
+/** Candidate versions, newest first: last month, then older months still inside the one-year window. */
+export function versionCandidates(now=Date.now(),count=11){
+ const d=new Date(now);const out:string[]=[];
+ for(let i=1;i<=count;i++){const t=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()-i,1));out.push(t.getUTCFullYear()+String(t.getUTCMonth()+1).padStart(2,'0'));}
+ return out;
 }
 
-/** Upload address from registerUpload: accepted only on https LinkedIn hosts, the only place the member token may go. */
+/**
+ * Post text in LinkedIn's "little text" format: reserved characters are escaped (an unescaped one can cut
+ * the post short) and #hashtags become hashtag templates, so they stay clickable.
+ */
+const RESERVED=/[\\|{}@[\]()<>#*_~]/g;
+const escapeText=(t:string)=>t.replace(RESERVED,c=>'\\'+c);
+export function littleText(text:string){
+ let out='',last=0;
+ for(const m of text.matchAll(/(?<![\p{L}\p{N}_&#])#([\p{L}\p{N}]+)/gu)){
+  out+=escapeText(text.slice(last,m.index))+'{hashtag|\\#|'+m[1]+'}';
+  last=(m.index??0)+m[0].length;
+ }
+ return out+escapeText(text.slice(last));
+}
+
+/** Upload address from LinkedIn: accepted only on https LinkedIn hosts, the only place the member token may go. */
 export function uploadTarget(raw:string|undefined){
  if(!raw)return null;
  try{const u=new URL(raw);if(u.protocol!=='https:')return null;return u.hostname==='linkedin.com'||u.hostname.endsWith('.linkedin.com')?{url:u.toString()}:null;}catch{return null;}
 }
 
-export type PostInput={author:string;text:string;visibility:'PUBLIC'|'CONNECTIONS';media?:{kind:MediaKind;asset:string;title?:string};link?:{url:string;title?:string;description?:string}};
-/** ugcPosts body for a text post, optionally with one image or video, or a link preview. */
-export function ugcPostBody(p:PostInput){
- const share:Record<string,unknown>={shareCommentary:{text:p.text},shareMediaCategory:p.media?p.media.kind:p.link?'ARTICLE':'NONE'};
- if(p.media)share.media=[{status:'READY',media:p.media.asset,...(p.media.title?{title:{text:p.media.title}}:{})}];
- else if(p.link)share.media=[{status:'READY',originalUrl:p.link.url,...(p.link.title?{title:{text:p.link.title}}:{}),...(p.link.description?{description:{text:p.link.description}}:{})}];
- return {author:p.author,lifecycleState:'PUBLISHED',specificContent:{'com.linkedin.ugc.ShareContent':share},visibility:{'com.linkedin.ugc.MemberNetworkVisibility':p.visibility}};
+export type PostInput={author:string;text:string;visibility:'PUBLIC'|'CONNECTIONS';media?:{kind:MediaKind;id:string;title?:string};link?:{url:string;title?:string;description?:string}};
+/** Posts API body: text, optionally one uploaded image or video (urn:li:image / urn:li:video) or an article link. */
+export function postBody(p:PostInput){
+ const body:Record<string,unknown>={author:p.author,commentary:littleText(p.text),visibility:p.visibility,
+  distribution:{feedDistribution:'MAIN_FEED',targetEntities:[],thirdPartyDistributionChannels:[]},lifecycleState:'PUBLISHED',isReshareDisabledByAuthor:false};
+ if(p.media)body.content={media:{id:p.media.id,...(p.media.title?{title:p.media.title}:{})}};
+ else if(p.link){const u=new URL(p.link.url);body.content={article:{source:p.link.url,title:p.link.title||(u.hostname+u.pathname).replace(/\/$/,''),...(p.link.description?{description:p.link.description}:{})}};}
+ return body;
+}
+export const imageInitBody=(owner:string)=>({initializeUploadRequest:{owner}});
+export const videoInitBody=(owner:string,bytes:number)=>({initializeUploadRequest:{owner,fileSizeBytes:bytes,uploadCaptions:false,uploadThumbnail:false}});
+export const finalizeVideoBody=(video:string,uploadToken:string,etags:string[])=>({finalizeUploadRequest:{video,uploadToken,uploadedPartIds:etags}});
+/** The byte ranges LinkedIn asks for (one PUT each), accepted only if they are on LinkedIn hosts and cover the file exactly. */
+export function videoParts(instructions:Array<{uploadUrl?:string;firstByte?:number;lastByte?:number}>|undefined,size:number){
+ const parts=(instructions??[]).map(i=>({target:uploadTarget(i.uploadUrl),first:Number(i.firstByte),last:Number(i.lastByte)}));
+ if(!parts.length||parts.some(x=>!x.target||!Number.isInteger(x.first)||!Number.isInteger(x.last)||x.last<x.first))return null;
+ parts.sort((x,y)=>x.first-y.first);
+ let next=0;for(const x of parts){if(x.first!==next)return null;next=x.last+1;}
+ return next===size?parts.map(x=>({url:x.target!.url,first:x.first,last:x.last})):null;
+}
+
+/** Plain-language reason for a LinkedIn refusal (HTTP status and body). */
+export function problemMessage(status:number,body:string,accountUrl:string){
+ if(status===401)return 'LinkedIn refused the connection (expired or revoked): reconnect LinkedIn at '+accountUrl+'.';
+ if(status===403)return 'LinkedIn refused the publication: check that your LinkedIn app has the "Share on LinkedIn" product, then reconnect LinkedIn.';
+ if(/DUPLICATE_POST|duplicate/i.test(body))return 'LinkedIn refuses a post identical to one published just before.';
+ if(status===429)return 'LinkedIn daily limit reached for your app: try again tomorrow.';
+ if(status===426)return 'LinkedIn refused the API version used by CamMicGo: try again later.';
+ return 'LinkedIn answered HTTP '+status+'.';
 }
 
 /** Checks a post before anything is sent: text length, one media or one link, file type and size. */
