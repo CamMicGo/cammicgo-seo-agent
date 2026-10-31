@@ -47,7 +47,11 @@ export default function OAuthConsent(){
    if(user){try{const {data:{session}}=await getSupabase().auth.getSession();if(session){const acc=await fetch('/api/account',{headers:{Authorization:'Bearer '+session.access_token},cache:'no-store'});if(acc.ok){const info=await acc.json() as {admin?:boolean;client?:{projectId:string|null;clientId:string;secretHint:string}|null};setAdmin(info.admin===true);setSavedClient(info.client??null);if(info.admin)setGoogleMode('shared');}const status=await fetch('/api/mcp/google/status',{headers:{Authorization:'Bearer '+session.access_token},cache:'no-store'});if(status.ok){const body=await status.json() as {connected?:boolean;scopes?:string[]|null};setGoogleConnected(body.connected===true);if(!savedScopes()&&Array.isArray(body.scopes)){const granted=body.scopes.filter(x=>apiOptions.some(o=>o.scope===x));if(granted.length)setSelectedScopes(granted);}}}}catch{/* Google linking remains optional. */}}
    if(!authorizationId)return;
    const {data,error:err}=await getSupabase().auth.oauth.getAuthorizationDetails(authorizationId);
-   if(err){setError(err.message);return;}
+   if(err){setError(/cannot be processed|no longer pending|expired|not found/i.test(err.message)?t.stale:err.message);return;}
+   // Already approved before for this assistant: Supabase answers with the redirect URL directly.
+   const auto=data as Details&{redirect_url?:string;redirect_to?:string};
+   const back=auto?.redirect_url||auto?.redirect_to;
+   if(back&&!auto.client){window.location.assign(back);return;}
    setDetails(data as Details);
   })();
  },[]);
@@ -65,7 +69,7 @@ export default function OAuthConsent(){
   if(!id||busy)return;
   setBusy(true);setError('');
   const result=approve?await getSupabase().auth.oauth.approveAuthorization(id):await getSupabase().auth.oauth.denyAuthorization(id);
-  if(result.error){setError(result.error.message);setBusy(false);return;}
+  if(result.error){setError(/cannot be processed|no longer pending|expired|not found/i.test(result.error.message)?t.stale:result.error.message);setBusy(false);return;}
   const url=result.data?.redirect_url;
   if(!url){setError(t.noRedirect);setBusy(false);return;}
   window.location.assign(url);
