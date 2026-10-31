@@ -17,6 +17,8 @@ test('identifiers: DOI, arXiv, PMID, OpenAlex, Semantic Scholar, HAL', () => {
   assert.deepEqual(s.parsePaperId('649def34f8be52c8b66281af98ae884c09aef38b'), {kind: 's2', value: '649def34f8be52c8b66281af98ae884c09aef38b'});
   assert.deepEqual(s.parsePaperId('https://hal.science/hal-01234567v2'), {kind: 'hal', value: 'hal-01234567v2'});
   assert.deepEqual(s.parsePaperId('tel-04012345'), {kind: 'hal', value: 'tel-04012345'});
+  assert.deepEqual(s.parsePaperId('sic-00001234'), {kind: 'hal', value: 'sic-00001234'});
+  assert.deepEqual(s.parsePaperId('emse-01234567'), {kind: 'hal', value: 'emse-01234567'});
   assert.equal(s.parsePaperId('hello world'), null);
 });
 

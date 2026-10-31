@@ -19,7 +19,8 @@ for (const sort of ['relevance', 'date'] as const) {
 const hal = await s.searchSource('hal', q({query: 'référencement naturel'}), {});
 log(`HAL french query: ${hal.error ?? hal.papers.length + ' papers'} ${hal.papers[0]?.title.slice(0, 60) ?? ''}`);
 for (const id of ['10.1038/nature14539', '1706.03762', 'PMID:31452104', 'W2741809807', hal.papers[0]?.id ?? 'hal-00000000']) {
-  const pid = s.parsePaperId(id)!;
+  const pid = s.parsePaperId(id);
+  if (!pid) { log('paper ' + id + ': UNPARSED ID'); continue; }
   const d = await s.paperDetails(pid, {});
   log(`paper ${id}: ${d.paper ? d.paper.title.slice(0, 60) + ' · sources ' + d.paper.sources.join('+') + ' · abstract ' + (d.paper.abstract ? d.paper.abstract.length + ' chars' : 'none') + ' · tldr ' + (d.paper.tldr ? 'yes' : 'no') + ' · citations ' + d.paper.citations : 'NOT FOUND'} ${d.notes.join(' | ')}`);
   await new Promise(res => setTimeout(res, 1500));
