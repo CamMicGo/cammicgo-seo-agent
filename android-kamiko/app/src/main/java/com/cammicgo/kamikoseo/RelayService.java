@@ -51,10 +51,10 @@ public class RelayService extends Service {
     String token = RelayClient.token(this);
     if (token == null) { shutdown(); return START_NOT_STICKY; }
 
-    Notification n = notification("Mode connecté : en attente de demandes");
+    Notification n = notification(I18n.t(this, "notif_waiting"));
     if (Build.VERSION.SDK_INT >= 29) startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
     else startForeground(NOTIFICATION_ID, n);
-    RelayClient.prefs(this).edit().putBoolean("connected", true).putString("status", "En attente de demandes").apply();
+    RelayClient.prefs(this).edit().putBoolean("connected", true).putString("status", I18n.t(this, "waiting")).apply();
 
     if (loop == null || !loop.isAlive()) {
       running = true;
@@ -66,7 +66,7 @@ public class RelayService extends Service {
 
   /** Android 15 limits dataSync foreground services; stop cleanly when the system asks. */
   @Override public void onTimeout(int startId, int fgsType) {
-    status("Mode connecté arrêté par Android (durée maximale atteinte). Réactivez-le dans l’app.");
+    status(I18n.t(this, "android_stopped"));
     RelayClient.prefs(this).edit().putBoolean("connected", false).apply();
     shutdown();
   }
@@ -93,7 +93,7 @@ public class RelayService extends Service {
         long wait = pausedUntil - System.currentTimeMillis();
         if (wait > 0) { RelayClient.poll(this, token, false); sleep(Math.min(wait, 30_000)); continue; }
         JSONObject res = RelayClient.poll(this, token, true);
-        if (backoff > 5000) status("Connexion rétablie : reprise de la file d’attente.");
+        if (backoff > 5000) status(I18n.t(this, "reconnected"));
         backoff = 5000;
         RelayClient.prefs(this).edit().putLong("lastSync", System.currentTimeMillis()).apply();
         JSONObject job = res.optJSONObject("job");
@@ -102,10 +102,10 @@ public class RelayService extends Service {
         sleep(job != null ? 300 : res.optLong("pollAfterMs", 4000));
       } catch (RelayClient.UnpairedException e) {
         RelayClient.forget(this);
-        status("Appareil dissocié par le serveur. Appairez-le à nouveau.");
+        status(I18n.t(this, "server_unpaired"));
         break;
       } catch (IOException e) {
-        status("Connexion perdue, nouvel essai dans " + backoff / 1000 + " s. La file reprendra là où elle s’est arrêtée.");
+        status(I18n.t(this, "lost", backoff / 1000));
         sleep(backoff);
         backoff = Math.min(backoff * 2, 60_000);
       }
@@ -121,18 +121,18 @@ public class RelayService extends Service {
       if (p != null) {
         JSONObject o = new JSONObject(p);
         int left = o.optInt("pending") + o.optInt("working");
-        if (left > 0) return left + " transcription" + (left > 1 ? "s" : "") + " en attente…";
-        return "Terminé : " + o.optInt("done") + " / " + o.optInt("total") + " envoyées. En attente de nouvelles demandes.";
+        if (left > 0) return I18n.t(this, "left_waiting", left);
+        return I18n.t(this, "done_waiting", o.optInt("done"), o.optInt("total"));
       }
     } catch (Exception ignored) {}
-    return "En attente des demandes de votre assistant";
+    return I18n.t(this, "idle");
   }
 
   static boolean isNetwork(IOException e) { return TranscriptFetcher.isNetwork(e); }
 
   private void handle(String token, JSONObject job) throws IOException {
     String id = job.optString("id"), videoId = job.optString("videoId"), lang = job.optString("language", "original");
-    status("Transcription en cours : " + videoId);
+    status(I18n.t(this, "working", videoId));
     current(videoId);
     TranscriptFetcher.Result r;
     try {
@@ -145,8 +145,7 @@ public class RelayService extends Service {
         rateLimitStrikes++;
         long pause = Math.min(30, 5L << Math.min(rateLimitStrikes - 1, 3)) * 60_000L;
         pausedUntil = System.currentTimeMillis() + pause;
-        status("YouTube limite temporairement ce téléphone. Reprise automatique à "
-            + java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(new java.util.Date(pausedUntil)) + ".");
+        status(I18n.t(this, "rate_limited", java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(new java.util.Date(pausedUntil))));
         current(null);
         return;
       }
@@ -158,7 +157,7 @@ public class RelayService extends Service {
       }
       RelayClient.sendError(token, id, msg);
       history(videoId, null, "failed", 0, firstLine(msg));
-      status("Échec pour " + videoId + " : " + firstLine(msg));
+      status(I18n.t(this, "fail_for", videoId, firstLine(msg)));
       current(null);
       return;
     }
@@ -167,7 +166,7 @@ public class RelayService extends Service {
     IOException lastError = null;
     for (int attempt = 0; attempt < 4 && running; attempt++) {
       try {
-        if (attempt > 0) { status("Envoi interrompu, nouvel essai (" + attempt + "/3)…"); sleep(5000L * attempt); }
+        if (attempt > 0) { status(I18n.t(this, "retry_upload", attempt)); sleep(5000L * attempt); }
         RelayClient.sendResult(token, id, payload);
         lastError = null;
         break;
@@ -182,13 +181,13 @@ public class RelayService extends Service {
     if (lastError != null) {
       if (isNetwork(lastError)) throw lastError;
       history(videoId, r.title, "failed", r.segments.size(), firstLine(lastError.getMessage()));
-      status("Envoi refusé pour " + videoId + " : " + firstLine(lastError.getMessage()));
+      status(I18n.t(this, "refused", videoId, firstLine(lastError.getMessage())));
       return;
     }
     SharedPreferences p = RelayClient.prefs(this);
     p.edit().putInt("jobsDone", p.getInt("jobsDone", 0) + 1).apply();
     history(videoId, r.title, "done", r.segments.size(), null);
-    status("Envoyée : " + (r.title != null ? r.title : videoId) + " (" + r.segments.size() + " segments)");
+    status(I18n.t(this, "sent", r.title != null ? r.title : videoId, r.segments.size()));
     rateLimitStrikes = 0;
   }
 
@@ -224,7 +223,7 @@ public class RelayService extends Service {
     Notification.Builder b;
     if (Build.VERSION.SDK_INT >= 26) {
       if (nm != null && nm.getNotificationChannel(CHANNEL) == null)
-        nm.createNotificationChannel(new NotificationChannel(CHANNEL, "Mode connecté", NotificationManager.IMPORTANCE_LOW));
+        nm.createNotificationChannel(new NotificationChannel(CHANNEL, I18n.t(this, "channel"), NotificationManager.IMPORTANCE_LOW));
       b = new Notification.Builder(this, CHANNEL);
     } else {
       b = new Notification.Builder(this);
@@ -250,7 +249,7 @@ public class RelayService extends Service {
         .setStyle(new Notification.BigTextStyle().bigText(text))
         .setOngoing(true)
         .setContentIntent(open)
-        .addAction(new Notification.Action.Builder(null, "Arrêter", stop).build())
+        .addAction(new Notification.Action.Builder(null, I18n.t(this, "stop"), stop).build())
         .build();
   }
 

@@ -67,7 +67,7 @@ public class MainActivity extends Activity {
       LINE = Color.rgb(223, 232, 247), FIELD = Color.rgb(244, 248, 255), GREEN = Color.rgb(22, 163, 74),
       AMBER = Color.rgb(217, 119, 6), RED = Color.rgb(200, 50, 50), GREY = Color.rgb(170, 180, 200);
   static final int EXPORT_REQUEST = 41;
-  static final String[] TABS = {"Assistant IA", "Extraire", "Aide"};
+  static final String[] TABS = {"tab_assistant", "tab_extract", "tab_help"};
 
   private final ExecutorService worker = Executors.newSingleThreadExecutor();
   private final Handler ui = new Handler(Looper.getMainLooper());
@@ -103,6 +103,8 @@ public class MainActivity extends Activity {
   private final Runnable refresher = new Runnable() {
     @Override public void run() { refreshRelay(); ui.postDelayed(this, 1500); }
   };
+
+  private String t(String key, Object... args) { return I18n.t(this, key, args); }
 
   private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
 
@@ -231,6 +233,7 @@ public class MainActivity extends Activity {
     LinearLayout shell = new LinearLayout(this);
     shell.setOrientation(LinearLayout.VERTICAL);
     shell.setBackgroundColor(BG);
+    shell.setLayoutDirection(I18n.rtl(this) ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
 
     buildAppBar(shell);
     buildTabs(shell);
@@ -261,8 +264,17 @@ public class MainActivity extends Activity {
     titles.setOrientation(LinearLayout.VERTICAL);
     titles.setPadding(dp(10), 0, dp(8), 0);
     text(titles, "CamMicGo SEO MCP", 17, INK, true);
-    text(titles, "Transcriptions YouTube", 12, MUTED, false);
+    text(titles, t("app_sub"), 12, MUTED, false);
     bar.addView(titles, new LinearLayout.LayoutParams(0, -2, 1));
+
+    TextView lang = text(null, "🌐 " + I18n.code(this).toUpperCase(), 12, BLUE, true);
+    lang.setPadding(dp(10), dp(6), dp(10), dp(6));
+    lang.setBackground(shape(FIELD, 20, LINE));
+    lang.setContentDescription(t("language_title"));
+    lang.setOnClickListener(v -> pickLanguage());
+    LinearLayout.LayoutParams langLp = new LinearLayout.LayoutParams(-2, -2);
+    langLp.setMarginEnd(dp(6));
+    bar.addView(lang, langLp);
 
     LinearLayout chip = new LinearLayout(this);
     chip.setGravity(Gravity.CENTER_VERTICAL);
@@ -278,6 +290,20 @@ public class MainActivity extends Activity {
     shell.addView(bar, new LinearLayout.LayoutParams(-1, -2));
   }
 
+  /** Lets the user choose one of the 11 languages; the screen is rebuilt in that language. */
+  private void pickLanguage() {
+    new AlertDialog.Builder(this)
+        .setTitle(t("language_title"))
+        .setSingleChoiceItems(I18n.NAMES, I18n.index(this), (dlg, which) -> {
+          dlg.dismiss();
+          if (which == I18n.index(this)) return;
+          I18n.set(this, I18n.CODES[which]);
+          recreate();
+        })
+        .setNegativeButton(t("cancel"), null)
+        .show();
+  }
+
   private void buildTabs(LinearLayout shell) {
     LinearLayout wrap = new LinearLayout(this);
     wrap.setPadding(dp(16), dp(12), dp(16), dp(2));
@@ -286,7 +312,7 @@ public class MainActivity extends Activity {
     seg.setBackground(shape(Color.rgb(230, 237, 250), 14, 0));
     for (int i = 0; i < TABS.length; i++) {
       final int index = i;
-      TextView t = text(null, TABS[i], 14, MUTED, true);
+      TextView t = text(null, t(TABS[i]), 14, MUTED, true);
       t.setGravity(Gravity.CENTER);
       t.setPadding(dp(4), dp(9), dp(4), dp(9));
       t.setOnClickListener(v -> selectTab(index));
@@ -311,20 +337,20 @@ public class MainActivity extends Activity {
   // ---------- tab 1: assistant ----------
 
   private void buildAssistantPage(LinearLayout root) {
-    section(root, "Connexion");
+    section(root, t("sec_connection"));
     LinearLayout c = card(root);
     unpairedBox = new LinearLayout(this);
     unpairedBox.setOrientation(LinearLayout.VERTICAL);
-    text(unpairedBox, "Relier ce téléphone à votre assistant", 17, INK, true);
-    TextView sub = text(unpairedBox, "YouTube bloque les serveurs cloud : votre assistant IA récupère donc les transcriptions en passant par ce téléphone. À faire une seule fois.", 13, MUTED, false);
+    text(unpairedBox, t("pair_title"), 17, INK, true);
+    TextView sub = text(unpairedBox, t("pair_sub"), 13, MUTED, false);
     sub.setPadding(0, dp(4), 0, dp(8));
-    step(unpairedBox, "1", "Dans Claude ou ChatGPT connecté à CamMicGo, demandez un code d’appairage.");
-    Button copyAsk = secondary("📋  Copier la demande");
-    copyAsk.setOnClickListener(v -> copy("Génère un code d'appairage CamMicGo pour mon application Android.", "Demande copiée : collez-la dans votre assistant"));
+    step(unpairedBox, "1", t("step1"));
+    Button copyAsk = secondary(t("copy_ask"));
+    copyAsk.setOnClickListener(v -> copy(t("ask_text"), t("ask_copied")));
     LinearLayout.LayoutParams askLp = gapTop(2);
     askLp.leftMargin = dp(38);
     unpairedBox.addView(copyAsk, askLp);
-    step(unpairedBox, "2", "Saisissez le code reçu (8 caractères, valable 10 minutes).");
+    step(unpairedBox, "2", t("step2"));
     codeInput = field("ABCD-2345");
     codeInput.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
     codeInput.setTextSize(22);
@@ -345,8 +371,8 @@ public class MainActivity extends Activity {
       }
     });
     unpairedBox.addView(codeInput, gapTop(8));
-    step(unpairedBox, "3", "Appuyez sur « Appairer » et autorisez les notifications.");
-    pairButton = primary("Appairer ce téléphone");
+    step(unpairedBox, "3", t("step3"));
+    pairButton = primary(t("pair_btn"));
     unpairedBox.addView(pairButton, gapTop(6));
     c.addView(unpairedBox);
 
@@ -364,9 +390,9 @@ public class MainActivity extends Activity {
     relayDetail.setPadding(dp(22), dp(6), 0, dp(6));
     LinearLayout buttons = new LinearLayout(this);
     buttons.setGravity(Gravity.CENTER_VERTICAL);
-    connectButton = primary("Activer le mode connecté");
+    connectButton = primary(t("connect_on"));
     buttons.addView(connectButton, new LinearLayout.LayoutParams(0, -2, 1));
-    Button unpair = flat("Dissocier", RED);
+    Button unpair = flat(t("unpair"), RED);
     buttons.addView(unpair);
     pairedBox.addView(buttons, gapTop(6));
     c.addView(pairedBox);
@@ -380,10 +406,10 @@ public class MainActivity extends Activity {
       RelayService.stop(this);
       RelayClient.forget(this);
       refreshRelay();
-      Toast.makeText(this, "Téléphone dissocié", Toast.LENGTH_SHORT).show();
+      Toast.makeText(this, t("unpaired_toast"), Toast.LENGTH_SHORT).show();
     });
 
-    section(root, "Demandes de votre assistant");
+    section(root, t("sec_requests"));
     LinearLayout p = card(root);
     LinearLayout head = new LinearLayout(this);
     head.setGravity(Gravity.BOTTOM);
@@ -404,9 +430,9 @@ public class MainActivity extends Activity {
     progressBar.setMax(100);
     p.addView(progressBar, new LinearLayout.LayoutParams(-1, dp(12)));
     progressStats = new LinearLayout(this);
-    statDone = stat(progressStats, GREEN, "envoyées");
-    statWaiting = stat(progressStats, BLUE, "en attente");
-    statFailed = stat(progressStats, RED, "échecs");
+    statDone = stat(progressStats, GREEN, t("stat_sent"));
+    statWaiting = stat(progressStats, BLUE, t("stat_waiting"));
+    statFailed = stat(progressStats, RED, t("stat_failed"));
     p.addView(progressStats, gapTop(12));
     progressCurrent = text(p, "", 13, INK, true);
     progressCurrent.setPadding(0, dp(12), 0, 0);
@@ -415,18 +441,20 @@ public class MainActivity extends Activity {
     progressNote = text(p, "", 12, MUTED, false);
     progressNote.setPadding(0, dp(6), 0, 0);
 
-    section(root, "Envoyées à l’assistant");
+    section(root, t("sec_sent"));
+    TextView hint = text(root, t("long_press"), 12, MUTED, false);
+    hint.setPadding(dp(4), 0, 0, dp(8));
     LinearLayout h = card(root);
     h.setPadding(dp(6), dp(6), dp(6), dp(6));
     historyList = new LinearLayout(this);
     historyList.setOrientation(LinearLayout.VERTICAL);
     h.addView(historyList);
-    clearHistory = flat("🗑  Vider la liste", RED);
+    clearHistory = flat(t("clear_list"), RED);
     clearHistory.setOnClickListener(v -> new AlertDialog.Builder(this)
-        .setTitle("Vider la liste ?")
-        .setMessage("Les vidéos envoyées disparaissent de cette liste. Les transcriptions déjà transmises à votre assistant ne sont pas touchées.")
-        .setPositiveButton("Vider", (d, w) -> editHistory(null, 0))
-        .setNegativeButton("Annuler", null)
+        .setTitle(t("clear_title"))
+        .setMessage(t("clear_msg"))
+        .setPositiveButton(t("clear_ok"), (dlg, which) -> editHistory(null, 0))
+        .setNegativeButton(t("cancel"), null)
         .show());
     h.addView(clearHistory, new LinearLayout.LayoutParams(-1, -2));
   }
@@ -465,24 +493,24 @@ public class MainActivity extends Activity {
   // ---------- tab 2: extract ----------
 
   private void buildExtractPage(LinearLayout root) {
-    section(root, "Transcrire une vidéo");
+    section(root, t("sec_transcribe"));
     LinearLayout c = card(root);
-    text(c, "Extraire une transcription", 17, INK, true);
-    TextView sub = text(c, "Partagez une vidéo depuis l’app YouTube vers CamMicGo, ou collez son lien. Fonctionne sans assistant ni appairage.", 13, MUTED, false);
+    text(c, t("extract_title"), 17, INK, true);
+    TextView sub = text(c, t("extract_sub"), 13, MUTED, false);
     sub.setPadding(0, dp(4), 0, dp(10));
-    urlInput = field("🔗  Lien YouTube (vidéo, Short ou youtu.be)");
+    urlInput = field(t("url_hint"));
     urlInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
     c.addView(urlInput);
-    TextView langTitle = text(c, "Langue", 13, INK, true);
+    TextView langTitle = text(c, t("language"), 13, INK, true);
     langTitle.setPadding(dp(2), dp(12), 0, dp(6));
     langSpinner = new Spinner(this);
     langSpinner.setBackground(shape(FIELD, 14, LINE));
     langSpinner.setPadding(dp(6), dp(4), dp(6), dp(4));
     setTracks(null);
     c.addView(langSpinner, new LinearLayout.LayoutParams(-1, dp(48)));
-    langStatus = text(c, "Collez un lien : les langues disponibles s’affichent ici. Par défaut, la langue originale de la vidéo.", 12, MUTED, false);
+    langStatus = text(c, t("lang_hint"), 12, MUTED, false);
     langStatus.setPadding(dp(2), dp(6), 0, 0);
-    runButton = primary("Transcrire");
+    runButton = primary(t("transcribe"));
     c.addView(runButton, gapTop(12));
     urlInput.addTextChangedListener(new TextWatcher() {
       public void beforeTextChanged(CharSequence s, int a, int b, int c2) {}
@@ -493,22 +521,22 @@ public class MainActivity extends Activity {
 
     resultCard = card(root);
     resultCard.setVisibility(View.GONE);
-    text(resultCard, "Transcription", 17, INK, true);
+    text(resultCard, t("transcript"), 17, INK, true);
     resultMeta = text(resultCard, "", 13, MUTED, false);
     resultMeta.setPadding(0, dp(4), 0, dp(10));
     LinearLayout actions = new LinearLayout(this);
-    Button copy = secondary("📋  Copier"), share = secondary("↗  Partager");
+    Button copy = secondary(t("copy_btn")), share = secondary(t("share_btn"));
     actions.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
     LinearLayout.LayoutParams right = new LinearLayout.LayoutParams(0, -2, 1);
     right.leftMargin = dp(8);
     actions.addView(share, right);
     resultCard.addView(actions);
 
-    TextView exportTitle = text(resultCard, "Exporter", 14, INK, true);
+    TextView exportTitle = text(resultCard, t("export"), 14, INK, true);
     exportTitle.setPadding(0, dp(14), 0, dp(6));
     String[][] formats = {
-        {"SRT", "Sous-titres vidéo"}, {"VTT", "Sous-titres web"}, {"TXT", "Texte + horodatages"},
-        {"TEXTE", "Texte seul"}, {"JSON", "Format MCP"}};
+        {"SRT", t("fmt_srt")}, {"VTT", t("fmt_vtt")}, {"TXT", t("fmt_txt")},
+        {t("fmt_plain_label"), t("fmt_plain")}, {"JSON", t("fmt_json")}};
     LinearLayout row = null;
     for (int i = 0; i < 5; i++) {
       if (i % 3 == 0) { row = new LinearLayout(this); resultCard.addView(row, gapTop(i == 0 ? 0 : 8)); }
@@ -539,29 +567,26 @@ public class MainActivity extends Activity {
     output.setLineSpacing(dp(3), 1f);
     output.setPadding(dp(2), dp(16), dp(2), 0);
 
-    copy.setOnClickListener(v -> { if (last != null) copy(TranscriptFetcher.toText(last), "Transcription copiée"); });
+    copy.setOnClickListener(v -> { if (last != null) copy(TranscriptFetcher.toText(last), t("transcript_copied")); });
     share.setOnClickListener(v -> {
       if (last == null) return;
       Intent send = new Intent(Intent.ACTION_SEND);
       send.setType("text/plain");
-      send.putExtra(Intent.EXTRA_SUBJECT, "Transcription YouTube " + last.videoId);
+      send.putExtra(Intent.EXTRA_SUBJECT, t("share_subject", last.videoId));
       send.putExtra(Intent.EXTRA_TEXT, TranscriptFetcher.toText(last));
-      startActivity(Intent.createChooser(send, "Partager la transcription"));
+      startActivity(Intent.createChooser(send, t("share_title")));
     });
   }
 
   // ---------- tab 3: help ----------
 
   private void buildHelpPage(LinearLayout root) {
-    section(root, "Que demander à votre assistant ?");
+    section(root, t("sec_prompts"));
     LinearLayout c = card(root);
-    TextView sub = text(c, "Une fois le téléphone appairé et le mode connecté actif, copiez une de ces demandes dans Claude ou ChatGPT.", 13, MUTED, false);
+    TextView sub = text(c, t("prompts_sub"), 13, MUTED, false);
     sub.setPadding(0, 0, 0, dp(4));
     String[][] prompts = {
-        {"Transcrire une vidéo", "Récupère la transcription de cette vidéo YouTube et résume ses moments clés : "},
-        {"Dernière vidéo d’une chaîne", "Trouve la dernière vidéo de la chaîne principale de [nom], donne ses détails et sa transcription."},
-        {"Chaîne entière pour NotebookLM", "Récupère les 50 dernières vidéos de [chaîne] avec leurs transcriptions et donne-moi le lien du document pour NotebookLM."},
-        {"Rechercher un sujet", "Dans les 50 dernières vidéos de [chaîne], trouve tous les moments où il parle de [sujet], avec les liens horodatés."},
+        {t("p1t"), t("p1")}, {t("p2t"), t("p2")}, {t("p3t"), t("p3")}, {t("p4t"), t("p4")},
     };
     for (String[] p : prompts) {
       LinearLayout row = new LinearLayout(this);
@@ -571,28 +596,34 @@ public class MainActivity extends Activity {
       LinearLayout texts = new LinearLayout(this);
       texts.setOrientation(LinearLayout.VERTICAL);
       text(texts, p[0], 13, BLUE, true);
-      text(texts, "« " + p[1].trim() + " »", 13, INK, false);
+      text(texts, "“" + p[1].trim() + "”", 13, INK, false);
       row.addView(texts, new LinearLayout.LayoutParams(0, -2, 1));
-      Button cp = flat("Copier", BLUE);
+      Button cp = flat(t("copy"), BLUE);
       row.addView(cp);
-      cp.setOnClickListener(v -> copy(p[1], "Demande copiée"));
+      cp.setOnClickListener(v -> copy(p[1], t("prompt_copied")));
       c.addView(row, gapTop(8));
     }
 
-    section(root, "Pour que tout fonctionne");
-    LinearLayout t = card(root);
-    tip(t, "🔋", "Batterie « Non restreinte »", "Sinon Android peut couper le réseau de l’application en arrière-plan.");
-    Button battery = secondary("Ouvrir les réglages de batterie");
+    section(root, t("language_title"));
+    LinearLayout lc = card(root);
+    Button langBtn = secondary("🌐  " + I18n.NAMES[I18n.index(this)]);
+    langBtn.setOnClickListener(v -> pickLanguage());
+    lc.addView(langBtn);
+
+    section(root, t("sec_tips"));
+    LinearLayout tips = card(root);
+    tip(tips, "🔋", t("tip_batt_t"), t("tip_batt"));
+    Button battery = secondary(t("battery_btn"));
     battery.setOnClickListener(v -> {
       try { startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))); }
       catch (Exception e) { startActivity(new Intent(Settings.ACTION_SETTINGS)); }
     });
-    t.addView(battery, gapTop(4));
-    tip(t, "📱", "Gardez le téléphone actif", "Écran allumé ou en charge pendant que votre assistant travaille, surtout pour une chaîne entière.");
-    tip(t, "🔄", "Reprise automatique", "Si la connexion coupe, la vidéo en cours retourne dans la file et l’envoi reprend tout seul là où il s’était arrêté. Rien n’est perdu.");
-    tip(t, "⏱️", "Android 15", "Le système limite le mode connecté à environ 6 h par jour. S’il s’arrête, réactivez-le ici.");
+    tips.addView(battery, gapTop(4));
+    tip(tips, "📱", t("tip_awake_t"), t("tip_awake"));
+    tip(tips, "🔄", t("tip_resume_t"), t("tip_resume"));
+    tip(tips, "⏱️", t("tip_a15_t"), t("tip_a15"));
 
-    TextView v = text(root, "CamMicGo SEO MCP · version " + version() + " · seo.cammicgo.com", 12, MUTED, false);
+    TextView v = text(root, "CamMicGo SEO MCP · " + t("version") + " " + version() + " · seo.cammicgo.com", 12, MUTED, false);
     v.setGravity(Gravity.CENTER);
     v.setPadding(0, dp(6), 0, 0);
   }
@@ -618,18 +649,18 @@ public class MainActivity extends Activity {
 
   private void pair() {
     final String code = codeInput.getText().toString().trim();
-    if (code.replaceAll("[^A-Za-z0-9]", "").length() != 8) { Toast.makeText(this, "Le code fait 8 caractères, par exemple ABCD-2345.", Toast.LENGTH_LONG).show(); return; }
+    if (code.replaceAll("[^A-Za-z0-9]", "").length() != 8) { Toast.makeText(this, t("code_invalid"), Toast.LENGTH_LONG).show(); return; }
     pairButton.setEnabled(false);
-    pairButton.setText("Appairage en cours…");
+    pairButton.setText(t("pairing"));
     final String name = (Build.MANUFACTURER + " " + Build.MODEL).trim();
     worker.execute(() -> {
       String message; boolean ok = false;
-      try { message = "Appairé : " + RelayClient.pair(this, code, name); ok = true; }
-      catch (Exception e) { message = "Échec de l’appairage : " + e.getMessage(); }
+      try { message = t("paired", RelayClient.pair(this, code, name)); ok = true; }
+      catch (Exception e) { message = t("pair_failed", e.getMessage()); }
       final String m = message; final boolean success = ok;
       runOnUiThread(() -> {
         pairButton.setEnabled(true);
-        pairButton.setText("Appairer ce téléphone");
+        pairButton.setText(t("pair_btn"));
         if (success) { codeInput.setText(""); startConnected(); }
         refreshRelay();
         Toast.makeText(this, m, Toast.LENGTH_LONG).show();
@@ -653,19 +684,19 @@ public class MainActivity extends Activity {
 
     int chipColor = !paired ? GREY : connected ? GREEN : AMBER;
     chipDot.setBackground(dot(chipColor));
-    chipText.setText(!paired ? "Non appairé" : connected ? "Connecté" : "Arrêté");
+    chipText.setText(!paired ? t("chip_unpaired") : connected ? t("chip_connected") : t("chip_stopped"));
 
     if (paired) {
       statusDot.setBackground(dot(connected ? GREEN : GREY));
-      statusLine.setText(connected ? "Mode connecté actif" : "Mode connecté arrêté");
-      connectButton.setText(connected ? "Arrêter le mode connecté" : "Activer le mode connecté");
+      statusLine.setText(connected ? t("status_on") : t("status_off"));
+      connectButton.setText(connected ? t("connect_off") : t("connect_on"));
       StringBuilder b = new StringBuilder(p.getString("deviceName", "Android"));
       if (connected) {
         long sync = p.getLong("lastSync", 0);
-        if (sync > 0) b.append(" · contact serveur ").append(DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(sync)));
+        if (sync > 0) b.append(t("server_contact", DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(sync))));
         String status = p.getString("status", null);
         if (status != null) b.append('\n').append(status);
-      } else b.append("\nActivez le mode connecté pour que votre assistant puisse demander des transcriptions.");
+      } else b.append('\n').append(t("activate_hint"));
       relayDetail.setText(b.toString());
     }
     refreshProgress(p, paired, connected);
@@ -677,18 +708,18 @@ public class MainActivity extends Activity {
     try { String s = p.getString("progress", null); if (s != null) o = new JSONObject(s); } catch (Exception ignored) {}
     if (o == null || o.optInt("total") == 0) {
       progressCount.setText("—");
-      progressLabel.setText(paired ? "Aucune demande en cours" : "Appairez le téléphone pour commencer");
+      progressLabel.setText(paired ? t("no_request") : t("pair_to_start"));
       progressBar.setProgress(0);
       progressStats.setVisibility(View.GONE);
       progressCurrent.setText("");
-      progressNote.setText(paired ? "Demandez une transcription ou une chaîne entière à votre assistant : la progression s’affichera ici, vidéo par vidéo." : "");
+      progressNote.setText(paired ? t("progress_hint") : "");
       return;
     }
     int total = o.optInt("total"), done = o.optInt("done"), failed = o.optInt("failed"), waiting = o.optInt("pending") + o.optInt("working");
     int handled = done + failed;
     progressStats.setVisibility(View.VISIBLE);
     progressCount.setText(handled + " / " + total);
-    progressLabel.setText(waiting > 0 ? "transcriptions traitées" : "terminé");
+    progressLabel.setText(waiting > 0 ? t("processed") : t("finished"));
     progressBar.setProgress(total == 0 ? 0 : Math.round(handled * 100f / total));
     statDone.setText(String.valueOf(done));
     statWaiting.setText(String.valueOf(waiting));
@@ -704,15 +735,15 @@ public class MainActivity extends Activity {
         if (r.optString("videoId").equals(current) && !r.isNull("title")) currentTitle = r.optString("title");
       }
     }
-    if (waiting > 0 && current != null) progressCurrent.setText("⏳  En cours : " + (currentTitle != null ? currentTitle : current));
-    else progressCurrent.setText(waiting == 0 ? "✓  Toutes les demandes de cette série ont été traitées." : "");
+    if (waiting > 0 && current != null) progressCurrent.setText(t("current", currentTitle != null ? currentTitle : current));
+    else progressCurrent.setText(waiting == 0 ? t("all_done") : "");
 
     String note;
-    if (waiting > 0 && !connected) note = "Mode connecté arrêté : activez-le pour reprendre là où l’envoi s’est arrêté.";
+    if (waiting > 0 && !connected) note = t("stopped_resume");
     else if (waiting > 0) {
       String eta = eta(o.optString("startedAt", null), handled, waiting);
-      note = (eta != null ? eta + " · " : "") + "Si la connexion coupe, l’envoi reprend automatiquement.";
-    } else note = failed > 0 ? "Certaines vidéos n’ont pas de sous-titres ou ont échoué : votre assistant peut relancer les échecs." : "";
+      note = (eta != null ? eta + " · " : "") + t("auto_resume");
+    } else note = failed > 0 ? t("some_failed") : "";
     progressNote.setText(note);
   }
 
@@ -722,8 +753,8 @@ public class MainActivity extends Activity {
     try {
       long elapsed = System.currentTimeMillis() - Instant.parse(startedAt).toEpochMilli();
       long left = elapsed / handled * waiting / 1000;
-      if (left < 60) return "Moins d’une minute restante";
-      return "Environ " + (left + 59) / 60 + " min restantes";
+      if (left < 60) return t("eta_less");
+      return t("eta_min", (left + 59) / 60);
     } catch (Exception e) { return null; }
   }
 
@@ -738,7 +769,7 @@ public class MainActivity extends Activity {
     try { h = new JSONArray(raw); } catch (Exception e) { h = new JSONArray(); }
     clearHistory.setVisibility(h.length() == 0 ? View.GONE : View.VISIBLE);
     if (h.length() == 0) {
-      TextView empty = text(historyList, "Rien pour l’instant. Chaque transcription envoyée à votre assistant apparaîtra ici.", 13, MUTED, false);
+      TextView empty = text(historyList, t("history_empty"), 13, MUTED, false);
       empty.setPadding(dp(12), dp(10), dp(12), dp(10));
       return;
     }
@@ -758,10 +789,10 @@ public class MainActivity extends Activity {
       texts.setOrientation(LinearLayout.VERTICAL);
       texts.setPadding(dp(10), 0, 0, 0);
       String title = e.isNull("title") ? null : e.optString("title", null);
-      TextView t = text(texts, title != null && !title.isEmpty() ? title : "Vidéo " + e.optString("videoId"), 14, INK, true);
-      t.setMaxLines(1); t.setEllipsize(TextUtils.TruncateAt.END);
+      TextView tv = text(texts, title != null && !title.isEmpty() ? title : t("video", e.optString("videoId")), 14, INK, true);
+      tv.setMaxLines(1); tv.setEllipsize(TextUtils.TruncateAt.END);
       String when = DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(e.optLong("at")));
-      String detail = ok ? e.optInt("segments") + " segments · " + when : when + " · " + e.optString("error", "échec");
+      String detail = ok ? t("segments", e.optInt("segments")) + " · " + when : when + " · " + e.optString("error", t("failed"));
       TextView d = text(texts, detail, 12, ok ? MUTED : RED, false);
       d.setMaxLines(1); d.setEllipsize(TextUtils.TruncateAt.END);
       row.addView(texts, new LinearLayout.LayoutParams(0, -2, 1));
@@ -769,9 +800,9 @@ public class MainActivity extends Activity {
       final long at = e.optLong("at");
       row.setOnClickListener(v -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=" + vid))));
       row.setOnLongClickListener(v -> {
-        new AlertDialog.Builder(this).setMessage("Retirer cette vidéo de la liste ?")
-            .setPositiveButton("Retirer", (d, w) -> editHistory(vid, at))
-            .setNegativeButton("Annuler", null).show();
+        new AlertDialog.Builder(this).setMessage(t("remove_q"))
+            .setPositiveButton(t("remove"), (dlg, which) -> editHistory(vid, at))
+            .setNegativeButton(t("cancel"), null).show();
         return true;
       });
       historyList.addView(row);
@@ -814,11 +845,11 @@ public class MainActivity extends Activity {
 
   private void extract() {
     final String id = TranscriptFetcher.videoId(urlInput.getText().toString());
-    if (id == null) { Toast.makeText(this, "Lien YouTube invalide", Toast.LENGTH_SHORT).show(); return; }
+    if (id == null) { Toast.makeText(this, t("bad_link"), Toast.LENGTH_SHORT).show(); return; }
     Object sel = langSpinner.getSelectedItem();
     final String lang = sel instanceof TranscriptFetcher.Track ? ((TranscriptFetcher.Track) sel).code : "original";
     runButton.setEnabled(false);
-    runButton.setText("Extraction en cours…");
+    runButton.setText(t("extracting"));
     last = null;
     worker.execute(() -> {
       TranscriptFetcher.Result result = null; String error = null;
@@ -827,15 +858,15 @@ public class MainActivity extends Activity {
       runOnUiThread(() -> {
         if (isFinishing()) return;
         runButton.setEnabled(true);
-        runButton.setText("Transcrire");
+        runButton.setText(t("transcribe"));
         resultCard.setVisibility(View.VISIBLE);
         last = done;
         if (done == null) {
-          resultMeta.setText("Échec de l’extraction");
-          output.setText(err + "\n\nVérifiez que la vidéo est publique et possède des sous-titres (bouton CC).");
+          resultMeta.setText(t("extract_failed"));
+          output.setText(err + "\n\n" + t("check_public"));
           return;
         }
-        resultMeta.setText((done.title != null ? done.title + "\n" : "") + done.languageName + (done.autoGenerated ? " · générée automatiquement" : "") + " · " + done.segments.size() + " segments");
+        resultMeta.setText((done.title != null ? done.title + "\n" : "") + done.languageName + (done.autoGenerated ? " · " + t("auto_generated") : "") + " · " + t("segments", done.segments.size()));
         output.setText(styled(done));
       });
     });
@@ -843,7 +874,7 @@ public class MainActivity extends Activity {
 
   private void setTracks(List<TranscriptFetcher.Track> tracks) {
     java.util.List<Object> items = new java.util.ArrayList<>();
-    if (tracks == null || tracks.isEmpty()) items.add(new TranscriptFetcher.Track("original", "Langue originale", true, false));
+    if (tracks == null || tracks.isEmpty()) items.add(new TranscriptFetcher.Track("original", t("original_lang"), true, false));
     else items.addAll(tracks);
     ArrayAdapter<Object> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, items);
     adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
@@ -857,7 +888,7 @@ public class MainActivity extends Activity {
     if (id == null) { tracksFor = null; setTracks(null); return; }
     if (id.equals(tracksFor)) return;
     tracksFor = id;
-    langStatus.setText("Recherche des langues disponibles…");
+    langStatus.setText(t("searching_langs"));
     worker.execute(() -> {
       List<TranscriptFetcher.Track> tracks = null; String err = null;
       try { tracks = TranscriptFetcher.availableTracks(id); } catch (Exception e) { err = e.getMessage(); }
@@ -865,8 +896,8 @@ public class MainActivity extends Activity {
       runOnUiThread(() -> {
         if (isFinishing() || !id.equals(tracksFor)) return;
         setTracks(t);
-        if (t == null) langStatus.setText("Langues indisponibles (" + error + "). La langue originale sera utilisée.");
-        else langStatus.setText((t.size() - 1) + " langue" + (t.size() > 2 ? "s" : "") + " disponible" + (t.size() > 2 ? "s" : "") + ". Par défaut : langue originale.");
+        if (t == null) langStatus.setText(t("langs_unavailable", error));
+        else langStatus.setText(t("langs_available", t.size() - 1));
       });
     });
   }
@@ -899,7 +930,7 @@ public class MainActivity extends Activity {
     i.setType(mime);
     i.putExtra(Intent.EXTRA_TITLE, fileName);
     try { startActivityForResult(i, EXPORT_REQUEST); }
-    catch (Exception e) { copy(content, "Aucun gestionnaire de fichiers : contenu copié"); }
+    catch (Exception e) { copy(content, t("no_file_mgr")); }
   }
 
   @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -913,8 +944,8 @@ public class MainActivity extends Activity {
       try (OutputStream os = getContentResolver().openOutputStream(uri)) {
         if (os == null) throw new Exception("fichier inaccessible");
         os.write(content.getBytes(StandardCharsets.UTF_8));
-        msg = "Fichier enregistré";
-      } catch (Exception e) { msg = "Échec de l’enregistrement : " + e.getMessage(); }
+        msg = t("file_saved");
+      } catch (Exception e) { msg = t("save_failed", e.getMessage()); }
       final String m = msg;
       runOnUiThread(() -> Toast.makeText(this, m, Toast.LENGTH_SHORT).show());
     });
