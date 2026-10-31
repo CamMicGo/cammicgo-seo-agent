@@ -24,6 +24,7 @@ export default function OAuthConsent(){
  const [projectId,setProjectId]=useState('');
  const [id,setId]=useState('');
  const [details,setDetails]=useState<Details|null>(null);
+ const [autoBack,setAutoBack]=useState('');
  const [email,setEmail]=useState('');
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState('');
@@ -51,7 +52,8 @@ export default function OAuthConsent(){
    // Already approved before for this assistant: Supabase answers with the redirect URL directly.
    const auto=data as Details&{redirect_url?:string;redirect_to?:string};
    const back=auto?.redirect_url||auto?.redirect_to;
-   if(back&&!auto.client){window.location.assign(back);return;}
+   // Keep the page so the user can still change Google APIs, then continue with one click.
+   if(back&&!auto.client){setAutoBack(back);setDetails({} as Details);return;}
    setDetails(data as Details);
   })();
  },[]);
@@ -79,7 +81,7 @@ export default function OAuthConsent(){
   <h1>{t.h1a} <span>{t.h1b}</span></h1>
   <p className="lead">{t.lead}</p>
   {error&&<p role="alert" style={{color:'#e87979'}}>{error}</p>}
-  {details&&<section className="connect-card"><h2>{details.client?.name||details.client?.client_name||t.aiApp}</h2>
+  {details&&!autoBack&&<section className="connect-card"><h2>{details.client?.name||details.client?.client_name||t.aiApp}</h2>
    <p>{t.requested} {(details.scopes||[]).join(', ')||t.basic}</p>
    {details.redirect_uri&&<p>{t.returnTo} <code>{details.redirect_uri}</code></p>}
   </section>}
@@ -120,7 +122,10 @@ export default function OAuthConsent(){
      {googleConnected?t.reconnect:t.cont}
     </button>
    </div>
-   {id?<div style={{borderTop:'1px solid #e2e8f0',paddingTop:20,display:'grid',gap:12}}>
+   {id&&autoBack?<div style={{borderTop:'1px solid #e2e8f0',paddingTop:20,display:'grid',gap:12}}>
+    <p style={{margin:0,color:'#166534',fontWeight:600}}>✓ {t.already}</p>
+    <a className="primary connect-button" href={autoBack} style={{minHeight:48,borderRadius:12,padding:'12px 22px',fontWeight:700,width:'fit-content',display:'inline-flex',alignItems:'center'}}>{t.backTo.replace('{app}',t.yourAgent)}</a>
+   </div>:id?<div style={{borderTop:'1px solid #e2e8f0',paddingTop:20,display:'grid',gap:12}}>
     <h2 style={{margin:0,fontSize:'1.2rem'}}>{t.step2.replace('{app}',details?.client?.name||details?.client?.client_name||t.yourAgent)}</h2>
     <p style={{margin:0,color:'#64748b'}}>{t.step2Text}</p>
     <div style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:12}}>
