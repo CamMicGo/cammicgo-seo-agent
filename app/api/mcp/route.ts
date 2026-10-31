@@ -5,6 +5,7 @@ import {makeCampaignDraft} from '@/lib/ads-campaign';
 import * as ads from '@/lib/google-ads';
 import * as drive from '@/lib/google-drive';
 import * as sci from '@/lib/science';
+import * as sciExport from '@/lib/science-export';
 import {gumCatalog} from '@/lib/gum-operation-catalog';
 import {getYouTubeTranscript} from '@/lib/youtube-transcript';
 import {verifyMcpAccess} from '@/lib/mcp-access';
@@ -21,7 +22,7 @@ const SERVER_INSTRUCTIONS=[
  'Google tools use the user\'s own Google Cloud project (OAuth client ID and secret saved at https://seo.cammicgo.com/account, then "Connect Google"). If a tool answers google_not_connected, relay its messageForUser. Each user has a daily CamMicGo allowance (about 100 tool calls; status checks are free): prefer one youtube_channel_batch over many single transcript calls.',
  'Google Ads: ads_accounts, ads_report (read-only) and ads_create_paused_campaign. Campaigns are always created PAUSED with a total budget that is never exceeded over a fixed period: first call it with confirm=false, show the validated summary, and use confirm=true only after the user explicitly approves. Never promise that a campaign is live: the user enables it in Google Ads. Keyword Planner is not available (Explorer access).',
  'Google Drive: drive_list_files (inTrash=true for the trash), drive_search_files, drive_read_file (bounded text windows: continue with offset=nextOffset, never paste whole documents) and drive_storage_quota are read-only. drive_create_folder and drive_upload_file create NEW items only (never overwrite; sources: your text, a small file, a CamMicGo export or a public https file such as a paper PDF). drive_trash_file never deletes permanently: ALWAYS call it first with confirm=false, show the exact list to the user, and call confirm=true only after the user explicitly says yes in a new message; never trash anything on your own initiative. drive_restore_file undoes it.',
- 'Science: science_search (OpenAlex, Semantic Scholar, arXiv, PubMed, HAL; merged), science_latest (newest papers on a topic), science_paper (details by DOI/arXiv/PMID/HAL ID) and science_author. Cite papers with their links; never invent references. If keyTip is present, mention once that free personal keys raise the limits.',
+ 'Science: science_search (topic words across OpenAlex, Semantic Scholar, arXiv, PubMed, HAL; merged; NOT for author names), science_latest (newest papers on a topic), science_author / science_author_works (a researcher\'s COMPLETE list by OpenAlex ID, ORCID or name, de-duplicated, with BibTeX/RIS/CSV/Markdown exports), science_paper (details), science_citations (who cites a paper / its references), science_fulltext (legal open-access full text, in windows) and science_verify_references (detects invented or wrong citations). Cite papers with their links; never invent references: verify uncertain ones with science_verify_references. If keyTip is present, mention once that free personal keys raise the limits.',
  'Whole channels: youtube_channel_batch builds ONE document (details + full transcripts of every video) with a stable URL, ideal as a single NotebookLM source; follow it with youtube_batch_status. Never paste whole documents into the chat.',
 ].join(' ');
 
@@ -511,10 +512,19 @@ async function handler(req:NextRequest){
    };
 
    server.registerTool('science_search',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Search scientific publications',
-    description:'Search scientific papers across OpenAlex, Semantic Scholar (Ai2), arXiv, PubMed and HAL (French open archive) at once; duplicates are merged. Sort by relevance, date (newest first) or citations; filter by publication dates and open access. Returns title, authors, date, venue, citations, DOI/arXiv/PMID, links to the paper and free PDF, and a short abstract. Uses the user\'s own API keys when saved on /account, otherwise each source\'s shared free quota.',
+    description:'Search scientific papers by TOPIC words across OpenAlex, Semantic Scholar (Ai2), arXiv, PubMed and HAL (French open archive) at once; duplicates are merged. The query matches titles and abstracts, NOT author names: for a person\'s publications use science_author_works (complete, exact), or set author here to search within one researcher\'s works. Sort by relevance, date (newest first) or citations; filter by publication dates and open access. Returns title, authors, date, venue, citations, DOI/arXiv/PMID, links to the paper and free PDF, and a short abstract. Uses the user\'s own API keys when saved on /account, otherwise each source\'s shared free quota.',
     inputSchema:z.object({query:z.string().min(2).max(300),sources:sourceList,sort:z.enum(['relevance','date','citations']).default('relevance'),
      from:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Published on or after (YYYY-MM-DD)'),to:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-     openAccessOnly:z.boolean().default(false),limit:z.number().int().min(1).max(20).default(5).describe('Results per source'),page:z.number().int().min(1).max(20).default(1)})},async args=>asText(await runSearch(args.query,args)));
+     openAccessOnly:z.boolean().default(false),limit:z.number().int().min(1).max(20).default(5).describe('Results per source'),page:z.number().int().min(1).max(20).default(1),
+     author:z.string().min(2).max(200).optional().describe('Restrict to one researcher (OpenAlex ID, ORCID or full name): topic search inside their works')})},async args=>{
+    if(!args.author)return asText(await runSearch(args.query,args));
+    const keys=await sciKeys();const res=await sci.resolveAuthor(args.author,[],keys);
+    if(res.status!=='resolved')return asText({status:res.status,candidates:res.candidates.map(profileOut),notes:res.notes,instructions:'Ask the user which researcher they mean, then call again with the OpenAlex ID or ORCID.'});
+    const b=await sciExport.cachedBibliography(res.profiles.map(p=>p.id),keys,{from:args.from,to:args.to,query:args.query,includeHal:false});
+    const works=sciExport.sorted(b.works,args.sort==='citations'?'citations':'newest');
+    return asText({author:profileOut(res.profiles[0]),query:args.query,count:works.length,works:works.slice(0,Math.max(10,args.limit*4)).map(sci.compactWork),
+     next:'For the complete list of this researcher (all topics, exports), use science_author_works.'});
+   });
 
    server.registerTool('science_latest',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Latest scientific publications on a topic',
     description:'Newest papers on a topic published in the last N days (default 30), from OpenAlex, Semantic Scholar, arXiv, PubMed and HAL, newest first, duplicates merged. Ideal for a research watch ("veille scientifique").',
@@ -541,7 +551,7 @@ async function handler(req:NextRequest){
    });
 
    server.registerTool('science_author',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Researcher profile and latest papers',
-    description:'Find a researcher by name (OpenAlex, Semantic Scholar as fallback): candidates with institution, ORCID, works, citations, h-index and topics, plus the latest papers of the best match. Several researchers can share a name: show the candidates and call again with authorId (OpenAlex A… or Semantic Scholar numeric ID) if needed.',
+    description:'Find a researcher by name (OpenAlex, Semantic Scholar as fallback): candidates with institution, ORCID, works, citations, h-index and topics, plus the latest papers of the best match. For the COMPLETE publication list (sorted, de-duplicated, exportable), use science_author_works with the OpenAlex ID or ORCID. Several researchers can share a name: show the candidates and call again with authorId (OpenAlex A… or Semantic Scholar numeric ID) if needed.',
     inputSchema:z.object({name:z.string().min(2).max(120).optional(),authorId:z.string().regex(/^(A\d{4,12}|\d{1,12})$/i).optional(),latest:z.number().int().min(1).max(25).default(10)})},async args=>{
     if(!args.name&&!args.authorId)return asText({error:'Give a name or an authorId.'});
     const r=await sci.authorLookup(args,await sciKeys());
@@ -553,6 +563,92 @@ async function handler(req:NextRequest){
     const keys=await sciKeys();
     return asText({sources:sci.SOURCES.map(s=>{const i=sci.SOURCE_INFO[s];const has=!!(i.keyProvider&&keys[i.keyProvider]);return {source:i.name,keyNeeded:!!i.keyProvider,yourKey:i.keyProvider?has:null,limit:has?i.withKey:i.withoutKey,getAKey:i.keyUrl};}),
      manageKeys:account.ACCOUNT_URL,guide:'https://seo.cammicgo.com/setup/science'});
+   });
+
+   // ---------- Science v2: exact author bibliographies, citations, open-access full text, reference checks ----------
+   const workSort=z.enum(['newest','oldest','citations','title']).default('newest');
+   const exportLinks=(ids:string[],o:{s:'newest'|'oldest'|'citations'|'title';from?:string;to?:string;q?:string;h:boolean})=>{
+    const base={a:ids.join(','),s:o.s,from:o.from,to:o.to,q:o.q,h:(o.h?'1':'0') as '0'|'1',u:user.id};
+    return {bibtex:sciExport.exportUrl({...base,f:'bibtex'}),ris:sciExport.exportUrl({...base,f:'ris'}),csv:sciExport.exportUrl({...base,f:'csv'}),markdown:sciExport.exportUrl({...base,f:'markdown'}),cslJson:sciExport.exportUrl({...base,f:'csljson'})};
+   };
+   const profileOut=(p:sci.AuthorProfile)=>({openAlexId:p.id,name:p.name,orcid:p.orcid,institution:p.institution,country:p.country,works:p.works,citations:p.citations,hIndex:p.hIndex,i10Index:p.i10Index,topics:p.topics,lastYears:p.lastYears,alternativeNames:p.alternativeNames.length?p.alternativeNames:undefined,url:p.url});
+
+   server.registerTool('science_author_works',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Complete publication list of a researcher',
+    description:'ALL publications of one researcher, found by identity (not by text search): give an OpenAlex author ID (A…), an ORCID (0000-0002-…), a Semantic Scholar author ID, or a name (a name is used only if exactly one profile matches; otherwise candidates are returned so the user can choose). Works from OpenAlex plus HAL deposits linked to the ORCID; preprint/published versions and duplicates are merged; newest first by default; filter by years or topic words. Returns one page (pageSize) plus stable export links to the COMPLETE list in BibTeX, RIS (Zotero/EndNote), CSV, Markdown (NotebookLM) and CSL-JSON that always regenerate the up-to-date list. To save one in Drive, pass its link to drive_upload_file (source.type="url"). If OpenAlex split one person into several profiles, pass the extra IDs in extraAuthorIds.',
+    inputSchema:z.object({author:z.string().min(2).max(200).describe('OpenAlex ID (A…), ORCID, Semantic Scholar author ID or full name'),extraAuthorIds:z.array(z.string().regex(/^A\d{4,12}$/i)).max(4).optional(),
+     sort:workSort,from:z.string().regex(/^\d{4}(-\d{2}-\d{2})?$/).optional().describe('Year or date'),to:z.string().regex(/^\d{4}(-\d{2}-\d{2})?$/).optional(),
+     topic:z.string().max(200).optional().describe('Only works whose title/abstract contain these words'),includeHal:z.boolean().default(true),
+     page:z.number().int().min(1).max(100).default(1),pageSize:z.number().int().min(5).max(200).default(50)})},async args=>{
+    const keys=await sciKeys();
+    const res=await sci.resolveAuthor(args.author,args.extraAuthorIds??[],keys);
+    if(res.status!=='resolved')return asText({status:res.status,candidates:res.candidates.map(profileOut),notes:res.notes,
+     instructions:'Show the candidates (name, institution, ORCID, number of works, topics) and ask the user which researcher they mean; then call again with the chosen OpenAlex ID or ORCID.'});
+    const ids=res.profiles.map(p=>p.id);
+    const b=await sciExport.cachedBibliography(ids,keys,{from:args.from,to:args.to,query:args.topic,includeHal:args.includeHal});
+    const all=sciExport.sorted(b.works,args.sort);const pages=Math.max(1,Math.ceil(all.length/args.pageSize));
+    const slice=all.slice((args.page-1)*args.pageSize,args.page*args.pageSize);
+    return asText({author:profileOut(res.profiles[0]),mergedProfiles:res.profiles.length>1?res.profiles.slice(1).map(profileOut):undefined,resolvedVia:res.via,
+     counts:{openAlexRecords:b.meta.openAlexTotal,halRecords:b.meta.halCount,afterDeduplication:all.length,duplicatesMerged:b.meta.rawCount-all.length,onlyInHal:b.meta.halOnly},
+     summary:sci.worksSummary(all),sort:args.sort,page:args.page,pages,pageSize:args.pageSize,works:slice.map(sci.compactWork),
+     exports:exportLinks(ids,{s:args.sort,from:args.from,to:args.to,q:args.topic,h:args.includeHal}),notes:b.meta.notes.length?b.meta.notes:undefined,
+     next:args.page<pages?'Next page: page='+(args.page+1)+'. The export links contain the complete list.':'Complete list shown. The export links contain it in BibTeX, RIS, CSV, Markdown and CSL-JSON.'});
+   });
+
+   server.registerTool('science_citations',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Citations and references of a paper',
+    description:'Exact citation graph of one paper (OpenAlex index): direction="cited_by" lists the papers that cite it (newest or most cited first, paginated, optional from date); direction="references" lists the works it cites. Give a DOI, arXiv ID, PMID, OpenAlex ID (W…), Semantic Scholar ID or HAL ID with a DOI.',
+    inputSchema:z.object({id:z.string().min(3).max(300),direction:z.enum(['cited_by','references']).default('cited_by'),sort:z.enum(['newest','citations']).default('newest'),
+     from:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('cited_by only: citing papers published on or after this date'),page:z.number().int().min(1).max(50).default(1),pageSize:z.number().int().min(5).max(100).default(25)})},async args=>{
+    const pid=sci.parsePaperId(args.id);if(!pid)return asText({error:'unknown_identifier'});
+    const keys=await sciKeys();const {work,note}=await sci.openAlexWork(pid,keys);
+    if(!work)return asText({error:'not_found',note});
+    const target=sci.parseBibWork(work)!;
+    if(args.direction==='cited_by'){
+     const r=await sci.citedBy(target.id,keys,{sort:args.sort,page:args.page,perPage:args.pageSize,from:args.from});
+     if(r.error)return asText({error:r.error});
+     return asText({paper:sci.compactWork(target),direction:'cited_by',totalCitingPapers:r.total,page:args.page,pages:r.total?Math.ceil(r.total/args.pageSize):1,works:r.works.map(sci.compactWork)});
+    }
+    const refs=await sci.referencesOf(work.referenced_works??[],keys);
+    const all=sci.sortWorks(refs.works,args.sort);
+    return asText({paper:sci.compactWork(target),direction:'references',totalReferences:(work.referenced_works??[]).length,resolved:all.length,page:args.page,pages:Math.max(1,Math.ceil(all.length/args.pageSize)),
+     works:all.slice((args.page-1)*args.pageSize,args.page*args.pageSize).map(sci.compactWork),error:refs.error,note:(work.referenced_works??[]).length?undefined:'OpenAlex has no reference list for this work.'});
+   });
+
+   const fullTextCache=new Map<string,{at:number;text:string;source:string;url:string;license:string|null;title:string|null}>();
+   server.registerTool('science_fulltext',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Read the open-access full text of a paper',
+    description:'Finds a LEGAL open-access copy of a paper (Europe PMC, arXiv, HAL, publisher or repository PDF via OpenAlex and Unpaywall) and returns its text in bounded windows (maxChars per call; continue with offset=nextOffset). Use it to quote, summarize or check what a paper really says. Paywalled papers without an open copy are reported, never bypassed.',
+    inputSchema:z.object({id:z.string().min(3).max(300),offset:z.number().int().min(0).default(0),maxChars:z.number().int().min(2000).max(30000).default(20000)})},async args=>{
+    const pid=sci.parsePaperId(args.id);if(!pid)return asText({error:'unknown_identifier'});
+    const cacheKey=pid.kind+':'+pid.value.toLowerCase();let hit=fullTextCache.get(cacheKey);
+    if(!hit||Date.now()-hit.at>1_800_000){
+     const loc=await sci.openAccessCandidates(pid,await sciKeys());
+     if(!loc.candidates.length)return asText({error:'no_open_access_copy',title:loc.title,doi:loc.doi,notes:loc.notes,messageForUser:'No legal open-access copy of this paper was found (OpenAlex, Unpaywall, Europe PMC, arXiv, HAL).'});
+     const tried:string[]=[];
+     for(const c of loc.candidates){
+      const got=await fetchPublicFile(c.url.replace(/^http:/,'https:'),15*1024*1024);
+      if('error' in got){tried.push(c.source+': '+got.error);continue;}
+      let text='';
+      try{
+       if(c.kind==='jats')text=sci.jatsToText(got.content.toString('utf8'));
+       else if(got.mime?.includes('html'))text=got.content.toString('utf8').replace(/<(script|style|nav|header|footer)[\s\S]*?<\/\1>/gi,'').replace(/<[^>]+>/g,' ').replace(/&nbsp;/g,' ').replace(/\s+\n/g,'\n').replace(/[ \t]+/g,' ').trim();
+       else{const {extractText,getDocumentProxy}=await import('unpdf');const pdf=await getDocumentProxy(new Uint8Array(got.content));const out=await extractText(pdf,{mergePages:false});text=(out.text as string[]).map((p,i)=>'[page '+(i+1)+']\n'+p.trim()).join('\n\n');}
+      }catch{tried.push(c.source+': unreadable');continue;}
+      if(text.replace(/\[page \d+\]/g,'').trim().length<500){tried.push(c.source+': no text layer');continue;}
+      hit={at:Date.now(),text,source:c.source,url:c.url,license:c.license,title:loc.title};if(fullTextCache.size>30)fullTextCache.clear();fullTextCache.set(cacheKey,hit);break;
+     }
+     if(!hit)return asText({error:'open_access_copy_unreadable',title:loc.title,tried,messageForUser:'Open-access copies exist but none could be read as text here. Links: '+loc.candidates.map(c=>c.url).join(' , ')});
+    }
+    const part=drive.sliceText(hit.text,args.offset,args.maxChars);
+    return asText({title:hit.title,source:hit.source,url:hit.url,license:hit.license,...part,
+     next:part.nextOffset!=null?'Partial text: call science_fulltext again with offset='+part.nextOffset+'. Quote briefly; never paste the whole paper.':undefined});
+   });
+
+   server.registerTool('science_verify_references',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Verify a list of references',
+    description:'Checks up to 25 references (free text like "Author (2020) Title. Journal", or DOIs/arXiv/PMIDs) against OpenAlex and Crossref: verified, probable, mismatch (the identifier exists but is another paper, a typical invented citation), not found, or retracted; returns the correct DOI and metadata. Use it on any bibliography before relying on it, including your own.',
+    inputSchema:z.object({references:z.array(z.string().min(5).max(1000)).min(1).max(25)})},async args=>{
+    const keys=await sciKeys();const out:sci.Verification[]=[];
+    for(let i=0;i<args.references.length;i+=5)out.push(...await Promise.all(args.references.slice(i,i+5).map(r=>sci.verifyReference(r,keys).catch(()=>({input:r,status:'not_found',doi:null,title:null,year:null,authors:[],venue:null,similarity:null,url:null,note:'check failed'} as sci.Verification)))));
+    const count=(s:string)=>out.filter(v=>v.status===s).length;
+    return asText({summary:{verified:count('verified'),probable:count('probable'),mismatch:count('mismatch'),notFound:count('not_found'),retracted:count('retracted')},results:out});
    });
    server.registerTool('ads_accounts',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Google Ads accounts',description:'List the Google Ads accounts the connected Google user can access (ID, name, currency, time zone, manager or not). Requires the Google Ads permission (adwords scope).',inputSchema:z.object({})},async()=>{
     const list=await googleRequest(ads.ADS_BASE+'/customers:listAccessibleCustomers') as {resourceNames?:string[];error?:string};
