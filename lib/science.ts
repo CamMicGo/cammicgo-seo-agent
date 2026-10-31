@@ -60,7 +60,7 @@ export function parsePaperId(input:string):PaperId|null{
  const pm=/(?:pubmed\.ncbi\.nlm\.nih\.gov\/|^pmid:\s*)(\d{1,9})\/?$/i.exec(s)||(/^\d{1,9}$/.test(s)?[s,s]:null);if(pm)return {kind:'pmid',value:pm[1]};
  const oa=/(?:openalex\.org\/(?:works\/)?)?(W\d{4,12})$/i.exec(s);if(oa)return {kind:'openalex',value:oa[1].toUpperCase()};
  const s2=/(?:semanticscholar\.org\/paper\/(?:[^/]+\/)?)?([0-9a-f]{40})$/i.exec(s);if(s2)return {kind:'s2',value:s2[1].toLowerCase()};
- const hal=/(?:hal\.science\/|archives-ouvertes\.fr\/)?([a-z][a-z0-9_]{1,24}-\d{6,9}(?:v\d+)?)\/?$/i.exec(s);if(hal)return {kind:'hal',value:hal[1].toLowerCase()};
+ const hal=/(?:hal\.science\/|archives-ouvertes\.fr\/)?([a-z][a-z0-9]{1,24}(?:[_-][a-z0-9]+)*[-_]\d{6,9}(?:v\d+)?)\/?$/i.exec(s);if(hal)return {kind:'hal',value:hal[1].toLowerCase()};
  return null;
 }
 
@@ -287,7 +287,7 @@ export async function paperDetails(id:PaperId,keys:Keys,f:Fetcher=fetch){
    if(r.ok){const p=parseS2Paper(await r.json());if(p){found.push(p);s2PaperId=p.id;}}else notes.push('Semantic Scholar: '+sourceError('semanticscholar',r.status,!!keys.semanticscholar));}catch{notes.push('Semantic Scholar: unavailable');}
  }
  const doi=id.kind==='doi'?id.value:found[0]?.doi??null;
- const oaPath=id.kind==='openalex'?id.value:doi?'doi:'+doi:id.kind==='pmid'?'pmid:'+id.value:null;
+ const oaPath=id.kind==='openalex'?id.value:doi?'doi:'+doi:id.kind==='pmid'?'pmid:'+id.value:id.kind==='arxiv'?'doi:10.48550/arxiv.'+id.value.replace(/v\d+$/,''):null;
  if(oaPath){
   try{const p=new URLSearchParams({mailto:CONTACT_EMAIL});if(keys.openalex)p.set('api_key',keys.openalex);
    const r=await getText(f,'https://api.openalex.org/works/'+encodeURIComponent(oaPath).replace('%3A',':')+'?'+p);
