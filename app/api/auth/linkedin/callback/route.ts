@@ -1,7 +1,8 @@
 import {NextRequest,NextResponse} from 'next/server';
 import {decrypt,cookieOptions} from '@/lib/google-session';
 import {saveLinkedInConnection,socialClient} from '@/lib/social-store';
-import {LI_API,LI_TOKEN,tokenBody,type LinkedInSession} from '@/lib/linkedin';
+import {LI_API,LI_SCOPES,LI_TOKEN,tokenBody,type LinkedInSession} from '@/lib/linkedin';
+// LinkedIn grants all requested scopes or refuses the authorization: without a scope field, the requested ones apply.
 export const runtime='nodejs';
 const STATE_COOKIE='cmg_li_pending';
 
@@ -19,7 +20,7 @@ export async function GET(req:NextRequest){
  const me=await fetch(LI_API+'/userinfo',{headers:{Authorization:'Bearer '+tok.access_token},cache:'no-store'});
  const info=await me.json().catch(()=>({})) as {sub?:string;name?:string;email?:string};
  if(!me.ok||!info.sub)return back('error');
- const session:LinkedInSession={accessToken:tok.access_token,expiresAt:Date.now()+Number(tok.expires_in||5_184_000)*1000,scopes:(tok.scope??'').split(/[ ,]+/).filter(Boolean),memberId:info.sub,name:info.name??'LinkedIn member',email:info.email??null};
+ const session:LinkedInSession={accessToken:tok.access_token,expiresAt:Date.now()+Number(tok.expires_in||5_184_000)*1000,scopes:tok.scope?tok.scope.split(/[ ,]+/).filter(Boolean):[...LI_SCOPES],memberId:info.sub,name:info.name??'LinkedIn member',email:info.email??null};
  try{await saveLinkedInConnection(pending.userId,session);}catch{return back('error');}
  return back('connected');
 }
