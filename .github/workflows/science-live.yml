@@ -4,6 +4,9 @@ on:
   push:
     paths:
       - 'lib/science.ts'
+      - 'lib/science.mjs'
+      - 'scripts/local-mcp.mjs'
+      - 'tests/live/local-science-live.mjs'
       - 'tests/live/science-live.ts'
       - '.github/workflows/science-live.yml'
 jobs:
@@ -20,6 +23,14 @@ jobs:
         env:
           LIVE_OUT: science-live.txt
         run: node --experimental-strip-types --no-warnings tests/live/science-live.ts
+      - name: Install dependencies for the local MCP
+        if: always()
+        run: npm ci --no-audit --no-fund
+      - name: Local stdio MCP science tools (compiled lib/science.mjs)
+        if: always()
+        env:
+          LIVE_OUT: science-live.txt
+        run: node tests/live/local-science-live.mjs
       - name: Post the results as a commit comment
         if: always()
         env:

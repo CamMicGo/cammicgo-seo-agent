@@ -20,9 +20,9 @@ export const CONTACT_EMAIL='contact@cammicgo.com';
 const UA='CamMicGo-SEO-MCP/1.0 (https://seo.cammicgo.com; mailto:'+CONTACT_EMAIL+')';
 export const SOURCE_INFO:Record<Source,{name:string;keyProvider:KeyProvider|null;withoutKey:string;withKey:string|null;keyUrl:string|null}>={
  openalex:{name:'OpenAlex',keyProvider:'openalex',withoutKey:'about 100 searches/day shared by all CamMicGo users without a key',withKey:'about 1,000 searches/day with your free key',keyUrl:'https://openalex.org/settings/api'},
- semanticscholar:{name:'Semantic Scholar (Ai2)',keyProvider:'semanticscholar',withoutKey:'shared public pool, often throttled (HTTP 429) at busy times',withKey:'1 request/second reserved for your key',keyUrl:'https://www.semanticscholar.org/product/api#api-key-form'},
+ semanticscholar:{name:'Semantic Scholar (Ai2)',keyProvider:'semanticscholar',withoutKey:'worldwide shared public pool, often saturated (HTTP 429)',withKey:'1 request/second reserved for your key',keyUrl:'https://www.semanticscholar.org/product/api#api-key-form'},
  arxiv:{name:'arXiv',keyProvider:null,withoutKey:'no key needed (1 request every 3 seconds)',withKey:null,keyUrl:null},
- pubmed:{name:'PubMed (NCBI)',keyProvider:'pubmed',withoutKey:'3 requests/second without a key',withKey:'10 requests/second with your free NCBI key',keyUrl:'https://account.ncbi.nlm.nih.gov/settings/'},
+ pubmed:{name:'PubMed (NCBI)',keyProvider:'pubmed',withoutKey:'3 requests/second shared by all CamMicGo users of the remote server',withKey:'10 requests/second just for you with your free NCBI key',keyUrl:'https://account.ncbi.nlm.nih.gov/settings/'},
  hal:{name:'HAL (archive ouverte française, CCSD/CNRS)',keyProvider:null,withoutKey:'no key needed',withKey:null,keyUrl:null},
 };
 
@@ -241,9 +241,12 @@ export function compact(p:Paper,abstractChars=500){
 }
 
 /** Readable error for a source answer. */
+/** Where users add their keys: the /account page (remote) or .env.local (local MCP). */
+export let KEYS_HELP='https://seo.cammicgo.com/account';
+export function setKeysHelp(v:string){KEYS_HELP=v;}
 export function sourceError(source:Source,status:number,usedKey:boolean){
- if(status===429)return usedKey?'rate limited even with your key: wait a little':'rate limited: shared quota without a key is exhausted ('+SOURCE_INFO[source].withoutKey+'). Add a free key on https://seo.cammicgo.com/account';
- if((status===401||status===403)&&usedKey)return 'your '+SOURCE_INFO[source].name+' key was refused: check it on https://seo.cammicgo.com/account';
+ if(status===429)return usedKey?'rate limited even with your key: wait a little':'rate limited: shared quota without a key is exhausted ('+SOURCE_INFO[source].withoutKey+'). Add a free personal key: '+KEYS_HELP;
+ if((status===401||status===403)&&usedKey)return 'your '+SOURCE_INFO[source].name+' key was refused: check it ('+KEYS_HELP+')';
  return 'HTTP '+status;
 }
 

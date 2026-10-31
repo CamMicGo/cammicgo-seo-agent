@@ -139,7 +139,7 @@ test('compact output is bounded and errors explain the missing key', () => {
   assert.equal(c.authors.length, 9);
   assert.ok(c.abstract!.length <= 101);
   assert.equal(c.id, 'hal-1');
-  assert.match(s.sourceError('openalex', 429, false), /Add a free key/);
+  assert.match(s.sourceError('openalex', 429, false), /Add a free personal key/);
   assert.match(s.sourceError('semanticscholar', 403, true), /key was refused/);
 });
 

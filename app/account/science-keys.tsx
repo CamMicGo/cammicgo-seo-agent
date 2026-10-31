@@ -36,6 +36,7 @@ export default function ScienceKeys({token}:{token:string}){
  return <section className="acc-card acc-sci" aria-labelledby="acc-sci-title">
   <h2 id="acc-sci-title">🔬 {t.title}</h2>
   <p>{t.lead} <a href="/setup/science">{t.guide} →</a></p>
+  <p className="acc-sci-rec">⭐ {t.recommend}</p>
   {msg&&<p role="status" className={'acc-msg '+msg.kind}>{msg.text}</p>}
   <div className="acc-sci-list">
    {KEYED.map(k=>{const s=saved.find(x=>x.provider===k.id);return <div className="acc-sci-row" key={k.id}>
