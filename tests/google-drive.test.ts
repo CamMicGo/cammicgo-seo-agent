@@ -120,3 +120,40 @@ test('slimFile marks folders and readability', () => {
   assert.equal(g.size, '2.00 KB');
   assert.equal(g.readable, true);
 });
+
+test('trash confirmation token: bound to user and exact items, minimum delay, expiry', () => {
+  const key = 'k'.repeat(44), t0 = 1_800_000_000_000;
+  const token = d.confirmToken(key, 'user-1', 'trash', ['b_file_id_123', 'a_file_id_123'], t0);
+  assert.deepEqual(d.checkConfirmToken(key, 'user-1', 'trash', ['a_file_id_123', 'b_file_id_123'], token, t0 + 30_000), {ok: true});
+  assert.deepEqual(d.checkConfirmToken(key, 'user-1', 'trash', ['a_file_id_123', 'b_file_id_123'], token, t0 + 2_000), {ok: false, reason: 'too_fast'});
+  assert.deepEqual(d.checkConfirmToken(key, 'user-1', 'trash', ['a_file_id_123', 'b_file_id_123'], token, t0 + 16 * 60_000), {ok: false, reason: 'expired'});
+  assert.deepEqual(d.checkConfirmToken(key, 'user-1', 'trash', ['a_file_id_123', 'c_file_id_123'], token, t0 + 30_000), {ok: false, reason: 'invalid'});
+  assert.deepEqual(d.checkConfirmToken(key, 'user-2', 'trash', ['a_file_id_123', 'b_file_id_123'], token, t0 + 30_000), {ok: false, reason: 'invalid'});
+  assert.deepEqual(d.checkConfirmToken('x'.repeat(44), 'user-1', 'trash', ['a_file_id_123', 'b_file_id_123'], token, t0 + 30_000), {ok: false, reason: 'invalid'});
+  assert.deepEqual(d.checkConfirmToken(key, 'user-1', 'trash', ['a_file_id_123'], undefined, t0), {ok: false, reason: 'missing'});
+  assert.deepEqual(d.checkConfirmToken(key, 'user-1', 'trash', ['a_file_id_123'], 'garbage', t0), {ok: false, reason: 'invalid'});
+});
+
+test('trashability and restorability depend on Google rights and on the granted Drive permission', () => {
+  const base = {id: '1AbC_def-GHIjkl0123', name: 'x', mimeType: 'text/plain'};
+  assert.equal(d.trashability({...base, isAppAuthorized: true, capabilities: {canTrash: true}}, false).ok, true);
+  assert.match(d.trashability({...base, isAppAuthorized: false, capabilities: {canTrash: true}}, false).reason!, /full access/);
+  assert.equal(d.trashability({...base, isAppAuthorized: false, capabilities: {canTrash: true}}, true).ok, true);
+  assert.match(d.trashability({...base, ownedByMe: false, capabilities: {canTrash: false}}, true).reason!, /owner/);
+  assert.match(d.trashability({...base, trashed: true}, true).reason!, /already/);
+  assert.equal(d.restorability({...base, trashed: true, isAppAuthorized: true}, false).ok, true);
+  assert.match(d.restorability({...base, trashed: false}, true).reason!, /not in the trash/);
+  assert.equal(d.buildListQuery({onlyTrashed: true}), 'trashed = true');
+});
+
+test('public URL guard (no private, loopback or link-local targets)', () => {
+  assert.ok(d.checkPublicUrl('https://arxiv.org/pdf/1706.03762'));
+  for (const bad of ['http://arxiv.org/pdf/1', 'https://localhost/x', 'https://127.0.0.1/x', 'https://10.0.0.5/x', 'https://169.254.169.254/latest/meta-data', 'https://[::1]/x', 'https://user:pw@example.com/x', 'https://example.com:8443/x', 'https://printer.local/x', 'ftp://example.com/x'])
+    assert.equal(d.checkPublicUrl(bad), null, bad);
+  for (const ip of ['10.1.2.3', '172.16.0.1', '172.31.255.255', '192.168.1.1', '127.0.0.1', '169.254.169.254', '100.64.0.1', '0.0.0.0', '::1', 'fd00::1', 'fe80::1', '::ffff:10.0.0.1'])
+    assert.equal(d.isPrivateIp(ip), true, ip);
+  for (const ip of ['8.8.8.8', '172.32.0.1', '151.101.1.1', '2606:4700::1111'])
+    assert.equal(d.isPrivateIp(ip), false, ip);
+  assert.equal(d.nameFromResponse(new URL('https://arxiv.org/pdf/1706.03762'), null), '1706.03762');
+  assert.equal(d.nameFromResponse(new URL('https://x.org/a'), 'attachment; filename="paper final.pdf"'), 'paper final.pdf');
+});

@@ -20,7 +20,7 @@ const SERVER_INSTRUCTIONS=[
  'youtube_get_transcript returns the original spoken language by default (compact [mm:ss] text): translate it yourself. To find a person\'s main channel use youtube_find_channels; several channels can share a name, ask the user if unsure.',
  'Google tools use the user\'s own Google Cloud project (OAuth client ID and secret saved at https://seo.cammicgo.com/account, then "Connect Google"). If a tool answers google_not_connected, relay its messageForUser. Each user has a daily CamMicGo allowance (about 100 tool calls; status checks are free): prefer one youtube_channel_batch over many single transcript calls.',
  'Google Ads: ads_accounts, ads_report (read-only) and ads_create_paused_campaign. Campaigns are always created PAUSED with a total budget that is never exceeded over a fixed period: first call it with confirm=false, show the validated summary, and use confirm=true only after the user explicitly approves. Never promise that a campaign is live: the user enables it in Google Ads. Keyword Planner is not available (Explorer access).',
- 'Google Drive: drive_list_files, drive_search_files, drive_read_file (bounded text windows: continue with offset=nextOffset, never paste whole documents) and drive_storage_quota are read-only (drive.readonly).',
+ 'Google Drive: drive_list_files (inTrash=true for the trash), drive_search_files, drive_read_file (bounded text windows: continue with offset=nextOffset, never paste whole documents) and drive_storage_quota are read-only. drive_create_folder and drive_upload_file create NEW items only (never overwrite; sources: your text, a small file, a CamMicGo export or a public https file such as a paper PDF). drive_trash_file never deletes permanently: ALWAYS call it first with confirm=false, show the exact list to the user, and call confirm=true only after the user explicitly says yes in a new message; never trash anything on your own initiative. drive_restore_file undoes it.',
  'Science: science_search (OpenAlex, Semantic Scholar, arXiv, PubMed, HAL; merged), science_latest (newest papers on a topic), science_paper (details by DOI/arXiv/PMID/HAL ID) and science_author. Cite papers with their links; never invent references. If keyTip is present, mention once that free personal keys raise the limits.',
  'Whole channels: youtube_channel_batch builds ONE document (details + full transcripts of every video) with a stable URL, ideal as a single NotebookLM source; follow it with youtube_batch_status. Never paste whole documents into the chat.',
 ].join(' ');
@@ -238,8 +238,9 @@ async function handler(req:NextRequest){
     const {token}=await authorizedAccessToken(session);
     return {response:await googleFetch(url,token,init)};
    };
-   const driveScopeMessage=(write:boolean)=>({error:'missing_google_permission',api:'Google Drive',reauthorizeUrl:REAUTH_URL,
-    messageForUser:write?'Writing to Google Drive needs the "Google Drive (create files)" permission. Open '+REAUTH_URL+' , sign in, check "Google Drive (create files)" and click "Reconnect Google". Then ask me again.'
+   const driveScopeMessage=(write:boolean|'full')=>({error:'missing_google_permission',api:'Google Drive',reauthorizeUrl:REAUTH_URL,
+    messageForUser:write==='full'?'This needs the "Google Drive ⚠ full access (drive)" permission (CamMicGo can then also trash files it did not create and upload into any folder). Open '+REAUTH_URL+' , sign in, check "Google Drive ⚠ full access (drive)" and click "Reconnect Google". Then ask me again.'
+     :write?'Writing to Google Drive needs the "Google Drive ✎ (drive.file)" permission. Open '+REAUTH_URL+' , sign in, check "Google Drive ✎ (drive.file)" and click "Reconnect Google". Then ask me again.'
      :'Your Google authorization does not include Google Drive. Open '+REAUTH_URL+' , sign in, check "Google Drive" and click "Reconnect Google". Then ask me again (no need to reconnect the assistant).',
     instructions:'Relay messageForUser to the user in their language with the link.'});
    const driveFailure=async(response:Response,write=false)=>{const body=await response.json().catch(()=>({}));const e=drive.driveError(response.status,body);return e.error==='missing_google_permission'?driveScopeMessage(write):e;};
@@ -255,9 +256,9 @@ async function handler(req:NextRequest){
    type FileList={files?:drive.DriveFile[];nextPageToken?:string;incompleteSearch?:boolean};
 
    server.registerTool('drive_list_files',{annotations:{readOnlyHint:true,openWorldHint:true},title:'List Google Drive files',
-    description:'List files and folders in the user\'s Google Drive (My Drive root by default, or inside folderId), including shared drives they can access. Returns name, id, kind (file/folder), MIME type, size, created and modified dates and link. Paginated: pass nextPageToken back as pageToken. Requires drive.readonly.',
-    inputSchema:z.object({folderId:driveId.optional().describe('Folder ID to browse; "root" = My Drive. Omit to list recent items everywhere.'),kind:z.enum(['all','files','folders']).default('all'),orderBy,pageSize,pageToken:z.string().max(1000).optional(),sharedDriveId:driveId.optional().describe('Limit to one shared drive')})},async args=>{
-    const q=drive.buildListQuery({folderId:args.folderId,kind:args.kind});
+    description:'List files and folders in the user\'s Google Drive (My Drive root by default, or inside folderId), including shared drives they can access, or the Drive trash with inTrash=true. Returns name, id, kind (file/folder), MIME type, size, created and modified dates and link. Paginated: pass nextPageToken back as pageToken. Requires drive.readonly.',
+    inputSchema:z.object({folderId:driveId.optional().describe('Folder ID to browse; "root" = My Drive. Omit to list recent items everywhere.'),kind:z.enum(['all','files','folders']).default('all'),inTrash:z.boolean().default(false).describe('true = list the Drive trash (to find items to restore)'),orderBy,pageSize,pageToken:z.string().max(1000).optional(),sharedDriveId:driveId.optional().describe('Limit to one shared drive')})},async args=>{
+    const q=drive.buildListQuery({folderId:args.inTrash?undefined:args.folderId,kind:args.kind,onlyTrashed:args.inTrash});
     const r=await driveJson<FileList>(drive.DRIVE_API+'/files?'+drive.listParams(q,args.pageSize,args.orderBy,args.pageToken,true,args.sharedDriveId));
     if('failure' in r)return asText(r.failure);
     const files=(r.data.files??[]).map(drive.slimFile);
@@ -314,6 +315,182 @@ async function handler(req:NextRequest){
     if('failure' in r)return asText(r.failure);
     return asText({account:r.data.user?.emailAddress??null,...drive.computeQuota(r.data.storageQuota),checkedAt:new Date().toISOString()});
    });
+
+   // Writing: drive.file (create items; change only what CamMicGo created) or, if the user opted in, drive (full access).
+   const driveAccess=async()=>{const s=await readGoogle(user.id);const sc=s?.scopes;return {write:!!s&&(!sc||sc.includes(drive.DRIVE_FILE_SCOPE)||sc.includes(drive.DRIVE_FULL_SCOPE)),full:!!sc&&sc.includes(drive.DRIVE_FULL_SCOPE)};};
+   const canWriteDrive=async()=>(await driveAccess()).write;
+   /** Names already used in a folder (to never overwrite or duplicate silently). */
+   const namesIn=async(parentId:string,name:string,folderOnly=false)=>{
+    const base=name.replace(/\.[^.]*$/,'')||name;
+    const q="'"+drive.escapeQuery(parentId)+"' in parents and trashed = false and name contains '"+drive.escapeQuery(base.slice(0,80))+"'"+(folderOnly?" and mimeType = '"+drive.FOLDER_MIME+"'":'');
+    const r=await driveJson<FileList>(drive.DRIVE_API+'/files?'+drive.listParams(q,100,'name'));
+    if('failure' in r)return r;
+    return {files:r.data.files??[]};
+   };
+   /** Checks the destination folder exists and accepts new items for this account. */
+   const checkParent=async(parentId:string)=>{
+    if(parentId==='root')return {ok:true as const,name:'My Drive'};
+    const meta=await fileMeta(parentId);if('failure' in meta)return {ok:false as const,failure:{...meta.failure,parentId,hint:'The destination folder must exist and be accessible. Use drive_list_files or drive_search_files with type=folder to find its ID, or omit parentId to use My Drive.'}};
+    if(meta.data.mimeType!==drive.FOLDER_MIME)return {ok:false as const,failure:{error:'not_a_folder',parentId,messageForUser:'"'+meta.data.name+'" is not a folder.'}};
+    if(meta.data.capabilities&&meta.data.capabilities.canAddChildren===false)return {ok:false as const,failure:{error:'no_write_access',parentId,messageForUser:'This Google account cannot add files to "'+meta.data.name+'" (read-only access).'}};
+    return {ok:true as const,name:meta.data.name};
+   };
+   /** Downloads a public https file: no private/loopback addresses (checked after DNS and on every redirect), size-capped. */
+   const fetchPublicFile=async(raw:string,max:number):Promise<{content:Buffer;mime:string|null;finalUrl:string}|{error:string;messageForUser?:string}>=>{
+    const {lookup}=await import('node:dns/promises');
+    let url=drive.checkPublicUrl(raw);
+    for(let hop=0;hop<4&&url;hop++){
+     const addrs=await lookup(url.hostname,{all:true}).catch(()=>[]);
+     if(!addrs.length||addrs.some(a=>drive.isPrivateIp(a.address)))return {error:'url_not_allowed',messageForUser:'Only public https addresses can be saved to Drive.'};
+     const r=await fetch(url,{redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(25000),headers:{'User-Agent':'CamMicGo-SEO-MCP/1.0 (+https://seo.cammicgo.com)'}}).catch(()=>null);
+     if(!r)return {error:'download_failed'};
+     if(r.status>=300&&r.status<400){const next=r.headers.get('location');url=next?drive.checkPublicUrl(new URL(next,url).toString()):null;continue;}
+     if(!r.ok)return {error:'download_failed',messageForUser:'The address answered HTTP '+r.status+'.'};
+     const declared=Number(r.headers.get('content-length')||0);if(declared>max)return {error:'file_too_large',messageForUser:'This file is larger than '+drive.humanBytes(max)+'.'};
+     const reader=r.body?.getReader();const chunks:Uint8Array[]=[];let total=0;
+     if(reader)for(;;){const {done,value}=await reader.read();if(done)break;total+=value.length;if(total>max){await reader.cancel();return {error:'file_too_large',messageForUser:'This file is larger than '+drive.humanBytes(max)+'.'};}chunks.push(value);}
+     const type=(r.headers.get('content-type')||'').split(';')[0].trim().toLowerCase();
+     return {content:Buffer.concat(chunks),mime:/^[\w.+-]+\/[\w.+-]+$/.test(type)?type:null,finalUrl:url.toString()};
+    }
+    return {error:'url_not_allowed',messageForUser:'Only public https addresses (at most 3 redirects) can be saved to Drive.'};
+   };
+   const DRIVE_FILE_LIMIT_NOTE='With the "Google Drive ✎ (drive.file)" permission, CamMicGo can create items in My Drive and in folders CamMicGo created; Google refuses other existing folders (404/403): create a folder with drive_create_folder first, or ask the user to enable "Google Drive ⚠ full access (drive)".';
+
+   server.registerTool('drive_create_folder',{annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:true,openWorldHint:true},title:'Create a Google Drive folder',
+    description:'Create a folder in the user\'s Google Drive (My Drive by default, or inside parentId) and return its ID. If a folder with the same name already exists there, it is reused (ifExists="reuse", default) or a numbered name is used (ifExists="rename"). Nothing is ever deleted or overwritten. Requires the "Google Drive ✎ (drive.file)" permission. '+DRIVE_FILE_LIMIT_NOTE,
+    inputSchema:z.object({name:z.string().min(1).max(255),parentId:driveId.default('root'),ifExists:z.enum(['reuse','rename']).default('reuse')})},async args=>{
+    if(!await canWriteDrive())return asText(driveScopeMessage(true));
+    const name=drive.cleanName(args.name);if(!name)return asText({error:'invalid_name',messageForUser:'Folder names must have 1 to 255 visible characters.'});
+    const parent=await checkParent(args.parentId);if(!parent.ok)return asText(parent.failure);
+    const existing=await namesIn(args.parentId,name,true);if('failure' in existing)return asText(existing.failure);
+    const same=existing.files.find(f=>f.name===name);
+    if(same&&args.ifExists==='reuse')return asText({created:false,reused:true,folder:drive.slimFile(same),parent:parent.name});
+    const finalName=drive.uniqueName(name,new Set(existing.files.map(f=>f.name)));
+    const r=await driveJson<drive.DriveFile>(drive.DRIVE_API+'/files?'+new URLSearchParams({fields:drive.FILE_FIELDS,supportsAllDrives:'true'}),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:finalName,mimeType:drive.FOLDER_MIME,parents:[args.parentId]})},true);
+    if('failure' in r)return asText({...r.failure,note:DRIVE_FILE_LIMIT_NOTE});
+    return asText({created:true,folderId:r.data.id,folder:drive.slimFile(r.data),parent:parent.name,renamed:finalName!==name?finalName:undefined});
+   });
+
+   server.registerTool('drive_upload_file',{annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},title:'Upload a file to Google Drive',
+    description:'Create a NEW file in the user\'s Google Drive from an explicit source: source.type="text" (content you write, e.g. a report in Markdown, CSV or JSON), "base64" (small binary file the user gave you, max '+Math.round(drive.DRIVE_LIMITS.maxUploadBytes/1048576)+' MB), "cammicgo_export" (a CamMicGo channel transcript document by exportId, Markdown or CSV, uploaded with a resumable upload) or "url" (a public https file the user asked to save, e.g. a paper PDF, max '+Math.round(drive.DRIVE_LIMITS.maxExportUploadBytes/1048576)+' MB). Never reads local or server files. Existing files are never overwritten: a numbered name is used (ifExists="rename", default) or the call fails (ifExists="fail"). Set convertToGoogleDoc=true to turn text/Markdown/HTML into a Google Doc (or CSV into a Google Sheet). Requires the "Google Drive ✎ (drive.file)" permission. '+DRIVE_FILE_LIMIT_NOTE,
+    inputSchema:z.object({name:z.string().min(1).max(255),parentId:driveId.default('root'),
+     source:z.discriminatedUnion('type',[
+      z.object({type:z.literal('text'),content:z.string().max(drive.DRIVE_LIMITS.maxUploadBytes)}),
+      z.object({type:z.literal('base64'),data:z.string().max(Math.ceil(drive.DRIVE_LIMITS.maxUploadBytes*4/3)+4)}),
+      z.object({type:z.literal('cammicgo_export'),exportId:z.string().max(40),format:z.enum(['markdown','csv']).default('markdown'),part:z.number().int().min(1).max(5).default(1)}),
+      z.object({type:z.literal('url'),url:z.string().url().max(2000).describe('Public https address of a file the user asked to save, e.g. a paper PDF from science_paper')}),
+     ]),
+     mimeType:z.string().max(120).regex(/^[\w.+-]+\/[\w.+-]+$/).optional().describe('Defaults from the file extension'),
+     convertToGoogleDoc:z.boolean().default(false),ifExists:z.enum(['rename','fail']).default('rename')})},async args=>{
+    if(!await canWriteDrive())return asText(driveScopeMessage(true));
+    const name=drive.cleanName(args.name);if(!name)return asText({error:'invalid_name',messageForUser:'File names must have 1 to 255 visible characters.'});
+    let content:Buffer,limit=drive.DRIVE_LIMITS.maxUploadBytes,urlMime:string|null=null;
+    const src=args.source;
+    if(src.type==='text')content=Buffer.from(src.content,'utf8');
+    else if(src.type==='base64'){if(!/^[A-Za-z0-9+/=\s_-]*$/.test(src.data))return asText({error:'invalid_base64'});content=Buffer.from(src.data.replace(/\s/g,'').replace(/-/g,'+').replace(/_/g,'/'),'base64');}
+    else if(src.type==='cammicgo_export'){
+     const {readExport,buildDocument,buildCsv,partCount}=await import('@/lib/channel-export');
+     const exp=await readExport(src.exportId,user.id);if(!exp)return asText({error:'Unknown exportId (only your own CamMicGo exports can be uploaded).'});
+     if(src.part>partCount(exp))return asText({error:'This export has '+partCount(exp)+' part(s).'});
+     content=Buffer.from(src.format==='csv'?await buildCsv(exp,src.part):await buildDocument(exp,src.part),'utf8');
+     limit=drive.DRIVE_LIMITS.maxExportUploadBytes;
+    }else{
+     const got=await fetchPublicFile(src.url,drive.DRIVE_LIMITS.maxExportUploadBytes);
+     if('error' in got)return asText(got);
+     content=got.content;limit=drive.DRIVE_LIMITS.maxExportUploadBytes;urlMime=got.mime;
+    }
+    if(!content.length)return asText({error:'empty_content'});
+    if(content.length>limit)return asText({error:'file_too_large',size:drive.humanBytes(content.length),limit:drive.humanBytes(limit)});
+    const ext=(name.split('.').pop()??'').toLowerCase();
+    const byExt:Record<string,string>={md:'text/markdown',markdown:'text/markdown',txt:'text/plain',csv:'text/csv',json:'application/json',html:'text/html',htm:'text/html',xml:'application/xml',pdf:'application/pdf',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',srt:'application/x-subrip',vtt:'text/vtt'};
+    const mime=args.mimeType??byExt[ext]??urlMime??(src.type==='base64'||src.type==='url'?'application/octet-stream':src.type==='cammicgo_export'?(src.format==='csv'?'text/csv':'text/markdown'):'text/plain');
+    const target=args.convertToGoogleDoc?(mime==='text/csv'?'application/vnd.google-apps.spreadsheet':/^text\/(plain|markdown|html)$/.test(mime)?'application/vnd.google-apps.document':null):null;
+    if(args.convertToGoogleDoc&&!target)return asText({error:'cannot_convert',messageForUser:'Only text, Markdown, HTML (to Google Docs) and CSV (to Google Sheets) can be converted.'});
+    const parent=await checkParent(args.parentId);if(!parent.ok)return asText(parent.failure);
+    const existing=await namesIn(args.parentId,name);if('failure' in existing)return asText(existing.failure);
+    const taken=new Set(existing.files.map(f=>f.name));
+    if(taken.has(name)&&args.ifExists==='fail')return asText({error:'already_exists',messageForUser:'A file named "'+name+'" already exists in this folder. Nothing was changed.'});
+    const finalName=target?drive.uniqueName(name.replace(/\.(md|markdown|txt|html?|csv)$/i,''),taken):drive.uniqueName(name,taken);
+    const metadata:Record<string,unknown>={name:finalName,parents:[args.parentId],...(target?{mimeType:target}:{})};
+    const fields=new URLSearchParams({fields:drive.FILE_FIELDS,supportsAllDrives:'true'});
+    let res:{data:drive.DriveFile}|{failure:Record<string,unknown>};
+    if(content.length<=drive.DRIVE_LIMITS.resumableAboveBytes){
+     const boundary='cmg'+Math.random().toString(36).slice(2);
+     fields.set('uploadType','multipart');
+     res=await driveJson<drive.DriveFile>(drive.DRIVE_UPLOAD_API+'/files?'+fields,{method:'POST',headers:{'Content-Type':'multipart/related; boundary='+boundary},body:new Uint8Array(drive.multipartBody(metadata,content,mime,boundary))},true);
+    }else{
+     // Resumable upload: one session, then the bytes in a single PUT (Drive accepts it; retries restart the session).
+     fields.set('uploadType','resumable');
+     const start=await driveFetch(drive.DRIVE_UPLOAD_API+'/files?'+fields,{method:'POST',headers:{'Content-Type':'application/json; charset=UTF-8','X-Upload-Content-Type':mime,'X-Upload-Content-Length':String(content.length)},body:JSON.stringify(metadata)});
+     if('failure' in start)return asText(start.failure);
+     if(!start.response.ok)return asText({...await driveFailure(start.response,true),note:DRIVE_FILE_LIMIT_NOTE});
+     const location=start.response.headers.get('location');
+     if(!location||!location.startsWith(drive.DRIVE_UPLOAD_API))return asText({error:'upload_session_failed'});
+     const put=await driveFetch(location,{method:'PUT',headers:{'Content-Type':mime,'Content-Length':String(content.length)},body:new Uint8Array(content)});
+     res='failure' in put?put:put.response.ok?{data:await put.response.json() as drive.DriveFile}:{failure:await driveFailure(put.response,true)};
+    }
+    if('failure' in res)return asText({...res.failure,note:DRIVE_FILE_LIMIT_NOTE});
+    return asText({created:true,fileId:res.data.id,file:drive.slimFile(res.data),parent:parent.name,bytes:content.length,renamed:res.data.name!==name?res.data.name:undefined,convertedTo:target??undefined});
+   });
+
+   /** Metadata used to decide whether an item can be trashed or restored. */
+   const trashMeta=(id:string)=>driveJson<drive.DriveFile>(drive.DRIVE_API+'/files/'+encodeURIComponent(id)+'?'+new URLSearchParams({fields:drive.TRASH_FIELDS,supportsAllDrives:'true'}));
+   const confirmKey=()=>process.env.SESSION_ENCRYPTION_KEY??'';
+   const describeItem=async(f:drive.DriveFile)=>{
+    const item:Record<string,unknown>={id:f.id,name:f.name,kind:f.mimeType===drive.FOLDER_MIME?'folder':'file',size:drive.humanBytes(f.size!=null?Number(f.size):null),modifiedTime:f.modifiedTime??null,owner:f.owners?.[0]?.displayName??null,link:f.webViewLink??null};
+    if(f.mimeType===drive.FOLDER_MIME){
+     const r=await driveJson<FileList>(drive.DRIVE_API+'/files?'+new URLSearchParams({q:"'"+drive.escapeQuery(f.id)+"' in parents and trashed = false",pageSize:'100',fields:'nextPageToken,files(id)',supportsAllDrives:'true',includeItemsFromAllDrives:'true'}));
+     item.contains='failure' in r?'unknown number of items':(r.data.files?.length??0)+(r.data.nextPageToken?'+':'')+' item(s), which go to the trash with the folder';
+    }
+    return item;
+   };
+
+   server.registerTool('drive_trash_file',{annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:true,openWorldHint:true},title:'Move Google Drive files to the trash (explicit confirmation)',
+    description:'Move up to '+drive.MAX_TRASH_BATCH+' Drive files or folders to the Google Drive TRASH (never permanent deletion; restorable for 30 days with drive_restore_file). ALWAYS TWO STEPS: (1) call with confirm=false: nothing is changed, you get the exact list and a confirmationToken; show the list to the user and ask for an explicit yes. (2) Only after the user explicitly confirms in a NEW message, call again with the same fileIds, confirm=true and the confirmationToken. Never confirm on the user\'s behalf, never chain both calls in one turn (the server refuses confirmations that come back in under '+drive.CONFIRM_MIN_DELAY_MS/1000+' seconds). With "Google Drive ✎ (drive.file)" only items created by CamMicGo can be trashed; other items need "Google Drive ⚠ full access (drive)".',
+    inputSchema:z.object({fileIds:z.array(driveId).min(1).max(drive.MAX_TRASH_BATCH),confirm:z.boolean().default(false),confirmationToken:z.string().max(80).optional().describe('Returned by the preview call (confirm=false)')})},async args=>{
+    const access=await driveAccess();if(!access.write)return asText(driveScopeMessage(true));
+    if(!confirmKey())return asText({error:'confirmation_unavailable'});
+    const ids=[...new Set(args.fileIds)];
+    const metas=await Promise.all(ids.map(id=>trashMeta(id)));
+    const ok:drive.DriveFile[]=[];const refused:Array<Record<string,unknown>>=[];
+    metas.forEach((m,i)=>{if('failure' in m){refused.push({id:ids[i],reason:(m.failure.messageForUser as string)??(m.failure.error as string)??'not accessible'});return;}
+     const t=drive.trashability(m.data,access.full);if(t.ok)ok.push(m.data);else refused.push({id:m.data.id,name:m.data.name,reason:t.reason});});
+    const okIds=ok.map(f=>f.id);
+    if(!args.confirm){
+     if(!ok.length)return asText({confirmed:false,nothingToTrash:true,notTrashable:refused,fullAccessNeeded:refused.some(r=>String(r.reason).includes('full access'))?driveScopeMessage('full').messageForUser:undefined});
+     const items=await Promise.all(ok.map(describeItem));
+     return asText({confirmed:false,changed:'nothing yet',toTrash:items,notTrashable:refused.length?refused:undefined,
+      confirmationToken:drive.confirmToken(confirmKey(),user.id,'trash',okIds),expiresInMinutes:drive.CONFIRM_TTL_MS/60000,
+      messageForUser:'Ready to move '+items.length+' item(s) to the Google Drive trash: '+items.map(i=>'"'+i.name+'"').join(', ')+'. They stay restorable for 30 days. Do you confirm?',
+      instructions:'Show the full list (names, folders and what they contain) to the user in their language and ask for an explicit yes. Do NOT call confirm=true in this turn. Only if the user explicitly confirms in their next message, call drive_trash_file again with the same fileIds, confirm=true and this confirmationToken.'});
+    }
+    const check=drive.checkConfirmToken(confirmKey(),user.id,'trash',okIds,args.confirmationToken);
+    if(!check.ok)return asText({confirmed:false,changed:'nothing',error:'confirmation_'+check.reason,
+     messageForUser:check.reason==='too_fast'?'The confirmation came back too quickly: the user must explicitly approve the list first.':check.reason==='expired'?'This confirmation expired (15 minutes): ask again.':'This confirmation does not match the current list of items: ask again.',
+     instructions:check.reason==='too_fast'?'Show the list to the user, ask for an explicit yes and wait for their answer before confirming.':'Call drive_trash_file with confirm=false to get a new list and token, then ask the user again.'});
+    const done:Array<Record<string,unknown>>=[];const failed:Array<Record<string,unknown>>=[];
+    for(const f of ok){
+     const r=await driveJson<drive.DriveFile>(drive.DRIVE_API+'/files/'+encodeURIComponent(f.id)+'?'+new URLSearchParams({fields:'id,name,trashed',supportsAllDrives:'true'}),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({trashed:true})},true);
+     if('failure' in r)failed.push({id:f.id,name:f.name,error:r.failure.error??'failed'});else done.push({id:r.data.id,name:r.data.name,trashed:r.data.trashed===true});
+    }
+    return asText({confirmed:true,movedToTrash:done,failed:failed.length?failed:undefined,notTrashable:refused.length?refused:undefined,
+     undo:'Restorable for 30 days from the Google Drive trash, or with drive_restore_file and these IDs.'});
+   });
+
+   server.registerTool('drive_restore_file',{annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:true,openWorldHint:true},title:'Restore Google Drive files from the trash',
+    description:'Take up to '+drive.MAX_TRASH_BATCH+' items out of the Google Drive trash (undo of drive_trash_file). Find them with drive_list_files inTrash=true. Same permission rules as drive_trash_file.',
+    inputSchema:z.object({fileIds:z.array(driveId).min(1).max(drive.MAX_TRASH_BATCH)})},async args=>{
+    const access=await driveAccess();if(!access.write)return asText(driveScopeMessage(true));
+    const restored:Array<Record<string,unknown>>=[];const refused:Array<Record<string,unknown>>=[];
+    for(const id of [...new Set(args.fileIds)]){
+     const m=await trashMeta(id);if('failure' in m){refused.push({id,reason:m.failure.error??'not accessible'});continue;}
+     const t=drive.restorability(m.data,access.full);if(!t.ok){refused.push({id,name:m.data.name,reason:t.reason});continue;}
+     const r=await driveJson<drive.DriveFile>(drive.DRIVE_API+'/files/'+encodeURIComponent(id)+'?'+new URLSearchParams({fields:'id,name,trashed,webViewLink',supportsAllDrives:'true'}),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({trashed:false})},true);
+     if('failure' in r)refused.push({id,name:m.data.name,reason:r.failure.error??'failed'});else restored.push({id,name:r.data.name,link:r.data.webViewLink??null});
+    }
+    return asText({restored,notRestored:refused.length?refused:undefined});
+   });
+
    // ---------- Scientific literature (OpenAlex, Semantic Scholar, arXiv, PubMed, HAL) ----------
    const sciKeys=async()=>{try{const {userKeys}=await import('@/lib/science-keys');return await userKeys(user.id);}catch{return {};}};
    const sourceList=z.array(z.enum(['openalex','semanticscholar','arxiv','pubmed','hal'])).min(1).max(5).optional().describe('Default: all five. pubmed = biomedical, arxiv = preprints (CS, physics, maths…), hal = French open archive.');

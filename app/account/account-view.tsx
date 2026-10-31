@@ -1,5 +1,6 @@
 'use client';
 import {useCallback,useEffect,useState} from 'react';
+import Link from 'next/link';
 import {useT} from '../lang-provider';
 import {accountCopy} from '@/lib/copy/account';
 import {supabaseBrowser,supabaseConfigured} from '@/lib/supabase-browser';
@@ -9,8 +10,10 @@ import ScienceKeys from './science-keys';
 type Client={projectId:string|null;clientId:string;secretHint:string;verifiedAt:string|null;updatedAt:string};
 type Account={admin:boolean;client:Client|null;redirectUri:string;google:{connected:boolean;mode:'shared'|'byo'|null;scopes:string[]|null};usage:{used:number;limit:number;perMinute:number;resetsAt:string}};
 const MCP_URL='https://seo.cammicgo.com/api/mcp';
-const APIS:Array<[string,string]>=[['Search Console','webmasters.readonly'],['Google Analytics 4','analytics.readonly'],['YouTube','youtube.readonly'],['Google Calendar','calendar.readonly'],['Gmail','gmail.readonly'],['Google Drive','drive.readonly'],['Google Docs','documents.readonly'],['Google Sheets','spreadsheets.readonly'],['Google Slides','presentations.readonly'],['Google Tasks','tasks.readonly'],['Google Contacts','contacts.readonly'],['Google Classroom','classroom.courses.readonly'],['Google Chat','chat.spaces.readonly'],['Apps Script','script.projects.readonly'],['Google Ads','adwords']];
+const APIS:Array<[string,string]>=[['Search Console','webmasters.readonly'],['Google Analytics 4','analytics.readonly'],['YouTube','youtube.readonly'],['Google Calendar','calendar.readonly'],['Gmail','gmail.readonly'],['Google Drive','drive.readonly'],['Google Drive ✎ (drive.file)','drive.file'],['Google Drive ⚠ full access (drive)','drive'],['Google Docs','documents.readonly'],['Google Sheets','spreadsheets.readonly'],['Google Slides','presentations.readonly'],['Google Tasks','tasks.readonly'],['Google Contacts','contacts.readonly'],['Google Classroom','classroom.courses.readonly'],['Google Chat','chat.spaces.readonly'],['Apps Script','script.projects.readonly'],['Google Ads','adwords']];
 const scopeUrl=(s:string)=>'https://www.googleapis.com/auth/'+s;
+/** "Select all" never ticks full Drive access (it allows trashing any file): that one stays an explicit choice. */
+const SELECT_ALL=APIS.filter(([,id])=>id!=='drive').map(([,id])=>scopeUrl(id));
 const fill=(s:string,v:Record<string,string|number>)=>s.replace(/\{(\w+)\}/g,(_,k)=>String(v[k]??''));
 
 export default function AccountView(){
@@ -112,7 +115,7 @@ export default function AccountView(){
    <section className="acc-card"><h2>{t.googleTitle}</h2>
     <p className={acc?.google.connected?'acc-ok':''}>{acc?.google.connected?(acc.google.mode==='shared'?t.googleShared:t.googleByo):t.googleNone}</p>
     <fieldset className="acc-apis"><legend>{t.apis}</legend>
-     <label className="acc-all"><input type="checkbox" checked={scopes.length===APIS.length} onChange={e=>setScopes(e.target.checked?APIS.map(a=>scopeUrl(a[1])):[])}/>{t.selectAll}</label>
+     <label className="acc-all"><input type="checkbox" checked={SELECT_ALL.every(x=>scopes.includes(x))} onChange={e=>setScopes(e.target.checked?[...SELECT_ALL,...scopes.filter(x=>!SELECT_ALL.includes(x))]:[])}/>{t.selectAll}</label>
      {APIS.map(([name,id])=><label key={id}><input type="checkbox" checked={scopes.includes(scopeUrl(id))} onChange={e=>setScopes(s=>e.target.checked?[...s,scopeUrl(id)]:s.filter(x=>x!==scopeUrl(id)))}/>{name}</label>)}
     </fieldset>
     {acc?.admin&&<label className="acc-shared"><input type="checkbox" checked={useShared} onChange={e=>setUseShared(e.target.checked)}/>{t.useShared}</label>}
@@ -134,7 +137,7 @@ export default function AccountView(){
     {rows.map((r,i)=><div className="acc-tr" role="row" key={i}><span role="cell"><b>{r.use}</b></span><span role="cell">{r.type}</span><span role="cell"><code dir="ltr">{r.redirect}</code></span><span role="cell">{r.where}</span></div>)}
    </div>
    <p><b>{t.mcpUrl}</b> <code dir="ltr">{MCP_URL}</code></p>
-   <p className="acc-note">{t.localNote} <a href="/setup/local">/setup/local ↗</a></p>
+   <p className="acc-note">{t.localNote} <Link href="/setup/local">/setup/local ↗</Link></p>
   </section>
  </main>;
 }

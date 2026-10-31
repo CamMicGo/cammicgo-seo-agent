@@ -1,3 +1,5 @@
+import {createHmac,timingSafeEqual} from 'node:crypto';
+
 /**
  * Google Drive helpers for the remote MCP (pure functions: no network, no secrets, unit-tested in
  * tests/google-drive.test.ts). Reading uses the drive.readonly scope already offered on /account;
@@ -54,13 +56,13 @@ function mimeClause(type:string){
  return parts.length>1?'('+parts.join(' or ')+')':parts[0];
 }
 
-export type ListOptions={folderId?:string;kind?:'all'|'files'|'folders';includeTrashed?:boolean};
+export type ListOptions={folderId?:string;kind?:'all'|'files'|'folders';includeTrashed?:boolean;onlyTrashed?:boolean};
 export function buildListQuery(o:ListOptions){
  const q:string[]=[];
  if(o.folderId)q.push("'"+escapeQuery(o.folderId)+"' in parents");
  if(o.kind==='folders')q.push("mimeType = '"+FOLDER_MIME+"'");
  if(o.kind==='files')q.push("mimeType != '"+FOLDER_MIME+"'");
- if(!o.includeTrashed)q.push('trashed = false');
+ if(o.onlyTrashed)q.push('trashed = true');else if(!o.includeTrashed)q.push('trashed = false');
  return q.join(' and ');
 }
 
@@ -96,7 +98,8 @@ export function humanBytes(n:number|null|undefined){
  return (i===0?String(v):v.toFixed(v>=100?0:v>=10?1:2))+' '+u[i];
 }
 
-export type DriveFile={id:string;name:string;mimeType:string;size?:string;createdTime?:string;modifiedTime?:string;parents?:string[];webViewLink?:string;driveId?:string;trashed?:boolean;capabilities?:{canEdit?:boolean;canAddChildren?:boolean};owners?:Array<{displayName?:string;emailAddress?:string}>};
+export type DriveFile={id:string;name:string;mimeType:string;size?:string;createdTime?:string;modifiedTime?:string;parents?:string[];webViewLink?:string;driveId?:string;trashed?:boolean;
+ isAppAuthorized?:boolean;ownedByMe?:boolean;capabilities?:{canEdit?:boolean;canAddChildren?:boolean;canTrash?:boolean;canUntrash?:boolean};owners?:Array<{displayName?:string;emailAddress?:string}>};
 /** Compact, model-friendly view of a Drive file. */
 export function slimFile(f:DriveFile){
  const bytes=f.size!=null?Number(f.size):null;
@@ -186,4 +189,66 @@ export function multipartBody(metadata:object,content:Buffer,mimeType:string,bou
   content,
   Buffer.from('\r\n--'+boundary+'--'),
  ]);
+}
+
+// ---------- trash (never permanent deletion) with explicit, server-checked confirmation ----------
+export const TRASH_FIELDS='id,name,mimeType,size,modifiedTime,parents,webViewLink,driveId,trashed,isAppAuthorized,ownedByMe,capabilities(canTrash,canUntrash),owners(displayName,emailAddress)';
+export const MAX_TRASH_BATCH=20;
+/** A confirmation cannot come back faster than a human answer, and expires after 15 minutes. */
+export const CONFIRM_MIN_DELAY_MS=10_000;
+export const CONFIRM_TTL_MS=15*60_000;
+
+const confirmSig=(key:string,userId:string,action:string,ids:string[],issued:number)=>
+ createHmac('sha256',key).update(action+'|'+userId+'|'+[...new Set(ids)].sort().join(',')+'|'+issued).digest('base64url').slice(0,32);
+/** Token bound to this user, this action and exactly these items (HMAC with the server key). */
+export function confirmToken(key:string,userId:string,action:'trash',ids:string[],now=Date.now()){
+ return now.toString(36)+'.'+confirmSig(key,userId,action,ids,now);
+}
+export function checkConfirmToken(key:string,userId:string,action:'trash',ids:string[],token:string|undefined,now=Date.now()):{ok:true}|{ok:false;reason:'missing'|'invalid'|'expired'|'too_fast'}{
+ if(!token)return {ok:false,reason:'missing'};
+ const m=/^([0-9a-z]{6,12})\.([A-Za-z0-9_-]{32})$/.exec(token);if(!m)return {ok:false,reason:'invalid'};
+ const issued=parseInt(m[1],36);const expected=Buffer.from(confirmSig(key,userId,action,ids,issued));const given=Buffer.from(m[2]);
+ if(expected.length!==given.length||!timingSafeEqual(expected,given))return {ok:false,reason:'invalid'};
+ if(now-issued>CONFIRM_TTL_MS)return {ok:false,reason:'expired'};
+ if(now-issued<CONFIRM_MIN_DELAY_MS)return {ok:false,reason:'too_fast'};
+ return {ok:true};
+}
+
+/** Whether CamMicGo may move this item to the trash (drive.file only reaches items CamMicGo created or opened). */
+export function trashability(f:DriveFile,fullDrive:boolean):{ok:boolean;reason?:string}{
+ if(f.trashed)return {ok:false,reason:'already in the trash'};
+ if(f.capabilities?.canTrash===false)return {ok:false,reason:f.ownedByMe===false?'owned by someone else (only the owner can trash it)':'this Google account cannot trash it'};
+ if(!fullDrive&&f.isAppAuthorized!==true)return {ok:false,reason:'not created by CamMicGo: needs the "Google Drive ⚠ full access" permission'};
+ return {ok:true};
+}
+export function restorability(f:DriveFile,fullDrive:boolean):{ok:boolean;reason?:string}{
+ if(!f.trashed)return {ok:false,reason:'not in the trash'};
+ if(f.capabilities?.canUntrash===false)return {ok:false,reason:'this Google account cannot restore it'};
+ if(!fullDrive&&f.isAppAuthorized!==true)return {ok:false,reason:'not created by CamMicGo: needs the "Google Drive ⚠ full access" permission'};
+ return {ok:true};
+}
+
+// ---------- uploads from a public web address (SSRF-safe) ----------
+/** Private, loopback, link-local, CGNAT and other non-public addresses (IPv4 and IPv6). */
+export function isPrivateIp(ip:string){
+ const v4=/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(ip.replace(/^::ffff:/i,''));
+ if(v4){const [a,b]=[Number(v4[1]),Number(v4[2])];
+  return a===0||a===10||a===127||a>=224||(a===169&&b===254)||(a===172&&b>=16&&b<=31)||(a===192&&b===168)||(a===100&&b>=64&&b<=127)||(a===192&&b===0)||(a===198&&(b===18||b===19));}
+ const x=ip.toLowerCase();
+ return x==='::'||x==='::1'||x.startsWith('fc')||x.startsWith('fd')||x.startsWith('fe8')||x.startsWith('fe9')||x.startsWith('fea')||x.startsWith('feb')||x.startsWith('ff');
+}
+/** Only public https URLs on the default port, without credentials or raw private IPs. */
+export function checkPublicUrl(raw:string):URL|null{
+ let u:URL;try{u=new URL(raw)}catch{return null}
+ if(u.protocol!=='https:'||u.username||u.password||(u.port&&u.port!=='443'))return null;
+ const host=u.hostname.replace(/^\[|\]$/g,'');
+ if(!host||host==='localhost'||host.endsWith('.localhost')||host.endsWith('.local')||host.endsWith('.internal'))return null;
+ if((/^[\d.]+$/.test(host)||host.includes(':'))&&isPrivateIp(host))return null;
+ return u;
+}
+/** File name from a URL or Content-Disposition header, when the assistant gives none. */
+export function nameFromResponse(url:URL,disposition:string|null){
+ const m=/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition??'');
+ const raw=m?decodeURIComponent(m[1]):decodeURIComponent(url.pathname.split('/').filter(Boolean).pop()??'');
+ return cleanName(raw)??null;
 }
