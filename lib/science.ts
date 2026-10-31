@@ -34,6 +34,10 @@ export function decodeXml(s:string){return s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>
 const squash=(s:string|null)=>s?s.replace(/\s+/g,' ').trim():null;
 export function shorten(s:string|null,max:number){if(!s)return null;return s.length>max?s.slice(0,max).replace(/\s+\S*$/,'')+'…':s;}
 const isoDay=(d:string)=>/^\d{4}-\d{2}-\d{2}$/.test(d)?d:null;
+/** Plain words of a query (operators and punctuation removed). */
+export const queryWords=(q:string)=>q.replace(/[()"':+|\-!{}[\]^~*?\\/&]/g,' ').split(/\s+/).filter(w=>w&&!/^(and|or|not)$/i.test(w)).slice(0,12);
+/** Newest-first lists stop at today (some publishers announce future dates). */
+const untilToday=(q:SearchQuery)=>q.to&&isoDay(q.to)?q.to:q.sort==='date'?new Date().toISOString().slice(0,10):undefined;
 const yearOf=(d:string|null)=>d&&/^\d{4}/.test(d)?Number(d.slice(0,4)):null;
 
 /** Rebuilds an OpenAlex abstract from its inverted index. */
@@ -62,11 +66,13 @@ export function parsePaperId(input:string):PaperId|null{
 export function openAlexUrl(q:SearchQuery,key?:string){
  const filters:string[]=[];
  if(q.from&&isoDay(q.from))filters.push('from_publication_date:'+q.from);
- if(q.to&&isoDay(q.to))filters.push('to_publication_date:'+q.to);
+ const to=untilToday(q);if(to)filters.push('to_publication_date:'+to);
  if(q.openAccessOnly)filters.push('is_oa:true');
  const per=Math.min(50,Math.max(1,q.limit));
- const p=new URLSearchParams({search:q.query,'per-page':String(per),page:String(Math.floor(q.offset/per)+1),
+ const p=new URLSearchParams({'per-page':String(per),page:String(Math.floor(q.offset/per)+1),
   select:'id,doi,display_name,publication_date,publication_year,cited_by_count,authorships,primary_location,open_access,best_oa_location,abstract_inverted_index,type,ids',mailto:CONTACT_EMAIL});
+ // Sorted lists ignore relevance: match the words in title and abstract only, so recent full-text noise is excluded.
+ if(q.sort==='relevance')p.set('search',q.query);else filters.unshift('title_and_abstract.search:'+queryWords(q.query).join(' AND ').replace(/,/g,' '));
  if(filters.length)p.set('filter',filters.join(','));
  if(q.sort==='date')p.set('sort','publication_date:desc');else if(q.sort==='citations')p.set('sort','cited_by_count:desc');
  if(key)p.set('api_key',key);
@@ -95,6 +101,8 @@ export function semanticScholarUrl(q:SearchQuery){
  if(q.sort==='relevance'){p.set('limit',String(Math.min(100,Math.max(1,q.limit))));p.set('offset',String(q.offset));return 'https://api.semanticscholar.org/graph/v1/paper/search?'+p;}
  // Bulk search is the only endpoint that sorts (by date or citations); it returns up to 1000 rows, trimmed afterwards.
  p.set('sort',q.sort==='date'?'publicationDate:desc':'citationCount:desc');
+ p.set('query',queryWords(q.query).join(' + ')||q.query); // bulk syntax: + = AND
+ const to=untilToday(q);p.set('publicationDateOrYear',(q.from&&isoDay(q.from)?q.from:'')+':'+(to??''));
  return 'https://api.semanticscholar.org/graph/v1/paper/search/bulk?'+p;
 }
 type S2Paper={paperId?:string;title?:string;year?:number;publicationDate?:string|null;authors?:Array<{name?:string}>;venue?:string;externalIds?:Record<string,string|number>|null;
@@ -116,7 +124,7 @@ export function parseSemanticScholar(body:{total?:number;data?:S2Paper[]},q:Sear
 
 // ---------- arXiv ----------
 export function arxivUrl(q:SearchQuery){
- const words=q.query.replace(/[()":]/g,' ').split(/\s+/).filter(w=>w&&!/^(and|or|not)$/i.test(w)).slice(0,12);
+ const words=queryWords(q.query);
  let sq=words.map(w=>'all:'+w).join(' AND ')||'all:*';
  if(q.from||q.to){const f=(q.from&&isoDay(q.from)?q.from.replace(/-/g,''):'19910101')+'0000',t=(q.to&&isoDay(q.to)?q.to.replace(/-/g,''):'29991231')+'2359';sq='('+sq+') AND submittedDate:['+f+' TO '+t+']';}
  const p=new URLSearchParams({search_query:sq,start:String(q.offset),max_results:String(Math.min(50,Math.max(1,q.limit))),
@@ -143,7 +151,9 @@ export function parseArxiv(xml:string){
 // ---------- PubMed (NCBI E-utilities) ----------
 const ncbi=(path:string,p:URLSearchParams,key?:string)=>{p.set('tool','cammicgo');p.set('email',CONTACT_EMAIL);if(key)p.set('api_key',key);return 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/'+path+'?'+p;};
 export function pubmedSearchUrl(q:SearchQuery,key?:string){
- const term=q.query+(q.openAccessOnly?' AND free full text[sb]':'');
+ const words=queryWords(q.query);
+ const base=q.sort==='relevance'||!words.length?q.query:words.map(w=>w+'[tiab]').join(' AND ');
+ const term=base+(q.openAccessOnly?' AND free full text[sb]':'');
  const p=new URLSearchParams({db:'pubmed',term,retmode:'json',retmax:String(Math.min(50,Math.max(1,q.limit))),retstart:String(q.offset),sort:q.sort==='relevance'?'relevance':'pub_date'});
  if(q.from||q.to){p.set('datetype','pdat');p.set('mindate',(q.from&&isoDay(q.from)?q.from:'1800-01-01').replace(/-/g,'/'));p.set('maxdate',(q.to&&isoDay(q.to)?q.to:'3000-12-31').replace(/-/g,'/'));}
  return ncbi('esearch.fcgi',p,key);
@@ -172,7 +182,7 @@ export function parsePubmedAbstract(xml:string){
 // ---------- HAL ----------
 export const HAL_FIELDS='halId_s,title_s,authFullName_s,producedDate_s,publicationDate_s,uri_s,doiId_s,docType_s,journalTitle_s,conferenceTitle_s,fileMain_s,abstract_s,openAccess_bool,language_s';
 export function halUrl(q:SearchQuery){
- const text=q.query.replace(/[+\-!(){}[\]^"~*?:\\/&|]/g,' ').replace(/\s+/g,' ').trim()||'*';
+ const text=queryWords(q.query).join(' AND ')||'*';
  const p=new URLSearchParams({q:text,wt:'json',rows:String(Math.min(50,Math.max(1,q.limit))),start:String(q.offset),fl:HAL_FIELDS});
  if(q.sort==='date')p.set('sort','producedDate_tdate desc');
  if(q.from||q.to)p.append('fq','producedDate_tdate:['+(q.from&&isoDay(q.from)?q.from+'T00:00:00Z':'*')+' TO '+(q.to&&isoDay(q.to)?q.to+'T23:59:59Z':'*')+']');
@@ -197,12 +207,13 @@ export function parseHal(body:{response?:{numFound?:number;docs?:HalDoc[]}}){
 // ---------- merging ----------
 const titleKey=(t:string)=>t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'').slice(0,120);
 /** Merges duplicates found in several sources (same DOI, arXiv ID, PMID or title) and keeps the richest fields. */
-export function mergePapers(lists:Paper[][],sort:Sort){
- const out:Array<Paper&{rank:number}>=[];const byKey=new Map<string,Paper&{rank:number}>();
+export function mergePapers(lists:Paper[][],sort:Sort,query?:string){
+ const out:Array<Paper&{rank:number;score:number}>=[];const byKey=new Map<string,Paper&{rank:number;score:number}>();
  lists.forEach(list=>list.forEach((p,i)=>{
   const keys=[p.doi&&'doi:'+p.doi,p.arxivId&&'ax:'+p.arxivId.replace(/v\d+$/,''),p.pmid&&'pm:'+p.pmid,'t:'+titleKey(p.title)].filter(Boolean) as string[];
   const hit=keys.map(k=>byKey.get(k)).find(Boolean);
-  if(!hit){const n={...p,sources:[...p.sources],rank:i};out.push(n);keys.forEach(k=>byKey.set(k,n));return;}
+  if(!hit){const n={...p,sources:[...p.sources],rank:i,score:1/(i+2)};out.push(n);keys.forEach(k=>byKey.set(k,n));return;}
+  hit.score+=1/(i+2);
   for(const s of p.sources)if(!hit.sources.includes(s))hit.sources.push(s);
   hit.rank=Math.min(hit.rank,i);
   hit.doi??=p.doi;hit.arxivId??=p.arxivId;hit.pmid??=p.pmid;hit.date??=p.date;hit.year??=p.year;hit.venue??=p.venue;hit.pdfUrl??=p.pdfUrl;hit.type??=p.type;
@@ -213,8 +224,9 @@ export function mergePapers(lists:Paper[][],sort:Sort){
   keys.forEach(k=>{if(!byKey.has(k))byKey.set(k,hit);});
  }));
  const d=(p:Paper)=>p.date??(p.year?p.year+'-01-01':'');
- out.sort((a,b)=>sort==='date'?d(b).localeCompare(d(a))||a.rank-b.rank:sort==='citations'?(b.citations??-1)-(a.citations??-1)||a.rank-b.rank:a.rank-b.rank||b.sources.length-a.sources.length);
- return out.map(({rank:_r,...p})=>p);
+ const qk=query?titleKey(query):null;if(qk)for(const p of out)if(titleKey(p.title)===qk)p.score+=10;
+ out.sort((a,b)=>sort==='date'?d(b).localeCompare(d(a))||a.rank-b.rank:sort==='citations'?(b.citations??-1)-(a.citations??-1)||a.rank-b.rank:b.score-a.score||a.rank-b.rank);
+ return out.map(({rank:_r,score:_s,...p})=>p);
 }
 
 /** Compact form for lists: short abstract, at most 8 authors. */
@@ -234,7 +246,13 @@ export function sourceError(source:Source,status:number,usedKey:boolean){
 
 // ---------- network ----------
 const timeout=(ms:number)=>AbortSignal.timeout(ms);
-async function getText(f:Fetcher,url:string,headers:Record<string,string>={}){const r=await f(url,{headers:{'User-Agent':UA,Accept:'application/json, application/atom+xml, text/xml',...headers},cache:'no-store',signal:timeout(12000)});return r;}
+async function getText(f:Fetcher,url:string,headers:Record<string,string>={}):Promise<Response>{
+ const r=await getOnce(f,url,headers);
+ // Semantic Scholar's shared pool often answers 429: one short retry before giving up.
+ if(r.status===429&&url.includes('semanticscholar.org')&&!headers['x-api-key']){await new Promise(res=>setTimeout(res,1500));return getOnce(f,url,headers);}
+ return r;
+}
+async function getOnce(f:Fetcher,url:string,headers:Record<string,string>){const r=await f(url,{headers:{'User-Agent':UA,Accept:'application/json, application/atom+xml, text/xml',...headers},cache:'no-store',signal:timeout(12000)});return r;}
 
 /** Searches one source; never throws (errors are reported per source). */
 export async function searchSource(source:Source,q:SearchQuery,keys:Keys,f:Fetcher=fetch):Promise<SourceResult>{

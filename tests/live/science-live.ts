@@ -22,7 +22,7 @@ for (const id of ['10.1038/nature14539', '1706.03762', 'PMID:31452104', 'W274180
 }
 const a = await s.authorLookup({name: 'Yann LeCun', latest: 3}, {});
 log(`author: ${a.candidates.length} candidates, first ${a.candidates[0]?.name} (${a.candidates[0]?.source}, h=${a.candidates[0]?.hIndex}) · latest ${a.latest.length}: ${a.latest[0]?.title.slice(0, 60) ?? ''} ${a.notes.join(' | ')}`);
-const merged = s.mergePapers((await Promise.all(s.SOURCES.map(src => s.searchSource(src, q({query: 'attention is all you need', limit: 5}), {})))).map(r => r.papers), 'relevance');
+const merged = s.mergePapers((await Promise.all(s.SOURCES.map(src => s.searchSource(src, q({query: 'attention is all you need', limit: 5}), {})))).map(r => r.papers), 'relevance', 'attention is all you need');
 log(`merged "attention is all you need": ${merged.length} unique, top: ${merged[0]?.title} [${merged[0]?.sources.join('+')}]`);
 
 const fs = await import('node:fs');

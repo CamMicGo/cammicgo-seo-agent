@@ -23,7 +23,10 @@ test('identifiers: DOI, arXiv, PMID, OpenAlex, Semantic Scholar, HAL', () => {
 test('OpenAlex: URL (filters, sort, key) and parsing with inverted abstract', () => {
   const u = new URL(s.openAlexUrl(q({sort: 'date', from: '2026-01-01', openAccessOnly: true, limit: 20, offset: 20}), 'KEY'));
   assert.equal(u.searchParams.get('sort'), 'publication_date:desc');
-  assert.equal(u.searchParams.get('filter'), 'from_publication_date:2026-01-01,is_oa:true');
+  const today = new Date().toISOString().slice(0, 10);
+  assert.equal(u.searchParams.get('filter'), 'title_and_abstract.search:large AND language AND models,from_publication_date:2026-01-01,to_publication_date:' + today + ',is_oa:true');
+  assert.equal(u.searchParams.get('search'), null);
+  assert.equal(new URL(s.openAlexUrl(q())).searchParams.get('search'), 'large language models');
   assert.equal(u.searchParams.get('page'), '2');
   assert.equal(u.searchParams.get('api_key'), 'KEY');
   assert.equal(new URL(s.openAlexUrl(q())).searchParams.get('api_key'), null);
@@ -49,6 +52,7 @@ test('Semantic Scholar: relevance vs bulk (sorted) URLs and parsing', () => {
   assert.equal(bulk.pathname, '/graph/v1/paper/search/bulk');
   assert.equal(bulk.searchParams.get('sort'), 'citationCount:desc');
   assert.equal(bulk.searchParams.get('openAccessPdf'), '');
+  assert.equal(bulk.searchParams.get('query'), 'large + language + models');
   const data = Array.from({length: 30}, (_, i) => ({paperId: 'p' + i, title: 'Paper ' + i, year: 2020, externalIds: {DOI: '10.5555/X' + i, ArXiv: '2001.0000' + i}, citationCount: i}));
   const parsed = s.parseSemanticScholar({total: 30, data}, q({sort: 'date', limit: 5, offset: 10}));
   assert.equal(parsed.papers.length, 5);
@@ -94,7 +98,7 @@ test('PubMed: search URL with key, summary and abstract parsing', () => {
 
 test('HAL: Solr-safe query, filters and parsing', () => {
   const u = new URL(s.halUrl(q({query: 'référencement (SEO): "web"', sort: 'date', from: '2025-01-01', openAccessOnly: true})));
-  assert.equal(u.searchParams.get('q'), 'référencement SEO web');
+  assert.equal(u.searchParams.get('q'), 'référencement AND SEO AND web');
   assert.equal(u.searchParams.get('sort'), 'producedDate_tdate desc');
   assert.deepEqual(u.searchParams.getAll('fq'), ['producedDate_tdate:[2025-01-01T00:00:00Z TO *]', 'openAccess_bool:true']);
   const r = s.parseHal({response: {numFound: 7, docs: [{halId_s: 'hal-04500000', title_s: ['Le référencement naturel'], authFullName_s: ['Marie Curie'], producedDate_s: '2025-05',
@@ -118,6 +122,9 @@ test('merge: duplicates across sources are combined, sorting by date and citatio
   assert.equal(byDate[1].citations, 60000);
   assert.equal(byDate[1].abstract, 'Deep learning allows…');
   assert.equal(s.mergePapers([[c], [a]], 'citations')[0].title, 'Deep Learning');
+  const other: s.Paper = {...c, id: 'o', title: 'Attention in drug discovery', sources: ['openalex'], source: 'openalex'};
+  const exact: s.Paper = {...c, id: 'v', title: 'Attention Is All You Need', sources: ['arxiv'], arxivId: '1706.03762'};
+  assert.equal(s.mergePapers([[other], [{...other, source: 'pubmed', sources: ['pubmed']}, exact]], 'relevance', 'attention is all you need')[0].title, 'Attention Is All You Need');
 });
 
 test('compact output is bounded and errors explain the missing key', () => {
