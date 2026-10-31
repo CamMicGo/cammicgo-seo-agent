@@ -74,3 +74,9 @@ for (const id of [{kind: 'arxiv', value: '1706.03762'}, {kind: 'doi', value: '10
     log(`  download first copy: HTTP ${r.status} ${(r as Response).headers?.get?.('content-type') ?? ''}`);
   }
 }
+{
+  const u = 'https://api.openalex.org/works?' + new URLSearchParams({filter: 'title.search:' + s.guessTitle('Vaswani A. et al. (2017) Attention is all you need. NeurIPS.'), 'per-page': '3', sort: 'cited_by_count:desc', select: s.WORK_SELECT, mailto: s.CONTACT_EMAIL});
+  const r = await fetch(u);
+  const body = r.ok ? (await r.json()) as {results?: Array<{display_name?: string; doi?: string; publication_year?: number; cited_by_count?: number}>} : null;
+  log(`debug OpenAlex title.search: HTTP ${r.status} ${body ? body.results?.map(x => x.display_name + ' ' + x.publication_year + ' ' + x.doi + ' c=' + x.cited_by_count).join(' | ') : (await r.text()).slice(0, 200)}`);
+}

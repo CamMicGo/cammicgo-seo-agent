@@ -1,6 +1,6 @@
 import {createMcpHandler} from 'mcp-handler';
 import {z} from 'zod';
-import {NextRequest,NextResponse} from 'next/server';
+import {NextRequest,NextResponse,after} from 'next/server';
 import {makeCampaignDraft} from '@/lib/ads-campaign';
 import * as ads from '@/lib/google-ads';
 import * as drive from '@/lib/google-drive';
@@ -55,7 +55,16 @@ async function handler(req:NextRequest){
   }
   const relay=await import('@/lib/device-relay');
   const quotaLimit=(_session:{credentials:{mode:string}})=>2000; // Google API safety cap; the user-facing allowance is counted per MCP call
+  // Per-call timing (used by the benchmark page to show how much time CamMicGo itself spent), written after the response.
+  const logCall=(tool:string,ms:number,ok:boolean)=>{try{after(async()=>{try{const {sb}=await import('@/lib/device-relay');await sb('/rest/v1/cmg_mcp_calls',{method:'POST',body:JSON.stringify({user_id:user.id,tool,ms:Math.round(ms),ok})});}catch{/* timing is best effort */}});}catch{/* outside a request scope */}};
   const protectedMcp=createMcpHandler(server=>{
+   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   const register=server.registerTool.bind(server) as any;
+   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   (server as any).registerTool=(name:string,config:unknown,cb:(...a:unknown[])=>Promise<unknown>)=>register(name,config,async(...a:unknown[])=>{
+    const t0=performance.now();let ok=true;
+    try{const r=await cb(...a);ok=!(r as {isError?:boolean})?.isError;return r;}catch(e){ok=false;throw e;}finally{logCall(name,performance.now()-t0,ok);}
+   });
    server.registerTool('service_info',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Authenticated MCP status',description:'Check connected Google account.',inputSchema:z.object({})},async()=>{const session=await readGoogle(user.id);let devices:Array<{name:string;online:boolean}>|string=[];try{devices=(await relay.listDevices(user.id)).map(d=>({name:d.name,online:relay.isOnline(d)}))}catch(e){devices=e instanceof Error?e.message:'unavailable'}const usage=await account.usageToday(user.id,admin).catch(()=>null);return asText({authenticated:true,administrator:admin,camMicGoUsageToday:usage?{used:usage.used,limit:usage.limit,perMinute:usage.perMinute,resetsAt:usage.resetsAt,details:account.ACCOUNT_URL}:null,googleConnected:!!session,...(session?{}:{connectGoogle:CONNECT_GOOGLE.messageForUser}),googleQuota:session?(session.credentials.mode==='byo'?'own Google Cloud project':'shared CamMicGo project'):null,googleScopes:session?.scopes?session.scopes.filter(x=>x.includes('googleapis.com/auth/')).map(x=>x.split('/auth/')[1]):'unknown (connected before scope tracking)',reauthorizeGoogle:REAUTH_URL,transcriptDevices:devices,build:process.env.VERCEL_GIT_COMMIT_SHA?.slice(0,7)??null})});
    server.registerTool('list_google_properties',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Google Search Console and GA4 properties',description:'List properties accessible to the linked Google account.',inputSchema:z.object({})},async()=>{
     try{

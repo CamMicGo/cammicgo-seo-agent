@@ -7,6 +7,9 @@ on:
       - 'lib/science.mjs'
       - 'scripts/local-mcp.mjs'
       - 'tests/live/local-science-live.mjs'
+      - 'lib/benchmark.ts'
+      - 'lib/benchmark-parse.ts'
+      - 'tests/live/benchmark-live.ts'
       - 'tests/live/science-live.ts'
       - '.github/workflows/science-live.yml'
 jobs:
@@ -31,6 +34,11 @@ jobs:
         env:
           LIVE_OUT: science-live.txt
         run: node tests/live/local-science-live.mjs
+      - name: Benchmark scorer against the real APIs
+        if: always()
+        env:
+          LIVE_OUT: science-live.txt
+        run: npx --yes tsx@4.19.2 tests/live/benchmark-live.ts
       - name: Post the results as a commit comment
         if: always()
         env:

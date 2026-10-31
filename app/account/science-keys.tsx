@@ -2,6 +2,8 @@
 import {useCallback,useEffect,useState} from 'react';
 import {useT} from '../lang-provider';
 import {scienceCopy} from '@/lib/copy/science';
+import {benchCopy} from '@/lib/copy/benchmark';
+import Link from 'next/link';
 
 type Provider='semanticscholar'|'openalex'|'pubmed';
 type Saved={provider:Provider;hint:string;verifiedAt:string|null};
@@ -14,6 +16,7 @@ const KEYED:Array<{id:Provider;name:string;url:string;no:'lim_oa_no'|'lim_s2_no'
 /** Optional personal keys for scientific sources (stored encrypted on the server). */
 export default function ScienceKeys({token}:{token:string}){
  const t=useT(scienceCopy);
+ const b=useT(benchCopy);
  const [saved,setSaved]=useState<Saved[]>([]);
  const [draft,setDraft]=useState<Record<string,string>>({});
  const [busy,setBusy]=useState<string|null>(null);
@@ -52,5 +55,6 @@ export default function ScienceKeys({token}:{token:string}){
    <div className="acc-sci-row acc-sci-free"><div className="acc-sci-head"><strong>arXiv · HAL</strong><span className="acc-ok">✓ {t.notNeeded}</span></div></div>
   </div>
   <p className="acc-note">🔒 {t.secretNote}</p>
+  <p><Link href="/benchmark">⏱ {b.title} →</Link></p>
  </section>;
 }

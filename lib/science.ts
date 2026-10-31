@@ -438,9 +438,9 @@ export async function resolveAuthor(input:string,extraIds:string[],keys:Keys,f:F
 export type BibAuthor={name:string;orcid:string|null};
 export type BibWork={id:string;doi:string|null;title:string;year:number|null;date:string|null;type:string|null;venue:string|null;publisher:string|null;volume:string|null;issue:string|null;
  firstPage:string|null;lastPage:string|null;authors:BibAuthor[];citations:number|null;openAccess:boolean|null;pdfUrl:string|null;landingUrl:string|null;language:string|null;
- retracted:boolean;sources:string[];versions:string[];halId?:string|null};
+ retracted:boolean;sources:string[];versions:string[];halId?:string|null;authorIds?:string[]};
 type OABibWork=Omit<OAWork,'authorships'|'primary_location'>&{biblio?:{volume?:string|null;issue?:string|null;first_page?:string|null;last_page?:string|null};is_retracted?:boolean;language?:string|null;
- authorships?:Array<{author?:{display_name?:string;orcid?:string|null}}>;primary_location?:{source?:{display_name?:string;host_organization_name?:string|null}|null;landing_page_url?:string|null;pdf_url?:string|null}|null};
+ authorships?:Array<{author?:{id?:string;display_name?:string;orcid?:string|null}}>;primary_location?:{source?:{display_name?:string;host_organization_name?:string|null}|null;landing_page_url?:string|null;pdf_url?:string|null}|null};
 export const WORK_SELECT='id,doi,display_name,publication_date,publication_year,type,cited_by_count,primary_location,best_oa_location,open_access,authorships,biblio,ids,is_retracted,language';
 export function parseBibWork(w:OABibWork):BibWork|null{
  const title=squash(str(w.display_name)??str(w.title));if(!title||!w.id)return null;
@@ -449,7 +449,8 @@ export function parseBibWork(w:OABibWork):BibWork|null{
   publisher:str(w.primary_location?.source?.host_organization_name),volume:str(b.volume),issue:str(b.issue),firstPage:str(b.first_page),lastPage:str(b.last_page),
   authors:(w.authorships??[]).map(a=>({name:str(a.author?.display_name)??'',orcid:str(a.author?.orcid)?.replace('https://orcid.org/','')??null})).filter(a=>a.name),
   citations:typeof w.cited_by_count==='number'?w.cited_by_count:null,openAccess:w.open_access?.is_oa??null,pdfUrl:str(w.best_oa_location?.pdf_url)??str(w.primary_location?.pdf_url)??null,
-  landingUrl:str(w.primary_location?.landing_page_url),language:str(w.language),retracted:w.is_retracted===true,sources:['openalex'],versions:[]};
+  landingUrl:str(w.primary_location?.landing_page_url),language:str(w.language),retracted:w.is_retracted===true,sources:['openalex'],versions:[],
+  authorIds:(w.authorships??[]).map(a=>str(a.author?.id)?.replace('https://openalex.org/','')).filter((x):x is string=>!!x)};
 }
 export function authorWorksUrl(ids:string[],keys:Keys,cursor:string,o:{from?:string;to?:string;query?:string}={}){
  const filters=['author.id:'+ids.map(i=>i.toUpperCase()).join('|')];
