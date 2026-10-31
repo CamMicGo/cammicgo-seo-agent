@@ -55,7 +55,7 @@ async function handler(req:NextRequest){
   }
   const relay=await import('@/lib/device-relay');
   const quotaLimit=(_session:{credentials:{mode:string}})=>2000; // Google API safety cap; the user-facing allowance is counted per MCP call
-  // Per-call timing (used by the benchmark page to show how much time CamMicGo itself spent), written after the response.
+  // Per-call timing (internal performance monitoring: tool name, duration, success; no content), written after the response.
   const logCall=(tool:string,ms:number,ok:boolean)=>{try{after(async()=>{try{const {sb}=await import('@/lib/device-relay');await sb('/rest/v1/cmg_mcp_calls',{method:'POST',body:JSON.stringify({user_id:user.id,tool,ms:Math.round(ms),ok})});}catch{/* timing is best effort */}});}catch{/* outside a request scope */}};
   const protectedMcp=createMcpHandler(server=>{
    // eslint-disable-next-line @typescript-eslint/no-explicit-any
