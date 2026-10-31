@@ -3,6 +3,7 @@ import {z} from 'zod';
 import {NextRequest,NextResponse} from 'next/server';
 import {makeCampaignDraft} from '@/lib/ads-campaign';
 import * as ads from '@/lib/google-ads';
+import * as drive from '@/lib/google-drive';
 import {gumCatalog} from '@/lib/gum-operation-catalog';
 import {getYouTubeTranscript} from '@/lib/youtube-transcript';
 import {verifyMcpAccess} from '@/lib/mcp-access';
@@ -18,6 +19,7 @@ const SERVER_INSTRUCTIONS=[
  'youtube_get_transcript returns the original spoken language by default (compact [mm:ss] text): translate it yourself. To find a person\'s main channel use youtube_find_channels; several channels can share a name, ask the user if unsure.',
  'Google tools use the user\'s own Google Cloud project (OAuth client ID and secret saved at https://seo.cammicgo.com/account, then "Connect Google"). If a tool answers google_not_connected, relay its messageForUser. Each user has a daily CamMicGo allowance (about 100 tool calls; status checks are free): prefer one youtube_channel_batch over many single transcript calls.',
  'Google Ads: ads_accounts, ads_report (read-only) and ads_create_paused_campaign. Campaigns are always created PAUSED with a total budget that is never exceeded over a fixed period: first call it with confirm=false, show the validated summary, and use confirm=true only after the user explicitly approves. Never promise that a campaign is live: the user enables it in Google Ads. Keyword Planner is not available (Explorer access).',
+ 'Google Drive: drive_list_files, drive_search_files, drive_read_file (bounded text windows: continue with offset=nextOffset, never paste whole documents) and drive_storage_quota are read-only (drive.readonly).',
  'Whole channels: youtube_channel_batch builds ONE document (details + full transcripts of every video) with a stable URL, ideal as a single NotebookLM source; follow it with youtube_batch_status. Never paste whole documents into the chat.',
 ].join(' ');
 
@@ -97,7 +99,7 @@ async function handler(req:NextRequest){
     const response=await googleFetch(url,token,init);
     const body=await response.json().catch(()=>({}));
     if(response.status===403&&JSON.stringify(body).includes('SCOPE_INSUFFICIENT')){
-     const api=url.includes('googleads')?'Google Ads':url.includes('youtube')?'YouTube':url.includes('calendar')?'Google Calendar':url.includes('analytics')?'Google Analytics':url.includes('webmasters')||url.includes('searchconsole')?'Search Console':'this Google API';
+     const api=url.includes('googleads')?'Google Ads':url.includes('/drive/')?'Google Drive':url.includes('youtube')?'YouTube':url.includes('calendar')?'Google Calendar':url.includes('analytics')?'Google Analytics':url.includes('webmasters')||url.includes('searchconsole')?'Search Console':'this Google API';
      return {error:'missing_google_permission',api,reauthorizeUrl:REAUTH_URL,
       messageForUser:'Your Google authorization does not include '+api+'. Open '+REAUTH_URL+' , sign in, keep '+api+' checked and click "Reconnect Google". Then ask me again (no need to reconnect the assistant).',
       instructions:'Relay messageForUser to the user in their language with the link.'};
@@ -225,6 +227,90 @@ async function handler(req:NextRequest){
     const text=(plain||fromHtml(html)).slice(0,30000);
     const h=(n:string)=>msg.payload?.headers?.find(x=>x.name.toLowerCase()===n.toLowerCase())?.value??null;
     return asText({id:msg.id,from:h('From'),to:h('To'),subject:h('Subject'),date:h('Date'),attachments:files,text});
+   });
+   // ---------- Google Drive (read: drive.readonly · write: drive.file) ----------
+   /** Authenticated Drive request for the signed-in user only; returns the raw Response or an error object for the agent. */
+   const driveFetch=async(url:string,init?:RequestInit):Promise<{response:Response}|{failure:Record<string,unknown>}>=>{
+    const session=await readGoogle(user.id);if(!session)return {failure:CONNECT_GOOGLE};
+    if(!await consumeQuota(user.id,quotaLimit(session)))return {failure:{error:'Daily quota exceeded'}};
+    const {token}=await authorizedAccessToken(session);
+    return {response:await googleFetch(url,token,init)};
+   };
+   const driveScopeMessage=(write:boolean)=>({error:'missing_google_permission',api:'Google Drive',reauthorizeUrl:REAUTH_URL,
+    messageForUser:write?'Writing to Google Drive needs the "Google Drive (create files)" permission. Open '+REAUTH_URL+' , sign in, check "Google Drive (create files)" and click "Reconnect Google". Then ask me again.'
+     :'Your Google authorization does not include Google Drive. Open '+REAUTH_URL+' , sign in, check "Google Drive" and click "Reconnect Google". Then ask me again (no need to reconnect the assistant).',
+    instructions:'Relay messageForUser to the user in their language with the link.'});
+   const driveFailure=async(response:Response,write=false)=>{const body=await response.json().catch(()=>({}));const e=drive.driveError(response.status,body);return e.error==='missing_google_permission'?driveScopeMessage(write):e;};
+   const driveJson=async<T,>(url:string,init?:RequestInit,write=false):Promise<{data:T}|{failure:Record<string,unknown>}>=>{
+    const r=await driveFetch(url,init);if('failure' in r)return r;
+    if(!r.response.ok)return {failure:await driveFailure(r.response,write)};
+    return {data:await r.response.json() as T};
+   };
+   const fileMeta=(id:string)=>driveJson<drive.DriveFile>(drive.DRIVE_API+'/files/'+encodeURIComponent(id)+'?'+new URLSearchParams({fields:drive.FILE_FIELDS,supportsAllDrives:'true'}));
+   const driveId=z.string().max(200).refine(drive.isDriveId,'Invalid Drive ID');
+   const pageSize=z.number().int().min(1).max(drive.DRIVE_LIMITS.maxPageSize).default(25);
+   const orderBy=z.enum(Object.keys(drive.ORDER_BY) as [drive.DriveOrder,...drive.DriveOrder[]]).default('modified');
+   type FileList={files?:drive.DriveFile[];nextPageToken?:string;incompleteSearch?:boolean};
+
+   server.registerTool('drive_list_files',{annotations:{readOnlyHint:true,openWorldHint:true},title:'List Google Drive files',
+    description:'List files and folders in the user\'s Google Drive (My Drive root by default, or inside folderId), including shared drives they can access. Returns name, id, kind (file/folder), MIME type, size, created and modified dates and link. Paginated: pass nextPageToken back as pageToken. Requires drive.readonly.',
+    inputSchema:z.object({folderId:driveId.optional().describe('Folder ID to browse; "root" = My Drive. Omit to list recent items everywhere.'),kind:z.enum(['all','files','folders']).default('all'),orderBy,pageSize,pageToken:z.string().max(1000).optional(),sharedDriveId:driveId.optional().describe('Limit to one shared drive')})},async args=>{
+    const q=drive.buildListQuery({folderId:args.folderId,kind:args.kind});
+    const r=await driveJson<FileList>(drive.DRIVE_API+'/files?'+drive.listParams(q,args.pageSize,args.orderBy,args.pageToken,true,args.sharedDriveId));
+    if('failure' in r)return asText(r.failure);
+    const files=(r.data.files??[]).map(drive.slimFile);
+    return asText({folderId:args.folderId??null,count:files.length,folders:files.filter(f=>f.kind==='folder').length,files,nextPageToken:r.data.nextPageToken??null,incompleteSearch:r.data.incompleteSearch??false,
+     next:r.data.nextPageToken?'More results: call drive_list_files again with pageToken.':'End of list.'});
+   });
+
+   server.registerTool('drive_search_files',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Search Google Drive',
+    description:'Search the user\'s Google Drive by file name, by text inside documents (Drive full-text index), by type (folder, document, spreadsheet, presentation, pdf, text, csv, json, markdown, image, video, audio, or an exact MIME type), by parent folder and by modification date. Paginated. Requires drive.readonly.',
+    inputSchema:z.object({name:z.string().max(200).optional().describe('Text contained in the file name'),fullText:z.string().max(200).optional().describe('Text contained in the file content (indexed by Google)'),
+     type:z.string().max(120).optional().describe('folder, document, spreadsheet, presentation, pdf, text, csv, json, markdown, image, video, audio, or a MIME type'),
+     folderId:driveId.optional(),modifiedAfter:z.string().datetime({offset:true}).optional(),modifiedBefore:z.string().datetime({offset:true}).optional(),orderBy,pageSize,pageToken:z.string().max(1000).optional()})},async args=>{
+    if(!args.name&&!args.fullText&&!args.type&&!args.folderId&&!args.modifiedAfter&&!args.modifiedBefore)return asText({error:'Give at least one criterion: name, fullText, type, folderId, modifiedAfter or modifiedBefore.'});
+    const q=drive.buildSearchQuery(args);
+    const r=await driveJson<FileList>(drive.DRIVE_API+'/files?'+drive.listParams(q,args.pageSize,args.orderBy,args.pageToken));
+    if('failure' in r)return asText(r.failure);
+    const files=(r.data.files??[]).map(drive.slimFile);
+    return asText({query:q,count:files.length,files,nextPageToken:r.data.nextPageToken??null,incompleteSearch:r.data.incompleteSearch??false,
+     note:args.fullText?'Full-text results are ordered by relevance.':undefined,next:r.data.nextPageToken?'More results: call again with pageToken.':'End of results.'});
+   });
+
+   server.registerTool('drive_read_file',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Read a Google Drive file',
+    description:'Read the text of one Drive file: Google Docs and Slides (exported as text), Google Sheets (first sheet as CSV), PDF (text layer), and text files (TXT, CSV, JSON, Markdown, XML, HTML…). Returns at most maxChars characters per call ('+drive.DRIVE_LIMITS.maxResponseChars+' by default); when nextOffset is not null, call again with offset=nextOffset to continue. Files over '+Math.round(drive.DRIVE_LIMITS.maxDownloadBytes/1048576)+' MB and other formats (images, audio, Office files) are reported as unsupported. Requires drive.readonly.',
+    inputSchema:z.object({fileId:driveId,offset:z.number().int().min(0).default(0),maxChars:z.number().int().min(1000).max(drive.DRIVE_LIMITS.maxResponseChars).default(drive.DRIVE_LIMITS.maxResponseChars)})},async args=>{
+    const meta=await fileMeta(args.fileId);if('failure' in meta)return asText(meta.failure);
+    const f=meta.data,plan=drive.readPlan(f.mimeType),info=drive.slimFile(f);
+    if(plan.mode==='unsupported')return asText({error:'unsupported_format',file:info,messageForUser:plan.reason});
+    const size=f.size!=null?Number(f.size):null;
+    if(plan.mode!=='export'&&size!=null&&size>drive.DRIVE_LIMITS.maxDownloadBytes)return asText({error:'file_too_large',file:info,limit:drive.humanBytes(drive.DRIVE_LIMITS.maxDownloadBytes),messageForUser:'This file is too large to be read here ('+info.size+'). Open it in Google Drive: '+(info.link??'')});
+    const url=plan.mode==='export'?drive.DRIVE_API+'/files/'+encodeURIComponent(f.id)+'/export?'+new URLSearchParams({mimeType:plan.exportMime})
+     :drive.DRIVE_API+'/files/'+encodeURIComponent(f.id)+'?'+new URLSearchParams({alt:'media',supportsAllDrives:'true'});
+    const r=await driveFetch(url);if('failure' in r)return asText(r.failure);
+    if(!r.response.ok)return asText({...await driveFailure(r.response),file:info});
+    // Bounded download: stop reading as soon as the cap is exceeded (protects memory and bandwidth).
+    const reader=r.response.body?.getReader();const chunks:Uint8Array[]=[];let total=0;
+    if(reader)for(;;){const {done,value}=await reader.read();if(done)break;total+=value.length;if(total>drive.DRIVE_LIMITS.maxDownloadBytes){await reader.cancel();return asText({error:'file_too_large',file:info,limit:drive.humanBytes(drive.DRIVE_LIMITS.maxDownloadBytes)});}chunks.push(value);}
+    const bytes=Buffer.concat(chunks);
+    let text:string;
+    if(plan.mode==='pdf'){
+     try{const {extractText,getDocumentProxy}=await import('unpdf');const pdf=await getDocumentProxy(new Uint8Array(bytes));const out=await extractText(pdf,{mergePages:false});
+      text=(out.text as string[]).map((p,i)=>'[page '+(i+1)+']\n'+p.trim()).join('\n\n');
+      if(!text.replace(/\[page \d+\]/g,'').trim())return asText({error:'no_text_layer',file:info,pages:out.totalPages,messageForUser:'This PDF has no text layer (scanned images): its text cannot be read here.'});
+     }catch(e){return asText({error:'pdf_unreadable',file:info,details:e instanceof Error?e.message.slice(0,200):null})}
+    }else text=bytes.toString('utf8').replace(/^﻿/,'');
+    const part=drive.sliceText(text,args.offset,args.maxChars);
+    return asText({file:info,format:plan.mode==='export'?plan.exportMime:plan.mode==='pdf'?'pdf-text':f.mimeType,note:plan.mode==='export'?plan.note:undefined,...part,
+     next:part.nextOffset!=null?'Partial content: call drive_read_file again with offset='+part.nextOffset+' to continue. Do not paste whole long documents into the chat; summarize or quote what is needed.':undefined});
+   });
+
+   server.registerTool('drive_storage_quota',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Google storage usage',
+    description:'Google account storage: used, total, remaining, percentage, part used by Drive and by the Drive trash (about.get storageQuota). The quota is shared between Drive, Gmail and Google Photos. When Google returns no limit (unlimited or pooled organization storage), total, remaining and percentage are null. Requires drive.readonly.',
+    inputSchema:z.object({})},async()=>{
+    const r=await driveJson<{storageQuota?:drive.StorageQuota;user?:{emailAddress?:string;displayName?:string}}>(drive.DRIVE_API+'/about?fields=storageQuota,user(displayName,emailAddress)');
+    if('failure' in r)return asText(r.failure);
+    return asText({account:r.data.user?.emailAddress??null,...drive.computeQuota(r.data.storageQuota),checkedAt:new Date().toISOString()});
    });
    server.registerTool('ads_accounts',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Google Ads accounts',description:'List the Google Ads accounts the connected Google user can access (ID, name, currency, time zone, manager or not). Requires the Google Ads permission (adwords scope).',inputSchema:z.object({})},async()=>{
     const list=await googleRequest(ads.ADS_BASE+'/customers:listAccessibleCustomers') as {resourceNames?:string[];error?:string};

@@ -329,3 +329,10 @@ body:has(#a11y-dialog) .sh-wrap{z-index:170}
 .acc-tr{display:grid;grid-template-columns:1.2fr .8fr 1.4fr 1fr;gap:12px;padding:12px 14px;border-top:1px solid #e2e8f0;font-size:14px;color:#33415c}.acc-tr.head{border-top:0;background:#f4f7fd;font-weight:800;color:#17234a;font-size:13px}
 @media(max-width:720px){.acc-tr{grid-template-columns:1fr;gap:4px}.acc-tr.head{display:none}.acc-tr span:nth-child(2)::before{content:"⚙ "}.acc-tr span:nth-child(3)::before{content:"↪ "}.acc-tr span:nth-child(4)::before{content:"🔒 "}.acc-client dl{grid-template-columns:1fr}}
 .sh-icon[aria-current=page]{border-color:#2764df;background:#eef4ff;color:#2459d6}
+/* /account Google Drive storage gauge */
+.acc-drive-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.acc-drive-head h2{display:flex;align-items:center;gap:10px;margin:0}
+.acc-drive-status{display:flex;align-items:center;gap:8px;margin:12px 0 4px;color:#5c6c89;overflow-wrap:anywhere}.acc-dot{width:9px;height:9px;border-radius:50%;background:#aab4c8;flex:none}.acc-dot.on{background:#16a34a}
+.acc-drive .acc-usage{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:10px}.acc-drive .acc-usage b{font-size:22px}.acc-pct{font-weight:800;color:#2764df}
+.acc-bar.warn div{background:linear-gradient(90deg,#f59e0b,#d97706)}.acc-bar.danger div{background:linear-gradient(90deg,#ef4444,#dc2626)}
+.acc-drive-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0 6px}.acc-drive-grid div{background:#f4f8ff;border:1px solid #dfe8f7;border-radius:12px;padding:10px 12px;min-width:0}.acc-drive-grid dt{font-size:12px;color:#5c6c89}.acc-drive-grid dd{margin:2px 0 0;font-weight:800;color:#17234a;overflow-wrap:anywhere}
+@media(max-width:640px){.acc-drive-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}

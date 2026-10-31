@@ -3,6 +3,7 @@ import {useCallback,useEffect,useState} from 'react';
 import {useT} from '../lang-provider';
 import {accountCopy} from '@/lib/copy/account';
 import {supabaseBrowser,supabaseConfigured} from '@/lib/supabase-browser';
+import DriveStorage from './drive-storage';
 
 type Client={projectId:string|null;clientId:string;secretHint:string;verifiedAt:string|null;updatedAt:string};
 type Account={admin:boolean;client:Client|null;redirectUri:string;google:{connected:boolean;mode:'shared'|'byo'|null;scopes:string[]|null};usage:{used:number;limit:number;perMinute:number;resetsAt:string}};
@@ -120,6 +121,8 @@ export default function AccountView(){
      {acc?.google.connected?t.reconnect:t.connect}</button>
     <p className="acc-note">{t.testUsers}</p>
    </section>
+
+   <DriveStorage token={token} googleConnected={!!acc?.google.connected}/>
   </>}
 
   <section className="acc-card"><h2>{t.urlsTitle}</h2><p>{t.urlsLead}</p>
