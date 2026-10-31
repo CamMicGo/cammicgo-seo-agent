@@ -53,7 +53,8 @@ async function login(){
 }
 const asText=x=>({content:[{type:'text',text:JSON.stringify(x)}]});
 async function stdio(){
- credentials();unseal();
+ // Google is optional: the science tools work without it, Google tools explain how to sign in when called.
+ try{credentials();unseal();}catch(e){console.error('CamMicGo: Google tools unavailable until setup/login ('+e.message+'). Scientific tools work without Google.');}
  const m=new McpServer({name:'cammicgo-seo-local',version:'0.1.0'});
  m.registerTool('list_search_sites',{description:'List Google Search Console properties accessible to this local Google account',inputSchema:z.object({})},async()=>asText(await google('https://www.googleapis.com/webmasters/v3/sites')));
  m.registerTool('search_performance',{description:'Read Search Console queries for an authorized site; 28 settled days',inputSchema:z.object({site:z.string().min(1).max(500)})},async({site})=>{
