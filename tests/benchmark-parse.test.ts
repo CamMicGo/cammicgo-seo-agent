@@ -37,3 +37,12 @@ test('expected values with dot or comma', () => {
   assert.ok(b.containsValue('reaches 28.4 BLEU', ['28.4']));
   assert.ok(!b.containsValue('reaches 128.4 BLEU or 28.41', ['28.4']));
 });
+
+test('view counts in many formats', () => {
+  assert.equal(b.parseViews('OpenAI Made Vibe Coding — 30 oct. 2026 — 62 007 vues'), 62007);
+  assert.equal(b.parseViews('Anthropic… (Oct 19): 125K views'), 125000);
+  assert.equal(b.parseViews('Build Your Knowledge Base — 23,5 k vues'), 23500);
+  assert.equal(b.parseViews('1.2M views'), 1200000);
+  assert.equal(b.parseViews('86,147 views'), 86147);
+  assert.equal(b.parseViews('no number here'), null);
+});

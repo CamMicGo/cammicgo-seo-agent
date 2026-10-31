@@ -19,7 +19,7 @@ export async function GET(req:NextRequest){
 export async function POST(req:NextRequest){
  if(!sameOrigin(req))return NextResponse.json({error:'origin'},{status:403,headers:noStore});
  const u=await verifySupabaseMcpUser(req.headers.get('authorization'));if(!u)return NextResponse.json({error:'unauthorized'},{status:401,headers:noStore});
- const b=await req.json().catch(()=>({})) as {taskId?:string;mode?:string;assistant?:string;durationMs?:number;startedAt?:string;answer?:string};
+ const b=await req.json().catch(()=>({})) as {taskId?:string;mode?:string;assistant?:string;durationMs?:number;startedAt?:string;answer?:string;param?:string};
  const task=taskById(String(b.taskId??''));
  if(!task||(b.mode!=='web'&&b.mode!=='cammicgo'))return NextResponse.json({error:'invalid_task_or_mode'},{status:400,headers:noStore});
  const answer=String(b.answer??'').slice(0,100_000);const duration=Math.round(Number(b.durationMs));
@@ -27,7 +27,13 @@ export async function POST(req:NextRequest){
  const assistant=String(b.assistant??'other').replace(/[^\w .+-]/g,'').slice(0,40)||'other';
  const started=b.startedAt&&!Number.isNaN(Date.parse(b.startedAt))?new Date(b.startedAt):null;
  let keys={};try{const {userKeys}=await import('@/lib/science-keys');keys=await userKeys(u.id);}catch{/* optional */}
- const metrics=await scoreAnswer(task.id,answer,keys).catch(e=>({error:e instanceof Error?e.message:'scoring failed'}));
+ const param=typeof b.param==='string'?b.param.trim().slice(0,200):undefined;
+ let googleToken:string|undefined;
+ if(task.id==='gsc-top-queries'){
+  try{const {readGoogle}=await import('@/lib/mcp-google-store');const {isAdmin}=await import('@/lib/account');const {authorizedAccessToken}=await import('@/lib/google-session');
+   const session=await readGoogle(u.id);if(session&&(session.credentials.mode==='byo'||await isAdmin(u.id)))googleToken=(await authorizedAccessToken(session)).token;}catch{/* scored without Google */}
+ }
+ const metrics=await scoreAnswer(task.id,answer,keys,{param,googleToken}).catch(e=>({error:e instanceof Error?e.message:'scoring failed'}));
  let mcp:Record<string,unknown>|null=null;
  if(started){
   const until=new Date(started.getTime()+duration+15_000).toISOString();

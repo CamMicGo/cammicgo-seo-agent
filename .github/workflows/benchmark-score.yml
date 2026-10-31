@@ -1,0 +1,34 @@
+name: Benchmark scoring
+on:
+  push:
+    paths:
+      - 'benchmarks/runs/**'
+  workflow_dispatch:
+jobs:
+  score:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - name: Score the changed run files
+        env:
+          LIVE_OUT: bench-scores.txt
+        run: |
+          files=$(git diff --name-only HEAD~1 HEAD -- benchmarks/runs || true)
+          [ -z "$files" ] && files=$(ls benchmarks/runs/*.md)
+          npx --yes tsx@4.19.2 tests/live/score-runs.ts $files
+      - name: Post the scores as a commit comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test -f bench-scores.txt || echo "no output" > bench-scores.txt
+          printf '### Benchmark scores\n```\n%s\n```\n' "$(cat bench-scores.txt)" > body.md
+          gh api repos/${{ github.repository }}/commits/${{ github.sha }}/comments -F body=@body.md >/dev/null

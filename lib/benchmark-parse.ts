@@ -41,3 +41,12 @@ export function parseVerdicts(text:string,n:number):Verdict[]{
 }
 /** Whether the answer contains the expected value (e.g. "28.4" or "28,4"). */
 export const containsValue=(text:string,values:string[])=>values.some(v=>new RegExp('(^|[^0-9])'+v.replace('.','[.,]')+'([^0-9]|$)').test(text));
+
+/** View count written in a line: "62 007 vues", "125K views", "23,5 k", "1.2M". */
+export function parseViews(line:string):number|null{
+ const m=/(\d[\d\s.,]*)\s*(k|m|mil+e?|million|millions)?\s*(?:vues|views|vistas|aufrufe|visualiza|visualizz)/i.exec(line)??/(\d[\d\s.,]*)\s*(k|m)\b/i.exec(line);
+ if(!m)return null;
+ let raw=m[1].trim().replace(/\s/g,'');const unit=(m[2]??'').toLowerCase();
+ if(unit){raw=raw.replace(',','.');const n=Number(raw);if(!Number.isFinite(n))return null;return Math.round(n*(unit.startsWith('m')?1_000_000:1000));}
+ raw=raw.replace(/[.,](?=\d{3}(\D|$))/g,'').replace(',','.');const n=Number(raw);return Number.isFinite(n)?Math.round(n):null;
+}

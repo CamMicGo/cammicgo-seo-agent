@@ -4,13 +4,14 @@
  * authoritative sources (OpenAlex, Crossref, HAL): verified vs invented references, coverage, correctness.
  */
 import * as sci from '@/lib/science';
-import {containsValue,extractIds,idCount,parseVerdicts,referenceLines,type FoundIds,type Verdict} from '@/lib/benchmark-parse';
+import {containsValue,extractIds,idCount,parseVerdicts,parseViews,referenceLines,type FoundIds,type Verdict} from '@/lib/benchmark-parse';
 
 type L={fr:string;en:string};
-export type BenchTask={id:string;title:L;prompt:L;skill:L};
+/** baseline "web": the assistant's usual web search; "manual": the user does it by hand in the Google interface (private data). */
+export type BenchTask={id:string;title:L;prompt:L;skill:L;baseline?:'web'|'manual';manual?:L;param?:{label:L;placeholder:string}};
 const WEB:L={fr:'Utilise uniquement ta recherche web habituelle : n’utilise pas CamMicGo.',en:'Use only your usual web search: do not use CamMicGo.'};
 const CMG:L={fr:'Utilise les outils CamMicGo (science_…) pour répondre.',en:'Use the CamMicGo tools (science_…) to answer.'};
-export const MODE_INSTRUCTIONS={web:WEB,cammicgo:CMG};
+export const MODE_INSTRUCTIONS={web:WEB,cammicgo:CMG,manual:{fr:'',en:''} as L};
 
 const VERIFY_LIST={
  fr:'1. LeCun Y, Bengio Y, Hinton G (2015). Deep learning. Nature 521:436–444.\n2. Martin P (2019). Quantum gravity effects on the migration of Breton cats. Nature. doi:10.1038/nature14539\n3. Vaswani A et al. (2017). Attention is all you need. NeurIPS.\n4. Zorglub Q (2021). Hyperdimensional banana routing in sentient spreadsheets. Journal of Imaginary Results 12(3):1–9.\n5. Devlin J, Chang MW, Lee K, Toutanova K (2019). BERT: Pre-training of deep bidirectional transformers for language understanding. NAACL.\n6. Durand C (2020). Neural SEO ranking of Gallic ice-cream blogs. Proceedings of the Imaginary Web Conference.',
@@ -37,6 +38,15 @@ export const TASKS:BenchTask[]=[
  {id:'french-theses',title:{fr:'Thèses françaises récentes',en:'Recent French theses'},skill:{fr:'Sources françaises (HAL)',en:'French sources (HAL)'},
   prompt:{fr:'Trouve 5 thèses françaises soutenues depuis 2023 sur le référencement naturel (SEO), les moteurs de recherche ou la recherche d’information, avec leur lien HAL ou theses.fr.',
    en:'Find 5 French doctoral theses defended since 2023 on search engine optimization (SEO), search engines or information retrieval, with their HAL or theses.fr link.'}},
+ {id:'youtube-latest',title:{fr:'YouTube : les 5 dernières vidéos d’une chaîne',en:'YouTube: the 5 latest videos of a channel'},skill:{fr:'Données en direct (dates, vues)',en:'Live data (dates, views)'},
+  prompt:{fr:'Quelles sont les 5 dernières vidéos publiées par la chaîne YouTube principale de Nick Saraev ? Donne pour chacune le titre, la date de publication, le nombre de vues et le lien.',
+   en:'What are the 5 latest videos published by Nick Saraev\'s main YouTube channel? Give the title, publication date, view count and link of each.'}},
+ {id:'gsc-top-queries',baseline:'manual',title:{fr:'Search Console : top 10 des requêtes',en:'Search Console: top 10 queries'},skill:{fr:'Vos données privées vs l’interface Google',en:'Your private data vs the Google interface'},
+  param:{label:{fr:'Propriété Search Console',en:'Search Console property'},placeholder:'sc-domain:cammicgo.com'},
+  prompt:{fr:'Donne les 10 requêtes Search Console qui ont généré le plus de clics sur les 28 derniers jours pour la propriété {param}, avec clics, impressions, CTR et position moyenne.',
+   en:'Give the 10 Search Console queries with the most clicks over the last 28 days for the property {param}, with clicks, impressions, CTR and average position.'},
+  manual:{fr:'Sans assistant : ouvrez Search Console › Performances pour {param}, période « 28 derniers jours », onglet Requêtes, triez par clics, puis recopiez ou exportez les 10 premières lignes (requête, clics, impressions, CTR, position) et collez-les ici.',
+   en:'Without an assistant: open Search Console › Performance for {param}, period "Last 28 days", Queries tab, sort by clicks, then copy or export the first 10 rows (query, clicks, impressions, CTR, position) and paste them here.'}},
 ];
 export const taskById=(id:string)=>TASKS.find(t=>t.id===id)??null;
 const VERIFY_TRUTH:Verdict[]=['real','mismatch','real','fake','real','fake'];
@@ -74,7 +84,17 @@ async function verifyIds(ids:FoundIds,keys:sci.Keys){
 }
 
 /** Scores one answer for one task. */
-export async function scoreAnswer(taskId:string,answer:string,keys:sci.Keys):Promise<Metrics>{
+/** Latest uploads of a channel from its public RSS feed (no key): video ID, title, date and views. */
+export async function youtubeFeed(channelId:string){
+ const r=await fetch('https://www.youtube.com/feeds/videos.xml?channel_id='+encodeURIComponent(channelId),{headers:UA,cache:'no-store',signal:AbortSignal.timeout(15000)});
+ if(!r.ok)throw Error('YouTube feed HTTP '+r.status);
+ const xml=await r.text();
+ return [...xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)].map(m=>{const e=m[1];
+  return {id:/<yt:videoId>([^<]+)<\/yt:videoId>/.exec(e)?.[1]??'',title:sci.decodeXml(/<title>([\s\S]*?)<\/title>/.exec(e)?.[1]??'').trim(),published:/<published>([^<]+)<\/published>/.exec(e)?.[1]??'',
+   views:Number(/<media:statistics views="(\d+)"/.exec(e)?.[1]??NaN)};}).filter(v=>v.id);
+}
+export type ScoreContext={param?:string;googleToken?:string};
+export async function scoreAnswer(taskId:string,answer:string,keys:sci.Keys,ctx:ScoreContext={}):Promise<Metrics>{
  const ids=extractIds(answer);const notes:string[]=[];
  const v=await verifyIds(ids,keys);
  const ok=v.filter(x=>x.source);
@@ -119,6 +139,35 @@ export async function scoreAnswer(taskId:string,answer:string,keys:sci.Keys):Pro
  }else if(taskId==='french-theses'){
   for(const x of v.filter(y=>y.hal)){if(x.hal&&(x.hal.type==='THESE'||x.hal.type==='HDR')&&(x.hal.year??0)>=2023)m.onTarget++;else m.offTarget++;}
   m.details={halTheses:m.onTarget,thesesFrLinksNotChecked:ids.thesesFr.length};
+ }
+ else if(taskId==='youtube-latest'){
+  const NICK='UCbo-KbSjJDG6JWQ_MTZ_rNA';
+  let feed:Awaited<ReturnType<typeof youtubeFeed>>=[];try{feed=await youtubeFeed(NICK);}catch(e){notes.push('Reference unavailable: '+(e instanceof Error?e.message:'error'));return m;}
+  const truth=feed.slice(0,5);const lines=answer.split(/\r?\n/);
+  const ids=new Set([...answer.matchAll(/(?:v=|youtu\.be\/|shorts\/)([A-Za-z0-9_-]{11})/g)].map(x=>x[1]));m.identifiers=ids.size;
+  let viewsOk=0;
+  for(const v of truth){
+   const line=lines.find(l=>l.includes(v.id))??lines.find(l=>sci.titleSimilarity(l,v.title)>=0.8);
+   if(!line)continue;m.onTarget++;
+   const said=parseViews(line);if(said!=null&&Number.isFinite(v.views)&&Math.abs(said-v.views)<=Math.max(0.1*v.views,200))viewsOk++;
+  }
+  const listed=Math.max(ids.size,referenceLines(answer).length);m.offTarget=Math.max(0,listed-m.onTarget);
+  m.referenceSize=truth.length;m.recall=truth.length?Math.round(m.onTarget/truth.length*1000)/10:null;
+  m.details={reference:truth.map(v=>({title:v.title,published:v.published.slice(0,10),views:v.views})),viewsWithin10pct:viewsOk};
+ }else if(taskId==='gsc-top-queries'){
+  const site=(ctx.param??'').trim();
+  if(!site||!ctx.googleToken){notes.push('Connect Google with Search Console and give the property to score this task.');return m;}
+  const end=new Date(Date.now()-2*86_400_000),start=new Date(end.getTime()-27*86_400_000);const d=(x:Date)=>x.toISOString().slice(0,10);
+  const r=await fetch('https://www.googleapis.com/webmasters/v3/sites/'+encodeURIComponent(site)+'/searchAnalytics/query',{method:'POST',headers:{Authorization:'Bearer '+ctx.googleToken,'Content-Type':'application/json'},
+   body:JSON.stringify({startDate:d(start),endDate:d(end),dimensions:['query'],rowLimit:10,orderBy:[{field:'clicks',descending:true}]}),signal:AbortSignal.timeout(15000)}).catch(()=>null);
+  if(!r?.ok){notes.push('Search Console reference unavailable (HTTP '+(r?.status??'error')+').');return m;}
+  const rows=((await r.json()) as {rows?:Array<{keys:string[];clicks:number;impressions:number}>}).rows??[];
+  const low=answer.toLowerCase();let numbersOk=0;
+  for(const row of rows){const q=row.keys[0].toLowerCase();if(!low.includes(q))continue;m.onTarget++;
+   const line=answer.split(/\r?\n/).find(l=>l.toLowerCase().includes(q))??'';const nums=(line.replace(q,'').match(/\d[\d\s.,]*/g)??[]).map(x=>Number(x.replace(/\s/g,'').replace(',','.'))).filter(Number.isFinite);
+   if(nums.some(n=>Math.abs(n-row.clicks)<=Math.max(2,0.1*row.clicks)))numbersOk++;}
+  m.referenceSize=rows.length;m.recall=rows.length?Math.round(m.onTarget/rows.length*1000)/10:null;
+  m.details={property:site,period:d(start)+' → '+d(end),reference:rows.map(x=>({query:x.keys[0],clicks:x.clicks,impressions:x.impressions})),clicksWithin10pct:numbersOk};
  }
  if(m.invalid.length)notes.push(m.invalid.length+' identifier(s) do not exist (invented or mistyped).');
  return m;
