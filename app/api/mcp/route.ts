@@ -19,7 +19,7 @@ const SERVER_INSTRUCTIONS=[
  'youtube_get_transcript returns the original spoken language by default (compact [mm:ss] text): translate it yourself. To find a person\'s main channel use youtube_find_channels; several channels can share a name, ask the user if unsure.',
  'Google tools use the user\'s own Google Cloud project (OAuth client ID and secret saved at https://seo.cammicgo.com/account, then "Connect Google"). If a tool answers google_not_connected, relay its messageForUser. Each user has a daily CamMicGo allowance (about 100 tool calls; status checks are free): prefer one youtube_channel_batch over many single transcript calls.',
  'Google Ads: ads_accounts, ads_report (read-only) and ads_create_paused_campaign. Campaigns are always created PAUSED with a total budget that is never exceeded over a fixed period: first call it with confirm=false, show the validated summary, and use confirm=true only after the user explicitly approves. Never promise that a campaign is live: the user enables it in Google Ads. Keyword Planner is not available (Explorer access).',
- 'Google Drive: drive_list_files, drive_search_files, drive_read_file (bounded text windows: continue with offset=nextOffset, never paste whole documents) and drive_storage_quota are read-only (drive.readonly).',
+ 'Google Drive: drive_list_files, drive_search_files, drive_read_file (bounded text windows: continue with offset=nextOffset, never paste whole documents) and drive_storage_quota are read-only (drive.readonly). drive_create_folder and drive_upload_file create NEW items only (drive.file permission): never overwrite, and only upload content the user asked for.',
  'Whole channels: youtube_channel_batch builds ONE document (details + full transcripts of every video) with a stable URL, ideal as a single NotebookLM source; follow it with youtube_batch_status. Never paste whole documents into the chat.',
 ].join(' ');
 
@@ -237,7 +237,7 @@ async function handler(req:NextRequest){
     return {response:await googleFetch(url,token,init)};
    };
    const driveScopeMessage=(write:boolean)=>({error:'missing_google_permission',api:'Google Drive',reauthorizeUrl:REAUTH_URL,
-    messageForUser:write?'Writing to Google Drive needs the "Google Drive (create files)" permission. Open '+REAUTH_URL+' , sign in, check "Google Drive (create files)" and click "Reconnect Google". Then ask me again.'
+    messageForUser:write?'Writing to Google Drive needs the "Google Drive ✎ (drive.file)" permission. Open '+REAUTH_URL+' , sign in, check "Google Drive ✎ (drive.file)" and click "Reconnect Google". Then ask me again.'
      :'Your Google authorization does not include Google Drive. Open '+REAUTH_URL+' , sign in, check "Google Drive" and click "Reconnect Google". Then ask me again (no need to reconnect the assistant).',
     instructions:'Relay messageForUser to the user in their language with the link.'});
    const driveFailure=async(response:Response,write=false)=>{const body=await response.json().catch(()=>({}));const e=drive.driveError(response.status,body);return e.error==='missing_google_permission'?driveScopeMessage(write):e;};
@@ -311,6 +311,98 @@ async function handler(req:NextRequest){
     const r=await driveJson<{storageQuota?:drive.StorageQuota;user?:{emailAddress?:string;displayName?:string}}>(drive.DRIVE_API+'/about?fields=storageQuota,user(displayName,emailAddress)');
     if('failure' in r)return asText(r.failure);
     return asText({account:r.data.user?.emailAddress??null,...drive.computeQuota(r.data.storageQuota),checkedAt:new Date().toISOString()});
+   });
+
+   // Writing uses drive.file only: CamMicGo can create files and folders, and only modify what it created.
+   const canWriteDrive=async()=>{const s=await readGoogle(user.id);if(!s)return false;return !s.scopes||s.scopes.includes(drive.DRIVE_FILE_SCOPE)||s.scopes.includes(drive.DRIVE_FULL_SCOPE);};
+   /** Names already used in a folder (to never overwrite or duplicate silently). */
+   const namesIn=async(parentId:string,name:string,folderOnly=false)=>{
+    const base=name.replace(/\.[^.]*$/,'')||name;
+    const q="'"+drive.escapeQuery(parentId)+"' in parents and trashed = false and name contains '"+drive.escapeQuery(base.slice(0,80))+"'"+(folderOnly?" and mimeType = '"+drive.FOLDER_MIME+"'":'');
+    const r=await driveJson<FileList>(drive.DRIVE_API+'/files?'+drive.listParams(q,100,'name'));
+    if('failure' in r)return r;
+    return {files:r.data.files??[]};
+   };
+   /** Checks the destination folder exists and accepts new items for this account. */
+   const checkParent=async(parentId:string)=>{
+    if(parentId==='root')return {ok:true as const,name:'My Drive'};
+    const meta=await fileMeta(parentId);if('failure' in meta)return {ok:false as const,failure:{...meta.failure,parentId,hint:'The destination folder must exist and be accessible. Use drive_list_files or drive_search_files with type=folder to find its ID, or omit parentId to use My Drive.'}};
+    if(meta.data.mimeType!==drive.FOLDER_MIME)return {ok:false as const,failure:{error:'not_a_folder',parentId,messageForUser:'"'+meta.data.name+'" is not a folder.'}};
+    if(meta.data.capabilities&&meta.data.capabilities.canAddChildren===false)return {ok:false as const,failure:{error:'no_write_access',parentId,messageForUser:'This Google account cannot add files to "'+meta.data.name+'" (read-only access).'}};
+    return {ok:true as const,name:meta.data.name};
+   };
+   const DRIVE_FILE_LIMIT_NOTE='With the drive.file permission, CamMicGo can create items in My Drive and in folders CamMicGo created. Writing into other existing folders is refused by Google (404/403): in that case create a folder with drive_create_folder first.';
+
+   server.registerTool('drive_create_folder',{annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:true,openWorldHint:true},title:'Create a Google Drive folder',
+    description:'Create a folder in the user\'s Google Drive (My Drive by default, or inside parentId) and return its ID. If a folder with the same name already exists there, it is reused (ifExists="reuse", default) or a numbered name is used (ifExists="rename"). Nothing is ever deleted or overwritten. Requires the "Google Drive ✎ (drive.file)" permission. '+DRIVE_FILE_LIMIT_NOTE,
+    inputSchema:z.object({name:z.string().min(1).max(255),parentId:driveId.default('root'),ifExists:z.enum(['reuse','rename']).default('reuse')})},async args=>{
+    if(!await canWriteDrive())return asText(driveScopeMessage(true));
+    const name=drive.cleanName(args.name);if(!name)return asText({error:'invalid_name',messageForUser:'Folder names must have 1 to 255 visible characters.'});
+    const parent=await checkParent(args.parentId);if(!parent.ok)return asText(parent.failure);
+    const existing=await namesIn(args.parentId,name,true);if('failure' in existing)return asText(existing.failure);
+    const same=existing.files.find(f=>f.name===name);
+    if(same&&args.ifExists==='reuse')return asText({created:false,reused:true,folder:drive.slimFile(same),parent:parent.name});
+    const finalName=drive.uniqueName(name,new Set(existing.files.map(f=>f.name)));
+    const r=await driveJson<drive.DriveFile>(drive.DRIVE_API+'/files?'+new URLSearchParams({fields:drive.FILE_FIELDS,supportsAllDrives:'true'}),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:finalName,mimeType:drive.FOLDER_MIME,parents:[args.parentId]})},true);
+    if('failure' in r)return asText({...r.failure,note:DRIVE_FILE_LIMIT_NOTE});
+    return asText({created:true,folderId:r.data.id,folder:drive.slimFile(r.data),parent:parent.name,renamed:finalName!==name?finalName:undefined});
+   });
+
+   server.registerTool('drive_upload_file',{annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},title:'Upload a file to Google Drive',
+    description:'Create a NEW file in the user\'s Google Drive from an explicit source: source.type="text" (content you write, e.g. a report in Markdown, CSV or JSON), "base64" (small binary file the user gave you, max '+Math.round(drive.DRIVE_LIMITS.maxUploadBytes/1048576)+' MB), or "cammicgo_export" (a CamMicGo channel transcript document by exportId, Markdown or CSV, uploaded with a resumable upload). Never reads local or server files. Existing files are never overwritten: a numbered name is used (ifExists="rename", default) or the call fails (ifExists="fail"). Set convertToGoogleDoc=true to turn text/Markdown/HTML into a Google Doc (or CSV into a Google Sheet). Requires the "Google Drive ✎ (drive.file)" permission. '+DRIVE_FILE_LIMIT_NOTE,
+    inputSchema:z.object({name:z.string().min(1).max(255),parentId:driveId.default('root'),
+     source:z.discriminatedUnion('type',[
+      z.object({type:z.literal('text'),content:z.string().max(drive.DRIVE_LIMITS.maxUploadBytes)}),
+      z.object({type:z.literal('base64'),data:z.string().max(Math.ceil(drive.DRIVE_LIMITS.maxUploadBytes*4/3)+4)}),
+      z.object({type:z.literal('cammicgo_export'),exportId:z.string().max(40),format:z.enum(['markdown','csv']).default('markdown'),part:z.number().int().min(1).max(5).default(1)}),
+     ]),
+     mimeType:z.string().max(120).regex(/^[\w.+-]+\/[\w.+-]+$/).optional().describe('Defaults from the file extension'),
+     convertToGoogleDoc:z.boolean().default(false),ifExists:z.enum(['rename','fail']).default('rename')})},async args=>{
+    if(!await canWriteDrive())return asText(driveScopeMessage(true));
+    const name=drive.cleanName(args.name);if(!name)return asText({error:'invalid_name',messageForUser:'File names must have 1 to 255 visible characters.'});
+    let content:Buffer,limit=drive.DRIVE_LIMITS.maxUploadBytes;
+    const src=args.source;
+    if(src.type==='text')content=Buffer.from(src.content,'utf8');
+    else if(src.type==='base64'){if(!/^[A-Za-z0-9+/=\s_-]*$/.test(src.data))return asText({error:'invalid_base64'});content=Buffer.from(src.data.replace(/\s/g,'').replace(/-/g,'+').replace(/_/g,'/'),'base64');}
+    else{
+     const {readExport,buildDocument,buildCsv,partCount}=await import('@/lib/channel-export');
+     const exp=await readExport(src.exportId,user.id);if(!exp)return asText({error:'Unknown exportId (only your own CamMicGo exports can be uploaded).'});
+     if(src.part>partCount(exp))return asText({error:'This export has '+partCount(exp)+' part(s).'});
+     content=Buffer.from(src.format==='csv'?await buildCsv(exp,src.part):await buildDocument(exp,src.part),'utf8');
+     limit=drive.DRIVE_LIMITS.maxExportUploadBytes;
+    }
+    if(!content.length)return asText({error:'empty_content'});
+    if(content.length>limit)return asText({error:'file_too_large',size:drive.humanBytes(content.length),limit:drive.humanBytes(limit)});
+    const ext=(name.split('.').pop()??'').toLowerCase();
+    const byExt:Record<string,string>={md:'text/markdown',markdown:'text/markdown',txt:'text/plain',csv:'text/csv',json:'application/json',html:'text/html',htm:'text/html',xml:'application/xml',pdf:'application/pdf',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',srt:'application/x-subrip',vtt:'text/vtt'};
+    const mime=args.mimeType??byExt[ext]??(src.type==='base64'?'application/octet-stream':src.type==='cammicgo_export'?(src.format==='csv'?'text/csv':'text/markdown'):'text/plain');
+    const target=args.convertToGoogleDoc?(mime==='text/csv'?'application/vnd.google-apps.spreadsheet':/^text\/(plain|markdown|html)$/.test(mime)?'application/vnd.google-apps.document':null):null;
+    if(args.convertToGoogleDoc&&!target)return asText({error:'cannot_convert',messageForUser:'Only text, Markdown, HTML (to Google Docs) and CSV (to Google Sheets) can be converted.'});
+    const parent=await checkParent(args.parentId);if(!parent.ok)return asText(parent.failure);
+    const existing=await namesIn(args.parentId,name);if('failure' in existing)return asText(existing.failure);
+    const taken=new Set(existing.files.map(f=>f.name));
+    if(taken.has(name)&&args.ifExists==='fail')return asText({error:'already_exists',messageForUser:'A file named "'+name+'" already exists in this folder. Nothing was changed.'});
+    const finalName=target?drive.uniqueName(name.replace(/\.(md|markdown|txt|html?|csv)$/i,''),taken):drive.uniqueName(name,taken);
+    const metadata:Record<string,unknown>={name:finalName,parents:[args.parentId],...(target?{mimeType:target}:{})};
+    const fields=new URLSearchParams({fields:drive.FILE_FIELDS,supportsAllDrives:'true'});
+    let res:{data:drive.DriveFile}|{failure:Record<string,unknown>};
+    if(content.length<=drive.DRIVE_LIMITS.resumableAboveBytes){
+     const boundary='cmg'+Math.random().toString(36).slice(2);
+     fields.set('uploadType','multipart');
+     res=await driveJson<drive.DriveFile>(drive.DRIVE_UPLOAD_API+'/files?'+fields,{method:'POST',headers:{'Content-Type':'multipart/related; boundary='+boundary},body:new Uint8Array(drive.multipartBody(metadata,content,mime,boundary))},true);
+    }else{
+     // Resumable upload: one session, then the bytes in a single PUT (Drive accepts it; retries restart the session).
+     fields.set('uploadType','resumable');
+     const start=await driveFetch(drive.DRIVE_UPLOAD_API+'/files?'+fields,{method:'POST',headers:{'Content-Type':'application/json; charset=UTF-8','X-Upload-Content-Type':mime,'X-Upload-Content-Length':String(content.length)},body:JSON.stringify(metadata)});
+     if('failure' in start)return asText(start.failure);
+     if(!start.response.ok)return asText({...await driveFailure(start.response,true),note:DRIVE_FILE_LIMIT_NOTE});
+     const location=start.response.headers.get('location');
+     if(!location||!location.startsWith(drive.DRIVE_UPLOAD_API))return asText({error:'upload_session_failed'});
+     const put=await driveFetch(location,{method:'PUT',headers:{'Content-Type':mime,'Content-Length':String(content.length)},body:new Uint8Array(content)});
+     res='failure' in put?put:put.response.ok?{data:await put.response.json() as drive.DriveFile}:{failure:await driveFailure(put.response,true)};
+    }
+    if('failure' in res)return asText({...res.failure,note:DRIVE_FILE_LIMIT_NOTE});
+    return asText({created:true,fileId:res.data.id,file:drive.slimFile(res.data),parent:parent.name,bytes:content.length,renamed:res.data.name!==name?res.data.name:undefined,convertedTo:target??undefined});
    });
    server.registerTool('ads_accounts',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Google Ads accounts',description:'List the Google Ads accounts the connected Google user can access (ID, name, currency, time zone, manager or not). Requires the Google Ads permission (adwords scope).',inputSchema:z.object({})},async()=>{
     const list=await googleRequest(ads.ADS_BASE+'/customers:listAccessibleCustomers') as {resourceNames?:string[];error?:string};
