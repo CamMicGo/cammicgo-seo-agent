@@ -201,10 +201,10 @@ export const CONFIRM_TTL_MS=15*60_000;
 const confirmSig=(key:string,userId:string,action:string,ids:string[],issued:number)=>
  createHmac('sha256',key).update(action+'|'+userId+'|'+[...new Set(ids)].sort().join(',')+'|'+issued).digest('base64url').slice(0,32);
 /** Token bound to this user, this action and exactly these items (HMAC with the server key). */
-export function confirmToken(key:string,userId:string,action:'trash',ids:string[],now=Date.now()){
+export function confirmToken(key:string,userId:string,action:'trash'|'publish',ids:string[],now=Date.now()){
  return now.toString(36)+'.'+confirmSig(key,userId,action,ids,now);
 }
-export function checkConfirmToken(key:string,userId:string,action:'trash',ids:string[],token:string|undefined,now=Date.now()):{ok:true}|{ok:false;reason:'missing'|'invalid'|'expired'|'too_fast'}{
+export function checkConfirmToken(key:string,userId:string,action:'trash'|'publish',ids:string[],token:string|undefined,now=Date.now()):{ok:true}|{ok:false;reason:'missing'|'invalid'|'expired'|'too_fast'}{
  if(!token)return {ok:false,reason:'missing'};
  const m=/^([0-9a-z]{6,12})\.([A-Za-z0-9_-]{32})$/.exec(token);if(!m)return {ok:false,reason:'invalid'};
  const issued=parseInt(m[1],36);const expected=Buffer.from(confirmSig(key,userId,action,ids,issued));const given=Buffer.from(m[2]);

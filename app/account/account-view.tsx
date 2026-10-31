@@ -6,14 +6,15 @@ import {accountCopy} from '@/lib/copy/account';
 import {supabaseBrowser,supabaseConfigured} from '@/lib/supabase-browser';
 import DriveStorage from './drive-storage';
 import ScienceKeys from './science-keys';
+import LinkedInConnect from './linkedin-connect';
 
 type Client={projectId:string|null;clientId:string;secretHint:string;verifiedAt:string|null;updatedAt:string};
 type Account={admin:boolean;client:Client|null;redirectUri:string;google:{connected:boolean;mode:'shared'|'byo'|null;scopes:string[]|null;driveWrite:string[]|null};usage:{used:number;limit:number;perMinute:number;resetsAt:string}};
 const MCP_URL='https://seo.cammicgo.com/api/mcp';
-const APIS:Array<[string,string]>=[['Search Console','webmasters.readonly'],['Google Analytics 4','analytics.readonly'],['YouTube','youtube.readonly'],['YouTube Analytics','yt-analytics.readonly'],['Google Calendar','calendar.readonly'],['Gmail','gmail.readonly'],['Google Drive','drive.readonly'],['Google Drive ✎ (drive.file)','drive.file'],['Google Drive ⚠ full access (drive)','drive'],['Google Docs','documents.readonly'],['Google Sheets','spreadsheets.readonly'],['Google Slides','presentations.readonly'],['Google Tasks','tasks.readonly'],['Google Contacts','contacts.readonly'],['Google Classroom','classroom.courses.readonly'],['Google Chat','chat.spaces.readonly'],['Apps Script','script.projects.readonly'],['Google Ads','adwords']];
+const APIS:Array<[string,string]>=[['Search Console','webmasters.readonly'],['Google Analytics 4','analytics.readonly'],['YouTube','youtube.readonly'],['YouTube Analytics','yt-analytics.readonly'],['YouTube ✎ (upload)','youtube.upload'],['Google Calendar','calendar.readonly'],['Gmail','gmail.readonly'],['Google Drive','drive.readonly'],['Google Drive ✎ (drive.file)','drive.file'],['Google Drive ⚠ full access (drive)','drive'],['Google Docs','documents.readonly'],['Google Sheets','spreadsheets.readonly'],['Google Slides','presentations.readonly'],['Google Tasks','tasks.readonly'],['Google Contacts','contacts.readonly'],['Google Classroom','classroom.courses.readonly'],['Google Chat','chat.spaces.readonly'],['Apps Script','script.projects.readonly'],['Google Ads','adwords']];
 const scopeUrl=(s:string)=>'https://www.googleapis.com/auth/'+s;
 /** "Select all" never ticks full Drive access (it allows trashing any file): that one stays an explicit choice. */
-const SELECT_ALL=APIS.filter(([,id])=>id!=='drive').map(([,id])=>scopeUrl(id));
+const SELECT_ALL=APIS.filter(([,id])=>id!=='drive'&&id!=='youtube.upload').map(([,id])=>scopeUrl(id));
 const fill=(s:string,v:Record<string,string|number>)=>s.replace(/\{(\w+)\}/g,(_,k)=>String(v[k]??''));
 
 export default function AccountView(){
@@ -133,6 +134,7 @@ export default function AccountView(){
 
    <DriveStorage token={token} googleConnected={!!acc?.google.connected}/>
 
+   <LinkedInConnect token={token}/>
    <ScienceKeys token={token}/>
   </>}
 

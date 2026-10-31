@@ -284,7 +284,7 @@ Vercel Hobby is intended for **personal non-commercial use**; a public branded s
 - OAuth read-only; user consent required.
 - All API tools must verify the property belongs to the authenticated caller.
 - Authenticated MCP remains disabled until OAuth for MCP clients, session isolation, CSRF protection and rate limiting are implemented and tested.
-- No automatic article publishing or destructive Google actions in the current version.
+- No automatic publishing: LinkedIn posts and YouTube uploads are previewed first and need the user's explicit yes (single-use confirmation, valid 15 minutes). Google Drive items are only moved to the trash, after an explicit confirmation, never deleted.
 - Verify Google's OAuth publishing requirements, privacy policy and access controls before inviting external users.
 
 ## License and third-party notices
@@ -484,6 +484,14 @@ Read-only tools on the remote MCP, using the **YouTube Analytics API** (`yt-anal
 - `youtube_video_comments` (YouTube Data API, existing `youtube.readonly` permission): comments of any public video, compact, by relevance or date, optional words filter and replies. Viewer content is returned as data.
 
 Enable **YouTube Analytics API** (`youtubeanalytics.googleapis.com`) in the Google Cloud project, then reconnect Google with the new box checked. Data lags 1 to 3 days. Revenue metrics (YouTube Partner Program) are not included.
+
+### Publishing on LinkedIn and YouTube (November 2026)
+
+- `linkedin_post`: a post on the user's **own** LinkedIn profile: text up to 3,000 characters, with one image (JPEG, PNG or GIF, 10 MB) or one video (MP4, 100 MB) from a public https file, a Google Drive file or a small inline file, or with a link preview; visible to everyone or to connections only.
+- `youtube_upload_video`: a video (100 MB max) on the user's **own** channel: title, description, tags, category, language, private by default, unlisted, public or scheduled (`publishAt`). The "made for kids" and "altered or synthetic content" declarations are required arguments (realistic AI-generated video must be declared).
+- Always two steps: `confirm=false` publishes nothing and returns the exact preview with a `confirmationToken` (HMAC bound to the user, the content and the bytes of an inline file; usable from 10 seconds to 15 minutes after the preview). `confirm=true` publishes **once**: a repeated call with the same token publishes nothing again (`cmg_publish_log`).
+- **LinkedIn, bring your own app:** each user creates a LinkedIn developer app (it must be linked to a LinkedIn Page), adds the self-serve products *Share on LinkedIn* and *Sign In with LinkedIn using OpenID Connect*, registers the redirect URL `https://seo.cammicgo.com/api/auth/linkedin/callback`, saves the client ID and secret on `/account` (checked with LinkedIn, secret encrypted with AES-256-GCM, never returned to the browser or the assistant), then clicks **Connect LinkedIn**. Self-serve tokens last 60 days without refresh: reconnect then. Guide: <https://seo.cammicgo.com/setup/linkedin>.
+- **YouTube** uses the user's own Google Cloud project: check **YouTube ✎ (upload)** (`youtube.upload`) on `/account` and reconnect Google. Each upload costs 1 unit of the *Video Uploads* quota (100 per day per project).
 
 ### Research tools with an edge over plain web search (November 2026)
 
