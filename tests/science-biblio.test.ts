@@ -138,3 +138,24 @@ test('JATS full text to plain text without references', () => {
   assert.match(t, /Hello world\./);
   assert.ok(!t.includes('Ref 1'));
 });
+
+test('title guessing inside free-text references', () => {
+  assert.equal(s.guessTitle('Vaswani A. et al. (2017) Attention is all you need. NeurIPS.'), 'Attention is all you need');
+  assert.equal(s.guessTitle('Smith J, Doe A. "A study of SEO in 2020". Journal of Web 3(2):1-10'), 'A study of SEO in 2020');
+  assert.equal(s.guessTitle('Bourquard T, Poupon A. Protein docking with Voronoi tessellations. Proteins 2015;83(4):123-130.'), 'Protein docking with Voronoi tessellations');
+  assert.deepEqual(s.splitName('Anne Poupon B'), {family: 'Poupon', given: 'Anne B'});
+});
+
+test('name resolution: one dominant profile is chosen, real homonyms stay ambiguous', async () => {
+  const profile = (id: string, name: string, works: number, orcid: string | null = null) => ({id: 'https://openalex.org/' + id, display_name: name, works_count: works, orcid});
+  const answer = (results: unknown[]): s.Fetcher => async () => new Response(JSON.stringify({results}));
+  const dom = await s.resolveAuthor('Yann LeCun', [], {}, answer([profile('A1', 'Yann LeCun', 548), profile('A2', 'Yann LeCun', 4)]));
+  assert.equal(dom.status, 'resolved');
+  assert.equal(dom.status === 'resolved' && dom.profiles[0].id, 'A1');
+  assert.match(dom.notes.join(' '), /extraAuthorIds/);
+  const homonyms = await s.resolveAuthor('Jean Martin', [], {}, answer([profile('A3', 'Jean Martin', 120), profile('A4', 'Jean Martin', 85)]));
+  assert.equal(homonyms.status, 'ambiguous');
+  const shared = await s.resolveAuthor('Ada Lovelace', [], {}, answer([profile('A5', 'Ada Lovelace', 30, 'https://orcid.org/0000-0002-1825-0097'), profile('A6', 'Ada Lovelace', 25, 'https://orcid.org/0000-0002-1825-0097')]));
+  assert.equal(shared.status, 'resolved');
+  assert.equal(shared.status === 'resolved' && shared.profiles.length, 2);
+});

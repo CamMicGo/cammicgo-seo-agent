@@ -417,7 +417,13 @@ export async function resolveAuthor(input:string,extraIds:string[],keys:Keys,f:F
   if(!r.ok){notes.push('OpenAlex: '+sourceError('openalex',r.status,!!keys.openalex));return {status:'not_found',candidates:[],notes};}
   const all=((await r.json() as {results?:OAAuthorFull[]}).results??[]).map(parseAuthorProfile).filter((p):p is AuthorProfile=>!!p);
   const exact=all.filter(p=>sameName(p.name,ref.value)||p.alternativeNames.some(n=>sameName(n,ref.value)));
+  const byWorks=[...exact].sort((a,b)=>(b.works??0)-(a.works??0));
   if(exact.length===1){main=exact[0];via='name';}
+  else if(byWorks.length>1&&(byWorks[0].works??0)>=20&&byWorks.slice(1).every(p=>(p.works??0)*10<=(byWorks[0].works??0))){
+   // One main profile and tiny ones with the same name: usually the same person split by OpenAlex, or homonyms with few papers.
+   main=byWorks[0];via='name (dominant profile)';
+   notes.push('Other OpenAlex profiles with this name have very few works ('+byWorks.slice(1).map(p=>p.id+': '+(p.works??0)).join(', ')+'): if they are the same person, call again with extraAuthorIds to merge them.');
+  }
   else{
    const sameOrcid=exact.length>1&&exact.every(p=>p.orcid&&p.orcid===exact[0].orcid);
    if(sameOrcid)return {status:'resolved',profiles:exact,via:'name (profiles sharing one ORCID)',notes};
@@ -522,7 +528,9 @@ export function worksSummary(works:BibWork[]){
 const PARTICLES=new Set(['de','du','des','la','le','van','von','der','den','da','dos','das','di','del','della','ter','ten','bin','al','el']);
 /** Splits a display name into family and given names ("Jean de La Fontaine" → "de La Fontaine", "Jean"). */
 export function splitName(n:string){
- const t=n.trim().split(/\s+/);if(t.length===1)return {family:t[0],given:''};
+ let t=n.trim().split(/\s+/);if(t.length===1)return {family:t[0],given:''};
+ // "Anne Poupon B" (trailing initial): the initial belongs to the given names
+ if(t.length>2&&/^[A-Z]\.?$/.test(t[t.length-1])){const ini=t[t.length-1];t=[...t.slice(0,-2),ini,t[t.length-2]];}
  let i=t.length-1;for(let k=1;k<t.length-1;k++)if(PARTICLES.has(t[k].toLowerCase())){i=k;break;}
  return {family:t.slice(i).join(' '),given:t.slice(0,i).join(' ')};
 }
@@ -639,6 +647,14 @@ const tokens=(s:string)=>new Set(s.toLowerCase().normalize('NFD').replace(/[̀-�
 export function titleSimilarity(reference:string,title:string){
  const t=[...tokens(title)];if(!t.length)return 0;const r=tokens(reference);return t.filter(x=>r.has(x)).length/t.length;
 }
+/** Best guess of the title inside a free-text reference (longest sentence that is not an author list or a venue). */
+export function guessTitle(ref:string){
+ const quoted=/["“«]\s*([^"”»]{8,}?)\s*["”»]/.exec(ref);if(quoted)return quoted[1].replace(/[.,;:]+$/,'');
+ const parts=ref.replace(/https?:\/\/\S+|doi:\s*\S+/gi,'').split(/(?<=[.?!])\s+/).map(p=>p.replace(/\(?\b(19|20)\d{2}[a-z]?\b\)?[.,:]?/g,'').replace(/^[\s.,:;-]+|[\s.,:;-]+$/g,'')).filter(Boolean);
+ const score=(p:string)=>{const w=p.split(/\s+/);const initials=(p.match(/\b[A-Z]\.?(?=[\s,]|$)/g)??[]).length;const commas=(p.match(/,/g)??[]).length;
+  return w.length-initials*2-commas*1.5-(/et al/i.test(p)?5:0)-(/\d+\s*\(\d+\)|\d+\s*[-–]\s*\d+|\bvol\b|\bpp\b/i.test(p)?4:0);};
+ return parts.sort((a,b)=>score(b)-score(a))[0]??'';
+}
 export type Verification={input:string;status:'verified'|'probable'|'mismatch'|'not_found'|'retracted';doi:string|null;title:string|null;year:number|null;authors:string[];venue:string|null;
  similarity:number|null;url:string|null;note?:string};
 type CrossrefItem={DOI?:string;title?:string[];author?:Array<{given?:string;family?:string;name?:string}>;issued?:{'date-parts'?:number[][]};'container-title'?:string[];score?:number};
@@ -666,14 +682,25 @@ export async function verifyReference(input:string,keys:Keys,f:Fetcher=fetch):Pr
    return {...base,doi:pid.value,status:'not_found',note:'This DOI does not exist in OpenAlex or Crossref.'};
   }
  }
- const r=await getText(f,'https://api.crossref.org/works?'+new URLSearchParams({'query.bibliographic':text,rows:'3',select:'DOI,title,author,issued,container-title,score',mailto:CONTACT_EMAIL}));
- if(!r.ok)return {...base,status:'not_found',note:'Crossref: HTTP '+r.status};
- const items=((await r.json() as {message?:{items?:CrossrefItem[]}}).message?.items??[]).map(crossrefWork).filter(w=>w.title);
- const best=items.map(w=>({w,s:titleSimilarity(text,w.title!)})).sort((a,b)=>b.s-a.s)[0];
- if(!best||best.s<0.5)return {...base,status:'not_found',similarity:best?Math.round(best.s*100)/100:null,note:'No published work matches this reference.'};
- let retracted=false;
- if(best.w.doi){const o=await openAlexWork({kind:'doi',value:best.w.doi},keys,f).catch(()=>({work:null}));retracted=o.work?.is_retracted===true;}
- return finish(best.w,retracted);
+ type Cand={doi:string|null;title:string|null;year:number|null;authors:string[];venue:string|null;citations:number;retracted:boolean};
+ const cands:Cand[]=[];
+ const [cr,oa]=await Promise.all([
+  getText(f,'https://api.crossref.org/works?'+new URLSearchParams({'query.bibliographic':text,rows:'5',select:'DOI,title,author,issued,container-title,score,is-referenced-by-count',mailto:CONTACT_EMAIL})).catch(()=>null),
+  getText(f,'https://api.openalex.org/works?'+new URLSearchParams({filter:'title.search:'+(guessTitle(text)||text).replace(/[,:|]/g,' ').slice(0,200),'per-page':'5',sort:'cited_by_count:desc',select:WORK_SELECT,mailto:CONTACT_EMAIL})+oaKeyParam(keys)).catch(()=>null),
+ ]);
+ if(cr?.ok)for(const it of ((await cr.json()) as {message?:{items?:Array<CrossrefItem&{'is-referenced-by-count'?:number}>}}).message?.items??[]){const w=crossrefWork(it);if(w.title)cands.push({...w,citations:it['is-referenced-by-count']??0,retracted:false});}
+ if(oa?.ok)for(const it of ((await oa.json()) as {results?:OABibWork[]}).results??[]){const w=parseBibWork(it);if(w)cands.push({doi:w.doi,title:w.title,year:w.year,authors:w.authors.map(a=>a.name),venue:w.venue,citations:w.citations??0,retracted:w.retracted});}
+ if(!cands.length)return {...base,status:'not_found',note:cr||oa?'No published work matches this reference.':'Crossref and OpenAlex unavailable.'};
+ const low=text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+ const scored=cands.map(c=>{const sim=titleSimilarity(text,c.title!);
+  const yearOk=yearIn&&c.year?Math.abs(yearIn-c.year)<=1:false;
+  const authorOk=c.authors.some(a=>{const fam=splitName(a).family.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');return fam.length>=3&&low.includes(fam);});
+  return {c,sim,score:sim+(yearOk?0.3:0)+(authorOk?0.3:0)+Math.log10(c.citations+1)/20};}).sort((a,b)=>b.score-a.score);
+ const best=scored[0];
+ if(best.sim<0.5)return {...base,status:'not_found',similarity:Math.round(best.sim*100)/100,note:'No published work matches this reference.'};
+ let retracted=best.c.retracted;
+ if(!retracted&&best.c.doi){const o=await openAlexWork({kind:'doi',value:best.c.doi},keys,f).catch(()=>({work:null}));retracted=o.work?.is_retracted===true;}
+ return finish(best.c,retracted);
 }
 
 // ---------- legal open-access full text ----------
@@ -690,7 +717,7 @@ export async function openAccessCandidates(id:PaperId,keys:Keys,f:Fetcher=fetch)
  const {work,note}=await openAlexWork(id,keys,f).catch(()=>({work:null,note:'OpenAlex unavailable'}));if(note&&!out.length)notes.push(note);
  if(work){
   title??=squash(str(work.display_name));doi??=cleanDoi(work.doi);
-  const pmcid=str(work.ids?.pmcid)?.replace(/.*\//,'');if(pmcid)add({url:'https://www.ebi.ac.uk/europepmc/webservices/rest/'+pmcid.toUpperCase()+'/fullTextXML',kind:'jats',source:'Europe PMC',license:null});
+  const pmcRaw=str(work.ids?.pmcid)?.replace(/.*\//,'');const pmcid=pmcRaw?(/^pmc/i.test(pmcRaw)?pmcRaw:'PMC'+pmcRaw):null;if(pmcid)add({url:'https://www.ebi.ac.uk/europepmc/webservices/rest/'+pmcid.toUpperCase()+'/fullTextXML',kind:'jats',source:'Europe PMC',license:null});
   const ax=/arxiv\.(\d{4}\.\d{4,5})/i.exec(String(work.doi??''))?.[1];if(ax)add({url:'https://arxiv.org/pdf/'+ax,kind:'pdf',source:'arXiv',license:null});
   if(work.best_oa_location?.pdf_url)add({url:work.best_oa_location.pdf_url,kind:'pdf',source:'OpenAlex (best open-access copy)',license:str(work.best_oa_location.license)});
   for(const l of work.locations??[])if(l.is_oa&&l.pdf_url)add({url:l.pdf_url,kind:'pdf',source:l.source?.display_name??'open-access copy',license:str(l.license)});
@@ -698,7 +725,8 @@ export async function openAccessCandidates(id:PaperId,keys:Keys,f:Fetcher=fetch)
  if(doi){
   try{const r=await getText(f,'https://api.unpaywall.org/v2/'+encodeURIComponent(doi)+'?email='+CONTACT_EMAIL);
    if(r.ok){const u=await r.json() as {oa_locations?:Array<{url_for_pdf?:string|null;url?:string|null;license?:string|null;host_type?:string}>};
-    for(const l of u.oa_locations??[])if(l.url_for_pdf)add({url:l.url_for_pdf,kind:'pdf',source:'Unpaywall ('+(l.host_type??'oa')+')',license:str(l.license)});}}catch{notes.push('Unpaywall unavailable');}
+    for(const l of u.oa_locations??[])if(l.url_for_pdf)add({url:l.url_for_pdf,kind:'pdf',source:'Unpaywall ('+(l.host_type??'oa')+')',license:str(l.license)});
+    for(const l of u.oa_locations??[])if(!l.url_for_pdf&&l.url)add({url:l.url,kind:'html',source:'Unpaywall landing page ('+(l.host_type??'oa')+')',license:str(l.license)});}}catch{notes.push('Unpaywall unavailable');}
  }
  return {title,doi,candidates:out.slice(0,6),notes};
 }
