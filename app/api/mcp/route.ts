@@ -480,13 +480,14 @@ async function handler(req:NextRequest){
    });
 
    server.registerTool('drive_upload_file',{annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},title:'Upload a file to Google Drive',
-    description:'Create a NEW file in the user\'s Google Drive from an explicit source: source.type="text" (content you write, e.g. a report in Markdown, CSV or JSON), "base64" (small binary file the user gave you, max '+Math.round(drive.DRIVE_LIMITS.maxUploadBytes/1048576)+' MB), "cammicgo_export" (a CamMicGo channel transcript document by exportId, Markdown or CSV, uploaded with a resumable upload) or "url" (a public https file the user asked to save, e.g. a paper PDF, max '+Math.round(drive.DRIVE_LIMITS.maxExportUploadBytes/1048576)+' MB). Never reads local or server files. Existing files are never overwritten: a numbered name is used (ifExists="rename", default) or the call fails (ifExists="fail"). Set convertToGoogleDoc=true to turn text/Markdown/HTML into a Google Doc (or CSV into a Google Sheet). Requires the "Google Drive ✎ (drive.file)" permission. '+DRIVE_FILE_LIMIT_NOTE,
+    description:'Create a NEW file in the user\'s Google Drive from an explicit source: source.type="text" (content you write, e.g. a report in Markdown, CSV or JSON), "base64" (small binary file the user gave you, max '+Math.round(drive.DRIVE_LIMITS.maxUploadBytes/1048576)+' MB), "cammicgo_export" (a CamMicGo channel transcript document by exportId, Markdown or CSV, uploaded with a resumable upload) or "signed_url" (a temporary HTTPS download URL with optional SHA-256 verification), or "url" (a public https file the user asked to save, e.g. a paper PDF, max '+Math.round(drive.DRIVE_LIMITS.maxExportUploadBytes/1048576)+' MB). Never reads local or server files. Existing files are never overwritten: a numbered name is used (ifExists="rename", default) or the call fails (ifExists="fail"). Set convertToGoogleDoc=true to turn text/Markdown/HTML into a Google Doc (or CSV into a Google Sheet). Requires the "Google Drive ✎ (drive.file)" permission. '+DRIVE_FILE_LIMIT_NOTE,
     inputSchema:z.object({name:z.string().min(1).max(255),parentId:driveId.default('root'),
      source:z.discriminatedUnion('type',[
       z.object({type:z.literal('text'),content:z.string().max(drive.DRIVE_LIMITS.maxUploadBytes)}),
       z.object({type:z.literal('base64'),data:z.string().max(Math.ceil(drive.DRIVE_LIMITS.maxUploadBytes*4/3)+4)}),
       z.object({type:z.literal('cammicgo_export'),exportId:z.string().max(40),format:z.enum(['markdown','csv']).default('markdown'),part:z.number().int().min(1).max(5).default(1)}),
       z.object({type:z.literal('url'),url:z.string().url().max(2000).describe('Public https address of a file the user asked to save, e.g. a paper PDF from science_paper')}),
+      z.object({type:z.literal('signed_url'),url:z.string().url().max(4000).describe('Short-lived HTTPS download URL; do not include private network addresses'),sha256:z.string().regex(/^[a-fA-F0-9]{64}$/).optional().describe('Optional SHA-256 hex digest to verify the downloaded bytes')}),
      ]),
      mimeType:z.string().max(120).regex(/^[\w.+-]+\/[\w.+-]+$/).optional().describe('Defaults from the file extension'),
      convertToGoogleDoc:z.boolean().default(false),ifExists:z.enum(['rename','fail']).default('rename')})},async args=>{
@@ -506,6 +507,7 @@ async function handler(req:NextRequest){
      const got=await fetchPublicFile(src.url,drive.DRIVE_LIMITS.maxExportUploadBytes);
      if('error' in got)return asText(got);
      content=got.content;limit=drive.DRIVE_LIMITS.maxExportUploadBytes;urlMime=got.mime;
+     if(src.type==='signed_url'&&src.sha256&&createHash('sha256').update(content).digest('hex')!==src.sha256.toLowerCase())return asText({error:'checksum_mismatch',messageForUser:'The downloaded file does not match the expected SHA-256; upload cancelled.'});
     }
     if(!content.length)return asText({error:'empty_content'});
     if(content.length>limit)return asText({error:'file_too_large',size:drive.humanBytes(content.length),limit:drive.humanBytes(limit)});
