@@ -1,5 +1,5 @@
-import Link from 'next/link';
 'use client';
+import Link from 'next/link';
 import {useEffect,useMemo,useState} from 'react';
 type Row={dimensionValues?:Array<{value:string}>;metricValues?:Array<{value:string}>};
 type Photo={available:boolean;imageUrl?:string;sourceUrl?:string;credit?:string;license?:string;caption?:string};
