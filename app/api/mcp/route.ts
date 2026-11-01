@@ -509,7 +509,7 @@ async function handler(req:NextRequest){
      const got=await fetchPublicFile(src.url,drive.DRIVE_LIMITS.maxExportUploadBytes);
      if('error' in got)return asText(got);
      content=got.content;limit=drive.DRIVE_LIMITS.maxExportUploadBytes;urlMime=got.mime;
-     if(drive.isRemoteImageUpload(name,args.mimeType,urlMime))return asText({error:'manual_image_upload_required',messageForUser:'Remote image imports are disabled. Upload the image manually to Google Drive.'});
+     if(drive.isRemoteImageUpload(name,args.mimeType,urlMime)||drive.hasImageSignature(content))return asText({error:'manual_image_upload_required',messageForUser:'Remote image imports are disabled. Upload the image manually to Google Drive.'});
     }
     if(!content.length)return asText({error:'empty_content'});
     if(content.length>limit)return asText({error:'file_too_large',size:drive.humanBytes(content.length),limit:drive.humanBytes(limit)});
