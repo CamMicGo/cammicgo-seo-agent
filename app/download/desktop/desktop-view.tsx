@@ -18,7 +18,7 @@ export default function DesktopView(){
    <div className="dk-logos" aria-hidden="true">{os.map(o=><img key={o.id} src={`/os-logos/${o.id}.svg`} alt="" width="46" height="46"/>)}</div>
    <h1>{t.h1a} <span>{t.h1b}</span></h1>
    <p className="lead">{t.lead}</p>
-   <p className="dk-note">{post!==undefined?<>{pre}<a href="/setup/local">{t.noteLink}</a>{post}</>:<>{t.note} <a href="/setup/local">{t.noteLink} ↗</a></>}</p>
+   <p className="dk-note">{post!==undefined?<>{pre}<Link href="/setup/local">{t.noteLink}</Link>{post}</>:<>{t.note} <Link href="/setup/local">{t.noteLink} ↗</Link></>}</p>
   </section>
   <section className="feature-section" style={{paddingTop:10}} aria-labelledby="dk-dl">
    <span className="kicker">{t.dlKicker}</span>
