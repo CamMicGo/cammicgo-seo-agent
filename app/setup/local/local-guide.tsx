@@ -123,7 +123,7 @@ export function LocalGuide({os}:{os:Os}){
  const name=os==='windows'?'Windows':os==='macos'?'macOS':'Linux';
  return <div className="site">
   <main className="lg-guide" id="lg-top">
-   <a className="lg-back" href="/setup/local">← {c.ui.menu}</a>
+   <Link className="lg-back" href="/setup/local">← {c.ui.menu}</Link>
    <div className="lg-guide-head"><span className="lg-os-icon"><OsIcon os={os}/></span><div><span className="kicker">{t.kicker}</span><h1>{name}</h1><p>{t.os[os]}</p></div></div>
    <div className="lg-progress" role="progressbar" aria-valuemin={1} aria-valuemax={total} aria-valuenow={step+1}><span style={{width:((step+1)/total*100)+'%'}}/></div>
    <ol className="lg-dots">{t.steps.map(([s],i)=><li key={s}><button type="button" aria-current={i===step?'step':undefined} className={i<step?'done':''} onClick={()=>go(i)} aria-label={c.ui.step+' '+(i+1)+': '+s}>{i<step?'✓':i+1}</button></li>)}</ol>
@@ -135,7 +135,7 @@ export function LocalGuide({os}:{os:Os}){
    </section>
    <div className="lg-nav">
     <button type="button" className="lg-btn lg-btn-ghost" onClick={()=>go(step-1)} disabled={step===0}>← {c.ui.back}</button>
-    {step<total-1?<button type="button" className="lg-btn" onClick={()=>go(step+1)}>{c.ui.next} →</button>:<a className="lg-btn" href="/setup/local">{c.ui.done}</a>}
+    {step<total-1?<button type="button" className="lg-btn" onClick={()=>go(step+1)}>{c.ui.next} →</button>:<Link className="lg-btn" href="/setup/local">{c.ui.done}</Link>}
    </div>
   </main>
  </div>;
