@@ -1,5 +1,5 @@
-import Link from 'next/link';
 'use client';
+import Link from 'next/link';
 import {useEffect,useState,type ReactNode} from 'react';
 import {useT} from '../../lang-provider';
 import {localCopy,type LocalCopy} from '@/lib/copy/local';
