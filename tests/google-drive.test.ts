@@ -174,3 +174,9 @@ test('adversarial URL and Drive query payloads cannot target private resources',
  assert.ok(q.includes(d.escapeQuery(payload)));
  assert.ok(!d.isDriveId(payload));
 });
+
+test('remote URL upload rejects image signatures even with fake PDF name and MIME',()=>{
+ const enc=new TextEncoder();
+ for(const bytes of [new Uint8Array([137,80,78,71,13,10,26,10,0]),new Uint8Array([255,216,255,224]),enc.encode('GIF89a'),enc.encode('RIFFxxxxWEBP'),enc.encode('<svg xmlns="http://www.w3.org/2000/svg"></svg>'),enc.encode('<?xml version="1.0"?><svg></svg>')])assert.equal(d.hasImageSignature(bytes),true);
+ for(const bytes of [enc.encode('%PDF-1.7'),enc.encode('plain text'),new Uint8Array([80,75,3,4])])assert.equal(d.hasImageSignature(bytes),false);
+});
