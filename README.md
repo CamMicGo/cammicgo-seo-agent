@@ -218,6 +218,7 @@ npm run test:mcp:local       # local MCP protocol smoke test (no Google call)
 - [Google modules and security](docs/GOOGLE-MODULES-AND-SECURITY.md)
 - [Quotas and launch](docs/QUOTAS-AND-LAUNCH.md)
 - [Supabase MCP OAuth](docs/SUPABASE-MCP-OAUTH.md) and [the consent screen](docs/SUPABASE-MCP-OAUTH-CONSENT.md)
+- [Publishing in the Claude and ChatGPT directories](docs/DIRECTORY-SUBMISSION.md) (in French)
 - [Plugin description](docs/PLUGIN-DESCRIPTION.md)
 
 ## License and notices
