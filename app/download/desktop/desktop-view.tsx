@@ -1,5 +1,5 @@
-import Link from 'next/link';
 'use client';
+import Link from 'next/link';
 import {useT} from '../../lang-provider';
 import {desktopCopy} from '@/lib/copy/apps';
 import Rich from '../../rich';
