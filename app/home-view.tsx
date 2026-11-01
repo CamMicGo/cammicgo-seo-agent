@@ -1,5 +1,5 @@
-import Link from 'next/link';
 'use client';
+import Link from 'next/link';
 import GoogleServices from './google-services';
 import {useT} from './lang-provider';
 import {homeCopy} from '@/lib/copy/home';
