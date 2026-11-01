@@ -348,3 +348,4 @@ body:has(#a11y-dialog) .sh-wrap{z-index:170}
 .acc-row{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0}
 .setup-redirect{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.setup-redirect code{padding:8px 10px;background:#f4f7fd;border-radius:8px;word-break:break-all}
 .li-title{display:flex;align-items:center;gap:10px}.li-title img{flex-shrink:0;border-radius:6px}.li-guide-logo{display:block;margin:10px 0 4px;border-radius:10px}
+.src-title{display:flex;align-items:center;gap:10px}.src-title img{flex-shrink:0;border-radius:6px;background:#f0f5ff;padding:3px;box-sizing:content-box}.src-list{list-style:none;padding-left:0;display:grid;gap:12px}.src-list li{display:flex;gap:10px;align-items:flex-start}.src-list img{flex-shrink:0;margin-top:2px;border-radius:5px;background:#f0f5ff;padding:3px;box-sizing:content-box}
