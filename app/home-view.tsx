@@ -2,10 +2,12 @@
 import GoogleServices from './google-services';
 import {useT} from './lang-provider';
 import {homeCopy} from '@/lib/copy/home';
+import {legalLinksCopy} from '@/lib/copy/terms';
 
 const REPO='https://github.com/CamMicGo/cammicgo-seo-agent';
 export default function HomeView(){
  const t=useT(homeCopy);
+ const l=useT(legalLinksCopy);
  return <div className="site"><main>
   <section className="hero">
    <span className="eyebrow"><span className="dot"/> {t.eyebrow}</span>
@@ -26,5 +28,5 @@ export default function HomeView(){
    <code>https://seo.cammicgo.com/api/mcp</code>
   </div><div className="status"><span className="status-dot"/> {t.status} <a href="/api/health">{t.health}</a></div></section>
  </main>
- <footer><span>{t.builtBy} <a href="https://www.cammicgo.com">CamMicGo</a> · {t.tests}</span><span><a href={REPO}>{t.source}</a> · {t.license}</span></footer></div>;
+ <footer><span>{t.builtBy} <a href="https://www.cammicgo.com">CamMicGo</a> · {t.tests}</span><span><a href={REPO}>{t.source}</a> · {t.license} · <a href="/privacy">{l.privacy}</a> · <a href="/terms">{l.terms}</a></span></footer></div>;
 }
