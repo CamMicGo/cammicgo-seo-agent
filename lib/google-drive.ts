@@ -258,3 +258,14 @@ export function isRemoteImageUpload(name:string,requestedMime?:string|null,respo
  const ext=/\.(png|jpe?g|gif|webp|avif|bmp|svg|tiff?)$/i.test(name);
  return ext||[requestedMime,responseMime].some(m=>typeof m==='string'&&m.toLowerCase().split(';')[0].trim().startsWith('image/'));
 }
+
+/** Detect image payloads even if the remote server lies about MIME or filename. */
+export function hasImageSignature(bytes:Uint8Array){
+ const b=bytes;
+ const starts=(a:number[])=>b.length>=a.length&&a.every((v,i)=>b[i]===v);
+ if(starts([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a])||starts([0xff,0xd8,0xff])||starts([0x47,0x49,0x46,0x38])||starts([0x42,0x4d]))return true;
+ if(b.length>=12&&String.fromCharCode(...b.subarray(0,4))==='RIFF'&&String.fromCharCode(...b.subarray(8,12))==='WEBP')return true;
+ if(b.length>=12&&String.fromCharCode(...b.subarray(4,8))==='ftyp'&&['avif','avis','mif1','msf1','heic','heix'].includes(String.fromCharCode(...b.subarray(8,12))))return true;
+ const prefix=new TextDecoder().decode(b.subarray(0,Math.min(b.length,1024))).replace(/^\uFEFF/,'').trimStart();
+ return /^<svg(?:\s|>)/i.test(prefix)||/^<\?xml[^>]*>\s*<svg(?:\s|>)/i.test(prefix);
+}
