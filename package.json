@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run verify:production && next build",
+    "verify:production": "npm run typecheck && npm test && npm run lint",
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "setup:local": "node scripts/setup-local.mjs",
