@@ -252,3 +252,9 @@ export function nameFromResponse(url:URL,disposition:string|null){
  const raw=m?decodeURIComponent(m[1]):decodeURIComponent(url.pathname.split('/').filter(Boolean).pop()??'');
  return cleanName(raw)??null;
 }
+
+/** User-controlled Drive image workflow: never import images through a remote URL. */
+export function isRemoteImageUpload(name:string,requestedMime?:string|null,responseMime?:string|null){
+ const ext=/\.(png|jpe?g|gif|webp|avif|bmp|svg|tiff?)$/i.test(name);
+ return ext||[requestedMime,responseMime].some(m=>typeof m==='string'&&m.toLowerCase().split(';')[0].trim().startsWith('image/'));
+}
