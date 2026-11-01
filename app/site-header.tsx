@@ -1,3 +1,4 @@
+import Link from 'next/link';
 'use client';
 import {useEffect,useState} from 'react';
 import {usePathname} from 'next/navigation';
@@ -32,7 +33,7 @@ export default function SiteHeader(){
   </select></label>;
  return <header className="sh-wrap" data-open={open||undefined}>
   <div className="sh">
-   <a className="sh-brand" href="/"><img src={LOGO} alt="" width="38" height="38"/><span>CamMicGo <b>SEO MCP</b></span></a>
+   <Link className="sh-brand" href="/"><img src={LOGO} alt="" width="38" height="38"/><span>CamMicGo <b>SEO MCP</b></span></Link>
    <nav className="sh-nav" aria-label="Main">{links.map(([k,href,label])=><a key={k} href={href} aria-current={k===active?'page':undefined}>{label}</a>)}</nav>
    <div className="sh-tools">
     <span className="sh-desk">{langSelect('sh-lang-desktop')}</span>
