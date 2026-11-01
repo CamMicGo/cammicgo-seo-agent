@@ -8,7 +8,7 @@ import {googleOAuthCallback} from '@/lib/oauth-callback';
 import type {Credentials,Pending} from '@/lib/google-session';
 
 export {DRIVE_WRITE_SCOPES,splitScopes} from '@/lib/google-scopes';
-export type LinkedPending=Pending&{mcpUserId:string;authorizationId?:string;returnTo?:string;kind?:'main'|'drive_write';followUp?:string[];chained?:boolean};
+export type LinkedPending=Pending&{mcpUserId:string;authorizationId?:string;returnTo?:string;kind?:'main'|'drive_write';followUp?:string[];chained?:boolean;dropDriveWrite?:boolean};
 
 export function googleAuthRequest(credentials:Credentials,scopes:string[],extra:Omit<LinkedPending,'state'|'verifier'|'credentials'|'issuedAt'>){
  const state=randomBytes(24).toString('hex'),verifier=randomBytes(32).toString('base64url');

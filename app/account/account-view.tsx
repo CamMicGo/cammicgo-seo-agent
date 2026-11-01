@@ -33,7 +33,7 @@ export default function AccountView(){
 
  const load=useCallback(async(tk:string)=>{
   const r=await fetch('/api/account',{headers:{Authorization:'Bearer '+tk},cache:'no-store'});
-  if(r.ok){const a=await r.json() as Account;setAcc(a);if(a.google.scopes?.length){const s=a.google.scopes.filter(x=>APIS.some(([,id])=>scopeUrl(id)===x));if(s.length)setScopes(s);}}
+  if(r.ok){const a=await r.json() as Account;setAcc(a);const granted=[...(a.google.scopes??[]),...(a.google.driveWrite??[])];if(granted.length){const s=[...new Set(granted)].filter(x=>APIS.some(([,id])=>scopeUrl(id)===x));if(s.length)setScopes(s);}}
  },[]);
 
  useEffect(()=>{

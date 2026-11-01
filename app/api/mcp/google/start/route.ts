@@ -3,6 +3,7 @@ import {encrypt,STATE_COOKIE,cookieOptions,type Credentials} from '@/lib/google-
 import {googleAuthRequest,splitScopes} from '@/lib/google-oauth-url';
 import {verifySupabaseMcpUser} from '@/lib/supabase-mcp-auth';
 import {clientCredentials,isAdmin} from '@/lib/account';
+import {readDriveWrite} from '@/lib/mcp-google-store';
 const ALLOWED_SCOPES=["https://www.googleapis.com/auth/webmasters.readonly","https://www.googleapis.com/auth/analytics.readonly","https://www.googleapis.com/auth/youtube.readonly","https://www.googleapis.com/auth/yt-analytics.readonly","https://www.googleapis.com/auth/youtube.upload","https://www.googleapis.com/auth/calendar.readonly","https://www.googleapis.com/auth/gmail.readonly","https://www.googleapis.com/auth/drive.readonly","https://www.googleapis.com/auth/drive.file","https://www.googleapis.com/auth/drive","https://www.googleapis.com/auth/documents.readonly","https://www.googleapis.com/auth/spreadsheets.readonly","https://www.googleapis.com/auth/presentations.readonly","https://www.googleapis.com/auth/tasks.readonly","https://www.googleapis.com/auth/contacts.readonly","https://www.googleapis.com/auth/classroom.courses.readonly","https://www.googleapis.com/auth/chat.spaces.readonly","https://www.googleapis.com/auth/script.projects.readonly","https://www.googleapis.com/auth/adwords"];
 const DEFAULT_SCOPES=ALLOWED_SCOPES.slice(0,4);
 /**
@@ -32,8 +33,14 @@ export async function POST(req:NextRequest){
  const returnTo=payload.returnTo==='/account'?'/account':undefined;
  // Drive writing (drive.file / drive) is granted separately: Google refuses it together with YouTube scopes.
  const {main,write}=splitScopes(scopes);
- const first=main.length?{scopes:main,kind:'main' as const,followUp:write.length?write:undefined}:{scopes:write,kind:'drive_write' as const,followUp:undefined};
- const {url,pending}=googleAuthRequest(credentials,first.scopes,{mcpUserId:user.id,authorizationId:payload.authorizationId,returnTo,kind:first.kind,followUp:first.followUp});
+ // Ask for Drive writing again only when needed: the stored write grant (same OAuth client) may already cover it.
+ // When the user unchecked Drive writing, the stored write grant is removed once the new main grant succeeds.
+ const stored=await readDriveWrite(user.id).catch(()=>null);
+ const covered=!!stored?.refreshToken&&stored.credentials.clientId===credentials.clientId&&write.every(s=>stored.scopes?.includes(s));
+ const followUp=write.length&&!(main.length&&covered)?write:undefined;
+ const dropDriveWrite=!!stored&&!write.length&&main.length>0;
+ const first=main.length?{scopes:main,kind:'main' as const,followUp}:{scopes:write,kind:'drive_write' as const,followUp:undefined};
+ const {url,pending}=googleAuthRequest(credentials,first.scopes,{mcpUserId:user.id,authorizationId:payload.authorizationId,returnTo,kind:first.kind,followUp:first.followUp,...(dropDriveWrite?{dropDriveWrite:true}:{})});
  const result=NextResponse.json({url,steps:first.followUp?2:1});
  result.cookies.set(STATE_COOKIE,encrypt(pending),{...cookieOptions,maxAge:600});
  return result;

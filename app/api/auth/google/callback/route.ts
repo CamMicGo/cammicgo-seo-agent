@@ -28,7 +28,11 @@ export async function GET(req:NextRequest){
  const store=await import('@/lib/mcp-google-store');
  if(pending.mcpUserId){
   if(pending.kind==='drive_write')await store.saveDriveWrite(pending.mcpUserId,session);
-  else await store.saveGoogle(pending.mcpUserId,session);
+  else{
+   await store.saveGoogle(pending.mcpUserId,session);
+   // Drive writing unchecked by the user: CamMicGo stops keeping (and using) the separate write grant.
+   if(pending.dropDriveWrite)await store.deleteDriveWrite(pending.mcpUserId).catch(()=>{});
+  }
  }
  // Second step: Drive writing, in its own grant.
  if(pending.mcpUserId&&pending.kind!=='drive_write'&&pending.followUp?.length){
