@@ -6,3 +6,10 @@ node_modules/
 !.env.example
 *.tsbuildinfo
 exports/
+
+# Directory submission material (Claude / ChatGPT listings, plugin ZIP, reviewer account) stays private:
+# never commit it to this public repository.
+/submission/
+/docs/private/
+*.plugin.zip
+DIRECTORY-SUBMISSION*.md
