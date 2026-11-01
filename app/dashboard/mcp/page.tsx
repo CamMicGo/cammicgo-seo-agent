@@ -14,7 +14,7 @@ export default async function RemoteMcp(){
  const privateActive=process.env.ENABLE_SUPABASE_MCP_AUTH==='true';
  return <main className="legal-page">
   <Link href="/dashboard">← Dashboard</Link><h1>Remote MCP — Connection status</h1>
-  <p>CamMicGo SEO MCP's public remote MCP endpoint is <code>https://seo.cammicgo.com/api/mcp</code>.</p>
+  <p>CamMicGo SEO MCP&apos;s public remote MCP endpoint is <code>https://seo.cammicgo.com/api/mcp</code>.</p>
   <section className="connect-card"><h2>Your Google connection</h2>
   <p>{session?'A Google browser session is present.':'No Google browser session is present.'}</p>
   <p>Important: a browser sign-in is not an OAuth authorization for ChatGPT or Claude. We never send the Google refresh token to an AI client.</p>
