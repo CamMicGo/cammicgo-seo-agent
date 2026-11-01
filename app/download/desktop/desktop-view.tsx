@@ -1,3 +1,4 @@
+import Link from 'next/link';
 'use client';
 import {useT} from '../../lang-provider';
 import {desktopCopy} from '@/lib/copy/apps';
