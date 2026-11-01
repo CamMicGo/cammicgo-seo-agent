@@ -12,12 +12,12 @@ test('GA4 periods: ending yesterday, previous period of the same length', ()=>{
 });
 test('GA4 report body: names the ranges, filters with notExpression, default sort on the first metric', ()=>{
  const b=ga4.reportBody({dimensions:['sessionDefaultChannelGroup'],metrics:['sessions','engagementRate'],ranges:[{startDate:'2026-10-01',endDate:'2026-10-07'},{startDate:'2026-09-24',endDate:'2026-09-30'}],
-  filters:[{field:'country',match:'exact',value:'France'},{field:'pagePath',match:'notContains',value:'/admin'}]}) as Record<string,any>;
+  filters:[{field:'country',match:'exact',value:'France'},{field:'pagePath',match:'notContains',value:'/admin'}]}) as Record<string, unknown>;
  assert.deepEqual(b.dateRanges.map((r:{name:string})=>r.name),['current','previous']);
  assert.equal(b.dimensionFilter.andGroup.expressions.length,2);
  assert.deepEqual(b.dimensionFilter.andGroup.expressions[1],{notExpression:{filter:{fieldName:'pagePath',stringFilter:{matchType:'CONTAINS',value:'/admin',caseSensitive:false}}}});
  assert.deepEqual(b.orderBys,[{metric:{metricName:'sessions'},desc:true}]);
- const single=ga4.reportBody({dimensions:['country'],metrics:['sessions'],ranges:[{startDate:'2026-10-01',endDate:'2026-10-07'}],filters:[{field:'country',match:'regex',value:'^(France|Spain)$'}],orderBy:{field:'country'}}) as Record<string,any>;
+ const single=ga4.reportBody({dimensions:['country'],metrics:['sessions'],ranges:[{startDate:'2026-10-01',endDate:'2026-10-07'}],filters:[{field:'country',match:'regex',value:'^(France|Spain)$'}],orderBy:{field:'country'}}) as Record<string, unknown>;
  assert.equal(single.dimensionFilter.filter.stringFilter.matchType,'FULL_REGEXP');
  assert.deepEqual(single.orderBys,[{dimension:{dimensionName:'country'},desc:false}]);
  assert.ok(ga4.GA4_FIELD.test('customEvent:tool_name')&&ga4.GA4_FIELD.test('sessions')&&!ga4.GA4_FIELD.test('sessions;drop'));
@@ -37,7 +37,7 @@ test('Search Console body: type, AND filters (country lower-cased), rows up to 2
  assert.deepEqual(gsc.gscPeriod({days:7,fresh:true},NOW),{startDate:'2026-10-24',endDate:'2026-10-30',days:7});
  if('error' in p)throw Error('unexpected');
  assert.deepEqual(gsc.previousOf(p),{startDate:'2026-09-03',endDate:'2026-09-30',days:28});
- const b=gsc.queryBody({...p,dimensions:['query'],type:'discover',filters:[{dimension:'country',operator:'equals',expression:'ESP'},{dimension:'query',operator:'includingRegex',expression:'micr(o|ó)fono'}],rowLimit:99999,fresh:true}) as Record<string,any>;
+ const b=gsc.queryBody({...p,dimensions:['query'],type:'discover',filters:[{dimension:'country',operator:'equals',expression:'ESP'},{dimension:'query',operator:'includingRegex',expression:'micr(o|ó)fono'}],rowLimit:99999,fresh:true}) as Record<string, unknown>;
  assert.equal(b.type,'discover');assert.equal(b.rowLimit,25000);assert.equal(b.dataState,'all');
  assert.deepEqual(b.dimensionFilterGroups[0].filters[0],{dimension:'country',operator:'equals',expression:'esp'});
  assert.equal(gsc.siteUrl('sc-domain:cammicgo.com'),'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Acammicgo.com');
