@@ -157,3 +157,20 @@ test('public URL guard (no private, loopback or link-local targets)', () => {
   assert.equal(d.nameFromResponse(new URL('https://arxiv.org/pdf/1706.03762'), null), '1706.03762');
   assert.equal(d.nameFromResponse(new URL('https://x.org/a'), 'attachment; filename="paper final.pdf"'), 'paper final.pdf');
 });
+
+// Security regression: prompt-injected remote URLs must not bypass the manual image workflow.
+test('remote image imports require a user-managed Drive upload',()=>{
+ for(const name of ['post.png','photo.JPG','avatar.svg','scan.webp','image.avif'])assert.equal(d.isRemoteImageUpload(name),true,name);
+ assert.equal(d.isRemoteImageUpload('document.pdf','image/png'),true);
+ assert.equal(d.isRemoteImageUpload('document.pdf',undefined,'image/png; charset=binary'),true);
+ assert.equal(d.isRemoteImageUpload('report.pdf','application/pdf','application/pdf'),false);
+ assert.equal(d.isRemoteImageUpload('notes.txt'),false);
+});
+
+test('adversarial URL and Drive query payloads cannot target private resources',()=>{
+ for(const url of ['https://169.254.169.254/latest/meta-data/iam/security-credentials/','https://localhost/private','https://[::1]/','http://example.org/image.png','https://user:secret@example.org/x'])assert.equal(d.checkPublicUrl(url),null,url);
+ const payload="x' or trashed = true or name contains 'secret";
+ const q=d.buildSearchQuery({name:payload});
+ assert.ok(q.includes(d.escapeQuery(payload)));
+ assert.ok(!d.isDriveId(payload));
+});
