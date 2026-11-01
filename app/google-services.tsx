@@ -4,9 +4,9 @@ import {servicesCopy,type ServiceDesc,type ServiceStatus} from '@/lib/copy/home'
 
 /**
  * Services the assistant can use, in the order a visitor cares about. Google APIs link to their Google Cloud
- * library page; LinkedIn and the scientific sources link to their CamMicGo setup guide instead.
+ * library page; LinkedIn and the science overview link to their CamMicGo setup guide, each scientific source to its own site.
  */
-type S={name:string;icon:string;status:ServiceStatus;desc:ServiceDesc;id?:string;guide?:string;translatedName?:'scienceName'};
+type S={name:string;icon:string;status:ServiceStatus;desc:ServiceDesc;id?:string;guide?:string;site?:string;translatedName?:'scienceName'};
 const services:S[]=[
  {name:'Search Console',icon:'/google-search-console.svg',desc:'sc',status:'both',id:'webmasters.googleapis.com'},
  {name:'Google Analytics 4',icon:'/api/assets/google-analytics',desc:'ga4',status:'both',id:'analyticsdata.googleapis.com'},
@@ -18,6 +18,11 @@ const services:S[]=[
  {name:'Gmail',icon:'/google-logos/gmail.png',desc:'gmail',status:'remote',id:'gmail.googleapis.com'},
  {name:'Google Calendar',icon:'/google-logos/calendar.png',desc:'cal',status:'both',id:'calendar-json.googleapis.com'},
  {name:'Scientific publications',translatedName:'scienceName',icon:'/service-icons/research.svg',desc:'science',status:'both',guide:'/setup/science'},
+ {name:'OpenAlex',icon:'/service-icons/openalex.png',desc:'openalex',status:'both',site:'https://openalex.org/'},
+ {name:'Semantic Scholar',icon:'/service-icons/semantic-scholar.png',desc:'s2',status:'both',site:'https://www.semanticscholar.org/'},
+ {name:'arXiv',icon:'/service-icons/arxiv.png',desc:'arxiv',status:'both',site:'https://arxiv.org/'},
+ {name:'PubMed',icon:'/service-icons/pubmed.png',desc:'pubmed',status:'both',site:'https://pubmed.ncbi.nlm.nih.gov/'},
+ {name:'HAL',icon:'/service-icons/hal.png',desc:'hal',status:'both',site:'https://hal.science/'},
  {name:'Analytics Admin',icon:'/api/assets/google-analytics',desc:'admin',status:'both',id:'analyticsadmin.googleapis.com'},
  {name:'Google Docs',icon:'/google-logos/docs.png',desc:'viaDrive',status:'viaDrive',id:'docs.googleapis.com'},
  {name:'Google Sheets',icon:'/google-logos/sheets.png',desc:'viaDrive',status:'viaDrive',id:'sheets.googleapis.com'},
@@ -37,7 +42,7 @@ export default function GoogleServices(){
   <div className="google-service-grid">{services.map(s=><article className="google-service-card" key={s.name}>
    <div className="google-service-head"><img src={s.icon} alt="" width="42" height="42"/><div><h3>{s.translatedName?t[s.translatedName]:s.name}</h3><small>{t.status[s.status]}</small></div></div>
    <p>{t.desc[s.desc]}</p>
-   {s.guide?<a href={s.guide}>{t.guide}</a>:<a href={'https://console.cloud.google.com/apis/library/'+s.id} target="_blank" rel="noreferrer">{t.gcp}</a>}
+   {s.guide?<a href={s.guide}>{t.guide}</a>:s.site?<a href={s.site} target="_blank" rel="noreferrer">{t.site}</a>:<a href={'https://console.cloud.google.com/apis/library/'+s.id} target="_blank" rel="noreferrer">{t.gcp}</a>}
   </article>)}</div>
   <p className="notice">{t.notice} <a href="/setup/google-cloud">{t.guide}</a></p>
  </section>;
