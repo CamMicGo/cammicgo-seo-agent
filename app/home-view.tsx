@@ -16,7 +16,7 @@ export default function HomeView(){
    <h1>{t.h1a}<br/><span>{t.h1b}</span></h1>
    <p className="lead">{t.lead}</p>
    <div className="pills">{t.pills.map(p=><span key={p}>{p}</span>)}</div>
-   <div className="actions"><a className="primary" href="/mcp/connect">{t.ctaRemote}</a><a className="secondary" href="/setup/local">{t.ctaLocal}</a><a className="secondary" href="/download">{t.ctaApps}</a></div>
+   <div className="actions"><a className="primary" href="/mcp/connect">{t.ctaRemote}</a><Link className="secondary" href="/setup/local">{t.ctaLocal}</Link><a className="secondary" href="/download">{t.ctaApps}</a></div>
    <p className="notice">{t.notice} <a href="/setup/google-cloud">{t.noticeLink} ↗</a></p>
   </section>
   <section className="bottom" id="apps"><div>
