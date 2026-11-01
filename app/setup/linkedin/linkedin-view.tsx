@@ -19,7 +19,10 @@ export default function LinkedInGuide(){
   <h2>{t.s3t}</h2><p>{t.s3p}</p>
   <h2>{t.s4t}</h2><p>{t.s4p}</p>
   <p className="setup-redirect"><code dir="ltr">{REDIRECT}</code> <button type="button" className="acc-btn ghost" onClick={()=>void copy()}>{copied?t.copied:t.copy}</button></p>
+  <figure className="guide-shot"><a href="/guides/linkedin/linkedin-app-auth.webp" target="_blank" rel="noreferrer"><img src="/guides/linkedin/linkedin-app-auth.webp" alt={t.shotAuth} width="720" height="1271" loading="lazy"/></a><figcaption>{t.shotAuth}</figcaption></figure>
   <h2>{t.s5t}</h2><p>{t.s5p}</p>
+  <figure className="guide-shot"><a href="/guides/linkedin/cammicgo-account-linkedin.webp" target="_blank" rel="noreferrer"><img src="/guides/linkedin/cammicgo-account-linkedin.webp" alt={t.shotAccount} width="720" height="1127" loading="lazy"/></a><figcaption>{t.shotAccount}</figcaption></figure>
+  <figure className="guide-shot wide"><a href="/guides/linkedin/cammicgo-account-linkedin-connected.webp" target="_blank" rel="noreferrer"><img src="/guides/linkedin/cammicgo-account-linkedin-connected.webp" alt={t.shotConnected} width="720" height="521" loading="lazy"/></a><figcaption>{t.shotConnected}</figcaption></figure>
   <p><Link href="/account#linkedin">{t.s5link}</Link></p>
   <h2>{t.notesT}</h2>
   <ul><li>{t.note1}</li><li>{t.note2}</li><li>{t.note3}</li></ul>

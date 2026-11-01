@@ -78,6 +78,18 @@ Every setup has a complete illustrated guide on the website.
 | Publish on your LinkedIn profile | **[LinkedIn setup](https://seo.cammicgo.com/setup/linkedin)** |
 | Raise the scientific sources' limits with free keys | **[Scientific sources](https://seo.cammicgo.com/setup/science)** |
 
+<details>
+<summary><b>LinkedIn setup at a glance</b> (screenshots, Client ID hidden)</summary>
+<br/>
+
+| 1. Your LinkedIn app, *Auth* tab | 2. Your CamMicGo account, keys pasted | 3. After **Connect LinkedIn** |
+|:-:|:-:|:-:|
+| <img src="public/guides/linkedin/linkedin-app-auth.webp" width="230" alt="Auth tab of a LinkedIn app: redirect URL, scopes and keys" /> | <img src="public/guides/linkedin/cammicgo-account-linkedin.webp" width="230" alt="LinkedIn section of the CamMicGo account with the keys pasted" /> | <img src="public/guides/linkedin/cammicgo-account-linkedin-connected.webp" width="300" alt="LinkedIn section showing Connected as" /> |
+
+Full walkthrough: **[seo.cammicgo.com/setup/linkedin](https://seo.cammicgo.com/setup/linkedin)**
+
+</details>
+
 ### Remote MCP in four steps
 
 1. In your assistant, add the custom connector `https://seo.cammicgo.com/api/mcp` (Streamable HTTP with OAuth).
