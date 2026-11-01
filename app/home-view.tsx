@@ -1,3 +1,4 @@
+import Link from 'next/link';
 'use client';
 import GoogleServices from './google-services';
 import {useT} from './lang-provider';
