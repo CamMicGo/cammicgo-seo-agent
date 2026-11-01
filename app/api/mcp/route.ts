@@ -503,9 +503,13 @@ async function handler(req:NextRequest){
      content=Buffer.from(src.format==='csv'?await buildCsv(exp,src.part):await buildDocument(exp,src.part),'utf8');
      limit=drive.DRIVE_LIMITS.maxExportUploadBytes;
     }else{
+     // Images for LinkedIn/Drive must be uploaded manually by the user to Drive.
+     // Do not fetch a remote image through the generic URL-to-Drive bridge.
+     if(drive.isRemoteImageUpload(name,args.mimeType))return asText({error:'manual_image_upload_required',messageForUser:'Download the image yourself and upload it to your chosen Google Drive folder. Then ask the assistant to find that Drive file. Remote image URL imports are disabled.'});
      const got=await fetchPublicFile(src.url,drive.DRIVE_LIMITS.maxExportUploadBytes);
      if('error' in got)return asText(got);
      content=got.content;limit=drive.DRIVE_LIMITS.maxExportUploadBytes;urlMime=got.mime;
+     if(drive.isRemoteImageUpload(name,args.mimeType,urlMime))return asText({error:'manual_image_upload_required',messageForUser:'Remote image imports are disabled. Upload the image manually to Google Drive.'});
     }
     if(!content.length)return asText({error:'empty_content'});
     if(content.length>limit)return asText({error:'file_too_large',size:drive.humanBytes(content.length),limit:drive.humanBytes(limit)});
