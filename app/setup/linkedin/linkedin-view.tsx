@@ -28,6 +28,9 @@ export default function LinkedInGuide(){
   <figure className="guide-shot wide"><a href="/guides/linkedin/cammicgo-account-linkedin-connected.webp" target="_blank" rel="noreferrer"><img src="/guides/linkedin/cammicgo-account-linkedin-connected.webp" alt={t.shotConnected} width="720" height="521" loading="lazy"/></a><figcaption>{t.shotConnected}</figcaption></figure>
   <p><Link href="/account#linkedin">{t.s5link}</Link></p>
   <h2>{t.sepT}</h2><p>{t.sepP}</p>
+  <h2>{t.styleT}</h2><p>{t.styleP}</p>
+  <blockquote className="guide-prompt">{t.stylePrompt}</blockquote>
+  <p>{t.styleExportP}</p>
   <h2>{t.localT}</h2><p>{t.localP}</p>
   <h2>{t.notesT}</h2>
   <ul><li>{t.note1}</li><li>{t.note2}</li><li>{t.note3}</li></ul>

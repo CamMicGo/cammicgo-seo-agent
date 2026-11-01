@@ -353,3 +353,4 @@ body:has(#a11y-dialog) .sh-wrap{z-index:170}
 .guide-shot.wide{max-width:560px}
 .acc-li-way h3,.acc-li-admin h3{margin:14px 0 4px;font-size:1rem}.acc-li-way p{margin:0 0 10px}.acc-li-own{margin:16px 0 4px;border:1px solid #d8e4f1;border-radius:12px;padding:10px 14px;background:#f8fbff}.acc-li-own summary{cursor:pointer;font-weight:650}.acc-li-own[open] summary{margin-bottom:8px}.acc-li-admin{margin:16px 0 4px;border:1px dashed #b9c9de;border-radius:12px;padding:4px 14px 10px}
 .setup-guide a.acc-btn{display:inline-block;color:#fff;text-decoration:none;padding:12px 20px}
+.guide-prompt{margin:10px 0 14px;padding:12px 16px;border-left:4px solid #2870c7;background:#f0f5ff;border-radius:0 10px 10px 0;font-style:italic}

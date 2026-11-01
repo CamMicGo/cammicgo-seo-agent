@@ -109,6 +109,7 @@ npm run local:doctor    # checks credentials and tokens
 - **Advanced, with your own LinkedIn app:** create a developer app (LinkedIn requires a Page for it) and add the *Share on LinkedIn* and *Sign In with LinkedIn using OpenID Connect* products. Register the redirect URL `https://seo.cammicgo.com/api/auth/linkedin/callback`, then save the app's keys on your account. CamMicGo then uses your app instead of the shared one. Illustrated guide: [seo.cammicgo.com/setup/linkedin](https://seo.cammicgo.com/setup/linkedin).
 - **Who can post where:** each connection only lets the person who authorized it post on their own profile. The owner of the shared app cannot post on your profile, and nobody can post on a company Page through CamMicGo.
 - **Local MCP:** LinkedIn publishing is part of the remote MCP, because after sign-in LinkedIn sends you back to a CamMicGo web address. Add the remote connector next to your local one to publish on LinkedIn.
+- **Reuse the style of your previous posts:** LinkedIn doesn't let apps read your past posts. Paste one or more of them into the conversation and ask for a new one in the same format. For your whole history, use LinkedIn's *Get a copy of your data* (Settings & Privacy › Data privacy): its `Shares.csv` file lists all your posts. Attach it to the conversation or put it in your Google Drive.
 - **Self-hosting:** set `LINKEDIN_CLIENT_ID` and `LINKEDIN_CLIENT_SECRET` to offer a shared app. Otherwise, an administrator can share the app saved in their own account (account page, LinkedIn section).
 
 <details>
