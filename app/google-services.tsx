@@ -12,7 +12,7 @@ const services:S[]=[
  {name:'Google Analytics 4',icon:'/api/assets/google-analytics',desc:'ga4',status:'both',id:'analyticsdata.googleapis.com'},
  {name:'YouTube Data API',icon:'/google-logos/youtube.svg',desc:'yt',status:'yt',id:'youtube.googleapis.com'},
  {name:'YouTube Analytics',icon:'/google-logos/youtube.svg',desc:'yta',status:'remote',id:'youtubeanalytics.googleapis.com'},
- {name:'LinkedIn',icon:'/service-icons/publish.svg',desc:'linkedin',status:'byo',guide:'/setup/linkedin'},
+ {name:'LinkedIn',icon:'/service-icons/linkedin.png',desc:'linkedin',status:'byo',guide:'/setup/linkedin'},
  {name:'Google Ads',icon:'/google-logos/google-ads.png',desc:'ads',status:'remote',id:'googleads.googleapis.com'},
  {name:'Google Drive',icon:'/google-logos/drive.png',desc:'drive',status:'remote',id:'drive.googleapis.com'},
  {name:'Gmail',icon:'/google-logos/gmail.png',desc:'gmail',status:'remote',id:'gmail.googleapis.com'},

@@ -39,7 +39,7 @@ export default function LinkedInConnect({token}:{token:string}){
   if(r.ok)setSt(b);else setMsg({kind:'err',text:t.error});
  }
  const c=st?.connection;
- return <section className="acc-card" id="linkedin"><h2>{t.title}</h2>
+ return <section className="acc-card" id="linkedin"><h2 className="li-title"><img src="/service-icons/linkedin.png" alt="" width="26" height="26"/>{t.title}</h2>
   <p>{t.lead} <Link href="/setup/linkedin">{t.guide}</Link></p>
   {st&&<p className="acc-note">{t.redirect} <code>{st.redirectUri}</code></p>}
   {st?.client&&<p className="acc-ok">✓ {t.stored} <code>{st.client.clientId}</code> · {st.client.secretHint}</p>}

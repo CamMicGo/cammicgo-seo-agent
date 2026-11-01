@@ -11,7 +11,7 @@ export default function LinkedInGuide(){
  const [copied,setCopied]=useState(false);
  const copy=async()=>{try{await navigator.clipboard.writeText(REDIRECT);setCopied(true);setTimeout(()=>setCopied(false),2000);}catch{/* clipboard unavailable */}};
  return <main className="setup-guide">
-  <span className="kicker">{t.kicker}</span><h1>{t.h1}</h1><p className="lead">{t.lead}</p>
+  <span className="kicker">{t.kicker}</span><img className="li-guide-logo" src="/service-icons/linkedin.png" alt="LinkedIn" width="48" height="48"/><h1>{t.h1}</h1><p className="lead">{t.lead}</p>
   <h2>{t.s1t}</h2><p>{t.s1p}</p>
   <p><a href="https://www.linkedin.com/company/setup/new/" target="_blank" rel="noreferrer">{t.s1link}</a></p>
   <h2>{t.s2t}</h2><p>{t.s2p}</p>

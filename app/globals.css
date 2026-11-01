@@ -347,3 +347,4 @@ body:has(#a11y-dialog) .sh-wrap{z-index:170}
 .acc-li-form{display:grid;gap:10px;margin:10px 0}.acc-li-form label{display:grid;gap:4px;font-weight:600}.acc-li-form input{padding:10px 12px;border:1px solid #cfd8ea;border-radius:10px;font:inherit}
 .acc-row{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0}
 .setup-redirect{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.setup-redirect code{padding:8px 10px;background:#f4f7fd;border-radius:8px;word-break:break-all}
+.li-title{display:flex;align-items:center;gap:10px}.li-title img{flex-shrink:0;border-radius:6px}.li-guide-logo{display:block;margin:10px 0 4px;border-radius:10px}
