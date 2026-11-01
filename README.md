@@ -39,7 +39,7 @@ CamMicGo SEO MCP is a [Model Context Protocol](https://modelcontextprotocol.io/)
 
 - **Read-only by default.** Write permissions are optional boxes that you tick yourself.
 - **Nothing is published, spent or trashed without your explicit yes.** The assistant always shows the exact preview first.
-- **Your own credentials.** Google calls use your own Google Cloud project, and LinkedIn uses your own LinkedIn app. Secrets are encrypted on the server and never shown to the assistant.
+- **Your own accounts, kept separate.** Google calls use your own Google Cloud project. LinkedIn connects in one click with the shared CamMicGo app, or with your own LinkedIn app. Each connection only acts for its owner, and secrets are encrypted on the server and never shown to the assistant.
 - The website and every guide are available in **11 languages**: English, French, Spanish, German, Portuguese, Italian, Russian, Chinese, Japanese, Korean and Arabic.
 
 ## Services
@@ -50,7 +50,7 @@ CamMicGo SEO MCP is a [Model Context Protocol](https://modelcontextprotocol.io/)
 | <img src="public/google-analytics.svg" width="22" alt="" /> | **Google Analytics 4** | Any dimensions and metrics, with filters, sorting and comparison with the previous period, plus realtime active users | Remote + local |
 | <img src="public/google-logos/youtube.svg" width="22" alt="" /> | **YouTube Data API** | Search, channels, videos, playlists and comments. Timestamped transcripts come through the CamMicGo apps. *Optional, remote only:* **upload a video to your channel** after your yes. | Remote + local |
 | <img src="public/google-logos/youtube.svg" width="22" alt="" /> | **YouTube Analytics** | Your channels: views, watch time, subscribers, top videos, traffic sources, the YouTube search terms that brought viewers, countries, devices, age and gender, and retention curves | Remote |
-| <img src="public/service-icons/linkedin.png" width="22" alt="" /> | **LinkedIn** | **Posts on your own profile**: text with an image, a video or a link, through your own LinkedIn app | Remote |
+| <img src="public/service-icons/linkedin.png" width="22" alt="" /> | **LinkedIn** | **Posts on your own profile**: text with an image, a video or a link. Connect in one click with the CamMicGo app, or bring your own LinkedIn app. | Remote |
 | <img src="public/google-logos/google-ads.png" width="22" alt="" /> | **Google Ads** | Accounts and performance reports. Campaigns are created **paused**, with a fixed total budget, after your confirmation. | Remote |
 | <img src="public/google-logos/drive.png" width="22" alt="" /> | **Google Drive** | List, search and read Docs, Sheets, Slides, PDF and text files. *Optional:* create folders and files, and move to the trash after your yes (never permanent deletion). | Remote |
 | <img src="public/google-logos/gmail.png" width="22" alt="" /> | **Gmail** | Search and read your emails, read-only | Remote |
@@ -78,18 +78,6 @@ Every setup has a complete illustrated guide on the website.
 | Publish on your LinkedIn profile | **[LinkedIn setup](https://seo.cammicgo.com/setup/linkedin)** |
 | Raise the scientific sources' limits with free keys | **[Scientific sources](https://seo.cammicgo.com/setup/science)** |
 
-<details>
-<summary><b>LinkedIn setup at a glance</b> (screenshots, Client ID hidden)</summary>
-<br/>
-
-| 1. Your LinkedIn app, *Auth* tab | 2. Your CamMicGo account, keys pasted | 3. After **Connect LinkedIn** |
-|:-:|:-:|:-:|
-| <img src="public/guides/linkedin/linkedin-app-auth.webp" width="230" alt="Auth tab of a LinkedIn app: redirect URL, scopes and keys" /> | <img src="public/guides/linkedin/cammicgo-account-linkedin.webp" width="230" alt="LinkedIn section of the CamMicGo account with the keys pasted" /> | <img src="public/guides/linkedin/cammicgo-account-linkedin-connected.webp" width="300" alt="LinkedIn section showing Connected as" /> |
-
-Full walkthrough: **[seo.cammicgo.com/setup/linkedin](https://seo.cammicgo.com/setup/linkedin)**
-
-</details>
-
 ### Remote MCP in four steps
 
 1. In your assistant, add the custom connector `https://seo.cammicgo.com/api/mcp` (Streamable HTTP with OAuth).
@@ -114,6 +102,26 @@ npm run local:doctor    # checks credentials and tokens
 - **OAuth client:** the local MCP uses a **Desktop app** OAuth client from your own Google Cloud project. Tokens stay encrypted on your computer.
 - **Register it in your assistant:** `npm run agent:setup -- claude` (or `gemini`, `cursor`) adds the stdio server to Claude Desktop, Gemini CLI or Cursor.
 - **More help:** full guide on the [website](https://seo.cammicgo.com/setup/local), with troubleshooting in [docs/LOCAL-MCP-INSTALL.md](docs/LOCAL-MCP-INSTALL.md).
+
+### LinkedIn: two ways to connect
+
+- **Simple (one minute):** on [your account](https://seo.cammicgo.com/account), click **Connect LinkedIn** and allow with your own LinkedIn account. You don't need a LinkedIn Page or a developer app.
+- **Advanced, with your own LinkedIn app:** create a developer app (LinkedIn requires a Page for it) and add the *Share on LinkedIn* and *Sign In with LinkedIn using OpenID Connect* products. Register the redirect URL `https://seo.cammicgo.com/api/auth/linkedin/callback`, then save the app's keys on your account. CamMicGo then uses your app instead of the shared one. Illustrated guide: [seo.cammicgo.com/setup/linkedin](https://seo.cammicgo.com/setup/linkedin).
+- **Who can post where:** each connection only lets the person who authorized it post on their own profile. The owner of the shared app cannot post on your profile, and nobody can post on a company Page through CamMicGo.
+- **Local MCP:** LinkedIn publishing is part of the remote MCP, because after sign-in LinkedIn sends you back to a CamMicGo web address. Add the remote connector next to your local one to publish on LinkedIn.
+- **Self-hosting:** set `LINKEDIN_CLIENT_ID` and `LINKEDIN_CLIENT_SECRET` to offer a shared app. Otherwise, an administrator can share the app saved in their own account (account page, LinkedIn section).
+
+<details>
+<summary><b>LinkedIn setup at a glance</b> (screenshots, Client ID hidden)</summary>
+<br/>
+
+| 1. Advanced: your LinkedIn app, *Auth* tab | 2. Advanced: your CamMicGo account, keys pasted | 3. After **Connect LinkedIn** |
+|:-:|:-:|:-:|
+| <img src="public/guides/linkedin/linkedin-app-auth.webp" width="230" alt="Auth tab of a LinkedIn app: redirect URL, scopes and keys" /> | <img src="public/guides/linkedin/cammicgo-account-linkedin.webp" width="230" alt="LinkedIn section of the CamMicGo account with the keys pasted" /> | <img src="public/guides/linkedin/cammicgo-account-linkedin-connected.webp" width="300" alt="LinkedIn section showing Connected as" /> |
+
+Full walkthrough: **[seo.cammicgo.com/setup/linkedin](https://seo.cammicgo.com/setup/linkedin)**
+
+</details>
 
 ## Tools
 
@@ -161,7 +169,7 @@ The local server has 23 tools:
 |---|---|
 | CamMicGo allowance per account | 100 counted tool calls per day and 10 per minute; status tools are free |
 | Google APIs | The quotas of **your own** Google Cloud project. For example, the YouTube Data API allows 10,000 units per day by default, and video uploads have their own bucket. |
-| LinkedIn | Your own LinkedIn app. Access lasts 60 days, then you reconnect with one click. |
+| LinkedIn | 150 requests per member per day. Access lasts 60 days, then you reconnect with one click. |
 | Scientific sources | They work without keys. Free personal keys for OpenAlex, Semantic Scholar and NCBI give you higher limits ([guide](https://seo.cammicgo.com/setup/science)). |
 
 ## Privacy
@@ -198,6 +206,7 @@ npm run test:mcp:local       # local MCP protocol smoke test (no Google call)
 - Google and sessions: `APP_BASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `SESSION_ENCRYPTION_KEY`
 - Supabase: `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `ENABLE_SUPABASE_MCP_AUTH`
 - Optional science keys: `OPENALEX_API_KEY`, `SEMANTIC_SCHOLAR_API_KEY`, `NCBI_API_KEY`
+- Optional shared LinkedIn app: `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET`
 - Allowance overrides: `MCP_DAILY_LIMIT`, `MCP_MINUTE_LIMIT`, `MCP_MINUTE_TOTAL_LIMIT`, `MCP_GLOBAL_DAILY_LIMIT`, `MCP_ADMIN_DAILY_LIMIT`
 
 ### More documentation

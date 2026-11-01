@@ -1,16 +1,12 @@
 import {NextRequest,NextResponse} from 'next/server';
 import {verifySupabaseMcpUser} from '@/lib/supabase-mcp-auth';
-import {deleteSocialClient,deleteSocialConnection,readLinkedInConnection,saveSocialClient,socialClientSummary} from '@/lib/social-store';
-import {daysLeft,LI_REDIRECT,LI_TOKEN,validateLinkedInClient} from '@/lib/linkedin';
+import {deleteSocialClient,deleteSocialConnection,saveSocialClient} from '@/lib/social-store';
+import {LI_REDIRECT,LI_TOKEN,validateLinkedInClient} from '@/lib/linkedin';
+import {linkedinStatus as status} from '@/lib/linkedin-account';
 export const runtime='nodejs';
 const noStore={'Cache-Control':'no-store'};
 async function user(req:NextRequest){return verifySupabaseMcpUser(req.headers.get('authorization'));}
 function sameOrigin(req:NextRequest){const o=req.headers.get('origin');return !o||o===req.nextUrl.origin;}
-
-async function status(userId:string){
- const [client,conn]=await Promise.all([socialClientSummary(userId,'linkedin'),readLinkedInConnection(userId).catch(()=>null)]);
- return {redirectUri:LI_REDIRECT,client,connection:conn?{name:conn.name,expiresAt:new Date(conn.expiresAt).toISOString(),daysLeft:daysLeft(conn.expiresAt),canPost:conn.scopes.includes('w_member_social')}:null};
-}
 
 /**
  * Checks the client ID / secret pair with LinkedIn without any user data: a dummy code is refused with

@@ -27,7 +27,11 @@ export function tokenBody(code:string,clientId:string,clientSecret:string){
  return new URLSearchParams({grant_type:'authorization_code',code,client_id:clientId,client_secret:clientSecret,redirect_uri:LI_REDIRECT});
 }
 
-export type LinkedInSession={accessToken:string;expiresAt:number;scopes:string[];memberId:string;name:string;email?:string|null};
+export type LinkedInSession={accessToken:string;expiresAt:number;scopes:string[];memberId:string;name:string;email?:string|null;app?:LinkedInAppMode};
+/** own: the user's own LinkedIn app (bring your own); shared: the CamMicGo app shared by all users. */
+export type LinkedInAppMode='own'|'shared';
+/** The user's own app wins; otherwise the shared CamMicGo app; otherwise nothing to connect with. */
+export const appMode=(hasOwn:boolean,hasShared:boolean):LinkedInAppMode|null=>hasOwn?'own':hasShared?'shared':null;
 export const personUrn=(memberId:string)=>'urn:li:person:'+memberId;
 export const postUrl=(urn:string)=>'https://www.linkedin.com/feed/update/'+encodeURIComponent(urn)+'/';
 

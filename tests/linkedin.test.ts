@@ -79,3 +79,9 @@ test('the member token only goes to https LinkedIn upload hosts', ()=>{
  assert.equal(li.uploadTarget(undefined),null);
  assert.equal(li.uploadTarget('not a url'),null);
 });
+test('a user connects with their own app first, otherwise with the shared CamMicGo app', ()=>{
+ assert.equal(li.appMode(true,true),'own');
+ assert.equal(li.appMode(true,false),'own');
+ assert.equal(li.appMode(false,true),'shared');
+ assert.equal(li.appMode(false,false),null);
+});
