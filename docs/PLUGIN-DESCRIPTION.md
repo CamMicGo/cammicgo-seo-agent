@@ -16,7 +16,7 @@
 
 **Site :** https://seo.cammicgo.com
 
-**Code source :** https://github.com/CamMicGo/cammicgo-seo-mcp
+**Code source :** https://github.com/CamMicGo/cammicgo-seo-agent
 
 **Engagements :** connexion Google par OAuth, droits minimaux en lecture seule pour les analyses, contrôle par utilisateur et par propriété, aucune création ni dépense publicitaire sans connexion Google Ads spécifique et approbation explicite.
 

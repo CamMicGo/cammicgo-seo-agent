@@ -61,7 +61,7 @@ Agent JSON (when using a client that accepts this format):
   "mcpServers": {
     "cammicgo-seo-local": {
       "command": "/absolute/path/to/node",
-      "args": ["/absolute/path/to/cammicgo-seo-mcp/scripts/local-mcp.mjs", "stdio"]
+      "args": ["/absolute/path/to/cammicgo-seo-agent/scripts/local-mcp.mjs", "stdio"]
     }
   }
 }

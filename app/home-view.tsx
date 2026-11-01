@@ -3,7 +3,7 @@ import GoogleServices from './google-services';
 import {useT} from './lang-provider';
 import {homeCopy} from '@/lib/copy/home';
 
-const REPO='https://github.com/CamMicGo/cammicgo-seo-mcp';
+const REPO='https://github.com/CamMicGo/cammicgo-seo-agent';
 export default function HomeView(){
  const t=useT(homeCopy);
  return <div className="site"><main>

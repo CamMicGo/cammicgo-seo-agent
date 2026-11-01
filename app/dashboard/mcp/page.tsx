@@ -27,6 +27,6 @@ export default async function RemoteMcp(){
   <h2>Tool rollout</h2><div className="scroll-table"><table><thead><tr><th>Tool</th><th>Current capability</th></tr></thead><tbody>{tools.map(([name,status])=><tr key={name}><td><code>{name}</code></td><td>{status}</td></tr>)}</tbody></table></div>
   <h2>Connect your agent</h2>
   <p>ChatGPT custom MCP setup is currently performed on the web, not directly in the mobile app. Claude remote connector availability depends on your client and plan. Do not paste Google client secrets into AI chats.</p>
-  <p><a href="https://github.com/CamMicGo/cammicgo-seo-mcp/blob/main/docs/CONNECTING-AGENTS.md" rel="noopener noreferrer" target="_blank">Current MCP connection guide ↗</a></p>
+  <p><a href="https://github.com/CamMicGo/cammicgo-seo-agent/blob/main/docs/CONNECTING-AGENTS.md" rel="noopener noreferrer" target="_blank">Current MCP connection guide ↗</a></p>
  </main>
 }

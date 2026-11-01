@@ -25,6 +25,6 @@ export default function ScienceGuide(){
   <pre dir="ltr"><code>{'SEMANTIC_SCHOLAR_API_KEY=…\nOPENALEX_API_KEY=…\nNCBI_API_KEY=…'}</code></pre>
   <div className="setup-alert">{t.scholarNote}</div>
   <h2>{t.promptsT}</h2><ul>{t.prompts.map((p,i)=><li key={i}>« {p} »</li>)}</ul>
-  <footer className="setup-footer"><a href="/account">{t.saveKeys}</a><a href="https://github.com/CamMicGo/cammicgo-seo-mcp">GitHub</a></footer>
+  <footer className="setup-footer"><a href="/account">{t.saveKeys}</a><a href="https://github.com/CamMicGo/cammicgo-seo-agent">GitHub</a></footer>
  </main>;
 }

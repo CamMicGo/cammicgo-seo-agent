@@ -42,6 +42,6 @@ export default function GcpView(){
   <h2>{t.s6t}</h2><p><Rich text={t.s6p}/></p>
   <p><a href="https://console.cloud.google.com/apis/dashboard" target="_blank" rel="noreferrer">{t.dash}</a></p>
   <div className="setup-alert"><strong>{t.localT}</strong> <Rich text={t.localP}/> <Link href="/setup/local">{t.localLink}</Link></div>
-  <footer className="setup-footer"><a href="/account">{t.connect}</a><a href="https://github.com/CamMicGo/cammicgo-seo-mcp">{t.source}</a></footer>
+  <footer className="setup-footer"><a href="/account">{t.connect}</a><a href="https://github.com/CamMicGo/cammicgo-seo-agent">{t.source}</a></footer>
  </main>;
 }

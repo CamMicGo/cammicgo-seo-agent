@@ -6,13 +6,13 @@ import {commonCopy} from '@/lib/copy/common';
 
 export type Os='windows'|'macos'|'linux';
 type Line={cmd?:string;out?:string};
-const REPO='https://github.com/CamMicGo/cammicgo-seo-mcp';
+const REPO='https://github.com/CamMicGo/cammicgo-seo-agent';
 
 const terminalName:Record<Os,string>={windows:'PowerShell',macos:'Terminal',linux:'Terminal'};
 const prompt:Record<Os,(dir?:boolean)=>string>={
- windows:d=>d?'PS C:\\Users\\you\\cammicgo-seo-mcp>':'PS C:\\Users\\you>',
- macos:d=>d?'you@Mac cammicgo-seo-mcp %':'you@Mac ~ %',
- linux:d=>d?'you@ubuntu:~/cammicgo-seo-mcp$':'you@ubuntu:~$',
+ windows:d=>d?'PS C:\\Users\\you\\cammicgo-seo-agent>':'PS C:\\Users\\you>',
+ macos:d=>d?'you@Mac cammicgo-seo-agent %':'you@Mac ~ %',
+ linux:d=>d?'you@ubuntu:~/cammicgo-seo-agent$':'you@ubuntu:~$',
 };
 const jsonPath:Record<Os,string>={windows:'C:\\Users\\you\\Downloads\\client_secret.json',macos:'/Users/you/Downloads/client_secret.json',linux:'/home/you/Downloads/client_secret.json'};
 
@@ -86,7 +86,7 @@ function stepContent(os:Os,i:number,t:LocalCopy):ReactNode{
    {os==='windows'&&<p className="lg-note">{t.reopen.replace('{terminal}',term)}</p>}
   </>;
   case 1:return <>
-   <Terminal os={os} lines={[{cmd:'git clone '+REPO+'.git'},{out:"Cloning into 'cammicgo-seo-mcp'... done."},{cmd:'cd cammicgo-seo-mcp'},{cmd:'npm install'},{out:'added 412 packages in 1m'}]}/>
+   <Terminal os={os} lines={[{cmd:'git clone '+REPO+'.git'},{out:"Cloning into 'cammicgo-seo-agent'... done."},{cmd:'cd cammicgo-seo-agent'},{cmd:'npm install'},{out:'added 412 packages in 1m'}]}/>
    <p className="lg-note"><a href={REPO} target="_blank" rel="noreferrer"><img src="/github-mark.svg" alt="" width="16" height="16" style={{verticalAlign:'-3px',marginRight:6}}/>{t.repo} ↗</a></p>
   </>;
   case 2:return <div className="lg-links">

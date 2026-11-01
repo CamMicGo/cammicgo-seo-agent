@@ -1046,7 +1046,7 @@ async function handler(req:NextRequest){
 
  if(process.env.ENABLE_MCP_BETA!=='true'){
   // Anonymous discovery only; do not expose Google account tools without MCP OAuth.
-  const publicMcp=createMcpHandler(server=>server.registerTool('service_info',{annotations:{readOnlyHint:true,openWorldHint:true},title:'CamMicGo SEO MCP server status',description:'Public status of remote MCP and secure connection requirements.',inputSchema:z.object({})},async()=>asText({name:'CamMicGo SEO MCP',remote:true,authenticatedTools:false,reason:'Google OAuth for remote MCP agents and shared durable quotas are not enabled.',localMcpSetup:'https://github.com/CamMicGo/cammicgo-seo-mcp#local-mcp-server-read-only-preview'})));
+  const publicMcp=createMcpHandler(server=>server.registerTool('service_info',{annotations:{readOnlyHint:true,openWorldHint:true},title:'CamMicGo SEO MCP server status',description:'Public status of remote MCP and secure connection requirements.',inputSchema:z.object({})},async()=>asText({name:'CamMicGo SEO MCP',remote:true,authenticatedTools:false,reason:'Google OAuth for remote MCP agents and shared durable quotas are not enabled.',localMcpSetup:'https://seo.cammicgo.com/setup/local'})));
   return publicMcp(req);
  }
  const ctx=verifyMcpAccess(req.headers.get('authorization'));if(!ctx)return unauthorized();

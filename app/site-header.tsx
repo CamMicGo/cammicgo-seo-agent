@@ -38,7 +38,7 @@ export default function SiteHeader(){
     <span className="sh-desk">{langSelect('sh-lang-desktop')}</span>
     <a className="sh-icon" href="/account" aria-label={ACCOUNT[lang]} title={ACCOUNT[lang]} aria-current={path.startsWith('/account')?'page':undefined}><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></a>
     <button type="button" className="sh-icon" onClick={openA11y} aria-label={A11Y[lang]} title={A11Y[lang]} aria-haspopup="dialog" aria-controls="a11y-dialog" aria-expanded={a11yOpen}><img src={ACCESSIBILITY_ICON_PNG} alt="" width="24" height="24"/></button>
-    <a className="sh-icon sh-desk" href="https://github.com/CamMicGo/cammicgo-seo-mcp" target="_blank" rel="noreferrer" aria-label="GitHub" title="GitHub"><img src="/github-mark.svg" alt="" width="20" height="20"/></a>
+    <a className="sh-icon sh-desk" href="https://github.com/CamMicGo/cammicgo-seo-agent" target="_blank" rel="noreferrer" aria-label="GitHub" title="GitHub"><img src="/github-mark.svg" alt="" width="20" height="20"/></a>
     <button type="button" className="sh-icon sh-burger" onClick={()=>setOpen(v=>!v)} aria-expanded={open} aria-controls="sh-menu" aria-label={open?t.nav.closeMenu:t.nav.openMenu}>
      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">{open?<path d="M6 6l12 12M18 6 6 18"/>:<path d="M4 7h16M4 12h16M4 17h16"/>}</svg>
     </button>
@@ -46,7 +46,7 @@ export default function SiteHeader(){
   </div>
   <div className="sh-menu" id="sh-menu" hidden={!open}>
    <nav aria-label="Mobile">{links.map(([k,href,label])=><a key={k} href={href} aria-current={k===active?'page':undefined}>{label}<span aria-hidden="true">›</span></a>)}</nav>
-   <div className="sh-menu-tools">{langSelect('sh-lang-mobile')}<a className="sh-icon" href="https://github.com/CamMicGo/cammicgo-seo-mcp" target="_blank" rel="noreferrer" aria-label="GitHub"><img src="/github-mark.svg" alt="" width="20" height="20"/></a></div>
+   <div className="sh-menu-tools">{langSelect('sh-lang-mobile')}<a className="sh-icon" href="https://github.com/CamMicGo/cammicgo-seo-agent" target="_blank" rel="noreferrer" aria-label="GitHub"><img src="/github-mark.svg" alt="" width="20" height="20"/></a></div>
   </div>
  </header>;
 }

@@ -13,7 +13,7 @@ export async function GET(){
   oauthMcpReady:false,
   sharedDailyQuotaEnforced:false,
   localMcpAvailable:true,
-  localSetup:'https://github.com/CamMicGo/cammicgo-seo-mcp#local-mcp-server-read-only-preview',
+  localSetup:'https://seo.cammicgo.com/setup/local',
   warning:'Do not enable the private beta for public clients before OAuth, revocation and durable quotas are implemented.'
  },{headers:{'Cache-Control':'public,max-age=60'}});
 }
