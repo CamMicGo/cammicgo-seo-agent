@@ -94,11 +94,18 @@ export function videoParts(instructions:Array<{uploadUrl?:string;firstByte?:numb
 }
 
 /** Plain-language reason for a LinkedIn refusal (HTTP status and body). */
-export function problemMessage(status:number,body:string,accountUrl:string){
+/** Which LinkedIn daily limit a 429 answer refers to: the member's own (150 requests) or the whole app's (100,000). */
+export function throttleKind(body:string):'member'|'app'|null{return /APPLICATION\s+DAY/i.test(body)?'app':/MEMBER\s+DAY/i.test(body)?'member':null;}
+export function problemMessage(status:number,body:string,accountUrl:string,app:LinkedInAppMode='own'){
  if(status===401)return 'LinkedIn refused the connection (expired or revoked): reconnect LinkedIn at '+accountUrl+'.';
  if(status===403)return 'LinkedIn refused the publication: check that your LinkedIn app has the "Share on LinkedIn" product, then reconnect LinkedIn.';
  if(/DUPLICATE_POST|duplicate/i.test(body))return 'LinkedIn refuses a post identical to one published just before.';
- if(status===429)return 'LinkedIn daily limit reached for your app: try again tomorrow.';
+ if(status===429){
+  const kind=throttleKind(body);
+  if(kind==='member')return 'You reached your own LinkedIn limit for today (150 requests per member). It resets at midnight UTC: try again after that.';
+  if(app==='shared')return 'The CamMicGo app shared by all users reached LinkedIn\'s daily limit. It resets at midnight UTC. To stop depending on the shared app, connect your own LinkedIn app (guide: https://seo.cammicgo.com/setup/linkedin), then reconnect LinkedIn at '+accountUrl+'.';
+  return 'Your LinkedIn app reached its daily limit. It resets at midnight UTC: try again after that.';
+ }
  if(status===426)return 'LinkedIn refused the API version used by CamMicGo: try again later.';
  return 'LinkedIn answered HTTP '+status+'.';
 }

@@ -827,7 +827,7 @@ async function handler(req:NextRequest){
      }
      return last as Response;
     };
-    const liError=async(r:Response)=>{const body=await r.text().catch(()=>'');return {error:'linkedin_error',status:r.status,details:body.slice(0,500),messageForUser:li.problemMessage(r.status,body,account.ACCOUNT_URL)};};
+    const liError=async(r:Response)=>{const body=await r.text().catch(()=>'');return {error:'linkedin_error',status:r.status,details:body.slice(0,500),messageForUser:li.problemMessage(r.status,body,account.ACCOUNT_URL,conn.app??'own')};};
     const uploadFailed={error:'linkedin_upload_failed',messageForUser:'LinkedIn did not give usable upload addresses. Nothing was published.'};
     // li.uploadTarget / li.videoParts only accept https LinkedIn hosts: the member token never goes anywhere else.
     const putPart=(url:string,bytes:Uint8Array<ArrayBuffer>,mime:string)=>fetch(url,{method:'PUT',headers:{...auth,'Content-Type':mime},body:bytes,signal:AbortSignal.timeout(40000)});

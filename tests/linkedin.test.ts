@@ -85,3 +85,13 @@ test('a user connects with their own app first, otherwise with the shared CamMic
  assert.equal(li.appMode(false,true),'shared');
  assert.equal(li.appMode(false,false),null);
 });
+test('daily limits: the member limit, the shared app limit and an own app limit are told apart', ()=>{
+ const acc='https://seo.cammicgo.com/account';
+ const appBody='{"status":429,"message":"Resource level throttle APPLICATION DAY limit for calls to this resource is reached."}';
+ const memberBody='{"status":429,"message":"Resource level throttle MEMBER DAY limit for calls to this resource is reached."}';
+ assert.equal(li.throttleKind(appBody),'app');assert.equal(li.throttleKind(memberBody),'member');assert.equal(li.throttleKind('{}'),null);
+ assert.match(li.problemMessage(429,memberBody,acc,'shared'),/own LinkedIn limit/);
+ assert.match(li.problemMessage(429,appBody,acc,'shared'),/shared by all users.*connect your own LinkedIn app/);
+ assert.match(li.problemMessage(429,appBody,acc,'own'),/Your LinkedIn app reached/);
+ assert.match(li.problemMessage(429,'{}',acc,'shared'),/shared by all users/);
+});
