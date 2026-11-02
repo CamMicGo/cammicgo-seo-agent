@@ -581,6 +581,17 @@ public class MainActivity extends Activity {
   // ---------- tab 3: help ----------
 
   private void buildHelpPage(LinearLayout root) {
+    section(root, "NotebookLM · CamMicGo");
+    LinearLayout notebookCard = card(root);
+    text(notebookCard, "Ouvrir NotebookLM sur ce téléphone", 15, INK, true);
+    text(notebookCard, "Utilise votre session Google dans le navigateur. Créez un notebook, puis Sources → Ajouter des sources → Drive. Cette ouverture n'automatise pas encore la création ni l'import.", 13, MUTED, false);
+    Button notebookButton = secondary("Ouvrir NotebookLM");
+    notebookButton.setOnClickListener(v -> {
+      try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://notebooklm.google.com/"))); }
+      catch (Exception e) { Toast.makeText(this, "Navigateur indisponible", Toast.LENGTH_LONG).show(); }
+    });
+    notebookCard.addView(notebookButton, gapTop(8));
+
     section(root, t("sec_prompts"));
     LinearLayout c = card(root);
     TextView sub = text(c, t("prompts_sub"), 13, MUTED, false);
