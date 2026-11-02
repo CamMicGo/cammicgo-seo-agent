@@ -29,44 +29,17 @@ export default function DownloadButton() {
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
   const [message, setMessage] = useState('');
 
-  async function download() {
-    if (status === 'loading') return;
-    setStatus('loading'); setProgress(null); setMessage(t.connecting);
-    try {
-      const response = await fetch('/download/android/apk', { cache: 'no-store' });
-      if (!response.ok) throw new Error(t.unavailable.replace('{s}', String(response.status)));
-      if (!response.body) throw new Error(t.noStream);
-      const total = Number(response.headers.get('content-length') || 0);
-      const reader = response.body.getReader();
-      const chunks: Uint8Array[] = [];
-      let received = 0;
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value); received += value.byteLength;
-        if (total > 0) setProgress(Math.min(100, Math.round(received / total * 100)));
-        setMessage((received / 1048576).toFixed(2) + ' ' + t.mb + (total > 0 ? ' / ' + (total / 1048576).toFixed(2) + ' ' + t.mb : '…'));
-      }
-      if (!received) throw new Error(t.empty);
-      const blob = new Blob(chunks as BlobPart[], { type: 'application/vnd.android.package-archive' });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = url; anchor.download = filename; document.body.appendChild(anchor); anchor.click(); anchor.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
-      setProgress(100); setStatus('done'); setMessage(t.done);
-    } catch (error) {
-      setStatus('error');
-      setMessage(error instanceof Error ? error.message : t.failed);
-    }
-  }
+  // Use a native browser download instead of fetch -> Blob -> object URL.
+  // Android WebViews may fetch the full APK yet silently refuse to save blob: URLs.
+  // A direct HTTPS link lets Chrome/Android Download Manager handle the APK.
 
   return (
     <div className="apk-dl">
-      <button type="button" onClick={download} disabled={status === 'loading'} className="apk-btn" aria-busy={status === 'loading'}>
+      <a href="/download/android/apk" download={filename} className="apk-btn">
         <span className="apk-btn-logo"><img src="/os-logos/android.svg" alt="" width="34" height="34" /></span>
         <span className="apk-btn-text"><small>{t.small}</small><strong>{status === 'loading' ? t.loading : t.cta}</strong><em>{t.meta}</em></span>
         <span className="apk-btn-arrow" aria-hidden="true">{status === 'loading' ? '…' : '↓'}</span>
-      </button>
+      </a>
       {status !== 'idle' && (
         <div role="status" aria-live="polite" className="apk-progress">
           <div className="apk-bar"><div style={{ width: (progress ?? (status === 'loading' ? 8 : 0)) + '%' }} /></div>
