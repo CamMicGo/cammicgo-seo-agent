@@ -11,7 +11,7 @@ import * as ga4 from '@/lib/ga4';
 import * as li from '@/lib/linkedin';
 import * as sci from '@/lib/science';
 import * as sciExport from '@/lib/science-export';
-import {gumCatalog} from '@/lib/gum-operation-catalog';
+import {googleApiCatalog} from '@/lib/google-api-operation-catalog';
 import {getYouTubeTranscript} from '@/lib/youtube-transcript';
 import {verifyMcpAccess} from '@/lib/mcp-access';
 import {authorizedAccessToken,googleFetch} from '@/lib/google-session';
@@ -110,15 +110,15 @@ async function handler(req:NextRequest){
      return asText({gsc:gsc.ok?await gsc.json():{error:gsc.status},ga4:ga4.ok?await ga4.json():{error:ga4.status}});
     }catch(e){return asText({error:e instanceof Error?e.message:'Google error'})}
    });
-     server.registerTool('search_apis',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Search GUM-compatible Google API catalog',description:'Discover operations from the GUM 228-operation catalog. Discovery does not imply execution support.',inputSchema:z.object({query:z.string().max(120).default(''),service:z.string().max(60).optional(),limit:z.number().int().min(1).max(30).default(15)})},async args=>{
-    const q=args.query.toLowerCase();const matches=gumCatalog.filter(op=>(!args.service||op.service===args.service)&&(!q||(op.id+' '+op.title+' '+op.summary+' '+op.service).toLowerCase().includes(q)));
+     server.registerTool('search_apis',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Search CamMicGo Google API catalog',description:'Discover operations from the CamMicGo Google API operation catalog. Discovery does not imply execution support.',inputSchema:z.object({query:z.string().max(120).default(''),service:z.string().max(60).optional(),limit:z.number().int().min(1).max(30).default(15)})},async args=>{
+    const q=args.query.toLowerCase();const matches=googleApiCatalog.filter(op=>(!args.service||op.service===args.service)&&(!q||(op.id+' '+op.title+' '+op.summary+' '+op.service).toLowerCase().includes(q)));
     return asText({total:matches.length,operations:matches.slice(0,args.limit).map(op=>({id:op.id,title:op.title,service:op.service,risk:op.risk,executable:op.risk==='read'&&(['calendar','youtube','youtubeAnalytics','searchconsole'].includes(op.service)||(op.service==='gmail'&&op.method==='GET'))&&('path' in op && typeof op.path==='string')&&['GET','POST'].includes(op.method||'')}))});
    });
-   server.registerTool('describe_operation',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Describe a Google API operation',description:'Inspect GUM-compatible operation metadata, parameters and current remote execution support.',inputSchema:z.object({operationId:z.string().max(140)})},async args=>{
-    const op=gumCatalog.find(op=>op.id===args.operationId);return asText(op?{...op,executable:op.risk==='read'&&(['calendar','youtube','youtubeAnalytics','searchconsole'].includes(op.service)||(op.service==='gmail'&&op.method==='GET'))&&('path' in op && typeof op.path==='string')&&['GET','POST'].includes(op.method||''),note:'Remote read execution requires an authorized Google account and matching scopes; write and destructive operations are not enabled.'}:{error:'Unknown operation'});
+   server.registerTool('describe_operation',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Describe a Google API operation',description:'Inspect CamMicGo operation metadata, parameters and current remote execution support.',inputSchema:z.object({operationId:z.string().max(140)})},async args=>{
+    const op=googleApiCatalog.find(op=>op.id===args.operationId);return asText(op?{...op,executable:op.risk==='read'&&(['calendar','youtube','youtubeAnalytics','searchconsole'].includes(op.service)||(op.service==='gmail'&&op.method==='GET'))&&('path' in op && typeof op.path==='string')&&['GET','POST'].includes(op.method||''),note:'Remote read execution requires an authorized Google account and matching scopes; write and destructive operations are not enabled.'}:{error:'Unknown operation'});
    });
    server.registerTool('read_operation',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Execute a supported read-only Google API operation',description:'Execute cataloged read-only Calendar, YouTube, YouTube Analytics (youtubeAnalytics.reports.query), Search Console or Gmail (GET only, e.g. gmail.users.messages.list with q, gmail.users.messages.get with userId=me) operations. No arbitrary URLs, mutations or write methods.',inputSchema:z.object({operationId:z.string().max(140),args:z.record(z.string(),z.unknown()).default({})})},async input=>{
-    const op=gumCatalog.find(op=>op.id===input.operationId);
+    const op=googleApiCatalog.find(op=>op.id===input.operationId);
     if(!op||op.risk!=='read'||!(['calendar','youtube','youtubeAnalytics','searchconsole'].includes(op.service)||(op.service==='gmail'&&op.method==='GET'))||!('path' in op)||typeof op.path!=='string'||!['GET','POST'].includes(op.method||''))return asText({error:'Operation not supported for remote execution',operationId:input.operationId});
     const base:Record<string,string>={calendar:'https://www.googleapis.com',youtube:'https://www.googleapis.com',youtubeAnalytics:'https://youtubeanalytics.googleapis.com',searchconsole:'https://searchconsole.googleapis.com',gmail:'https://gmail.googleapis.com'};
     let path:string=op.path;
