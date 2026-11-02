@@ -441,7 +441,7 @@ public class MainActivity extends Activity {
     progressNote = text(p, "", 12, MUTED, false);
     progressNote.setPadding(0, dp(6), 0, 0);
 
-    section(root, "OPÉRATIONS NOTEBOOKLM");
+    section(root, t("notebook_section"));
     notebookRequests=card(root);
     section(root, t("sec_sent"));
     TextView hint = text(root, t("long_press"), 12, MUTED, false);
@@ -762,15 +762,15 @@ public class MainActivity extends Activity {
     notebookRequests.removeAllViews();
     try {
       JSONArray entries=new JSONArray(raw);
-      if(entries.length()==0){text(notebookRequests,"Aucune opération NotebookLM reçue pour le moment.",12,MUTED,false);return;}
+      if(entries.length()==0){text(notebookRequests,t("notebook_empty"),12,MUTED,false);return;}
       for(int i=0;i<Math.min(entries.length(),12);i++){
         JSONObject e=entries.optJSONObject(i);if(e==null)continue;
         String state=e.optString("status");
-        String label="done".equals(state)?"Terminée":"working".equals(state)?"En cours":"Échec";
+        String label="done".equals(state)?t("notebook_done"):"working".equals(state)?t("notebook_working"):t("notebook_failed");
         text(notebookRequests,label+" · "+e.optString("label"),13,"failed".equals(state)?RED:INK,true);
         if(e.has("error"))text(notebookRequests,e.optString("error"),11,MUTED,false);
       }
-    }catch(Exception ex){text(notebookRequests,"Historique NotebookLM indisponible.",12,RED,false);}
+    }catch(Exception ex){text(notebookRequests,t("notebook_unavailable"),12,RED,false);}
   }
 
   private void refreshProgress(SharedPreferences p, boolean paired, boolean connected) {
