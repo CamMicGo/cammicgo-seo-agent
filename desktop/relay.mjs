@@ -22,6 +22,7 @@ import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { fetchYouTubeCaptions, listCaptionTracks, parseVideoId } from '../lib/youtube-captions.mjs';
 import { page } from './ui.mjs';
+import {createPersonalNotebook,listPersonalNotebooks} from '../lib/notebooklm-personal-browser.mjs';
 
 export const VERSION = '1.1.0';
 const BASE = process.env.CAMMICGO_RELAY_BASE || 'https://seo.cammicgo.com';
@@ -133,6 +134,28 @@ function remember(entry) {
 }
 
 async function handle(job) {
+  // NotebookLM jobs must be explicitly typed; never interpret an unknown job as a video.
+  if (job.type === 'notebooklm_create' || job.type === 'notebooklm_list') {
+    state.current = job.type;
+    setStatus('NotebookLM : ' + (job.type === 'notebooklm_create' ? 'création' : 'lecture de la liste'));
+    try {
+      if (job.type === 'notebooklm_create' && (typeof job.title !== 'string' || !job.title.trim() || job.title.length > 160)) throw new Error('Titre NotebookLM invalide');
+      const result = job.type === 'notebooklm_create'
+        ? await createPersonalNotebook({title:job.title})
+        : await listPersonalNotebooks();
+      if (job.type === 'notebooklm_create' && (!result.notebookCreated || !result.verifiedInList)) throw new Error('Création non confirmée dans la liste NotebookLM');
+      await api('POST', '/api/devices/jobs/' + job.id, {result:{...result,method:'desktop-notebooklm'}});
+      setStatus('NotebookLM : opération confirmée');
+    } catch (e) {
+      await api('POST', '/api/devices/jobs/' + job.id, {error:String(e.message || e).slice(0,2000)});
+      setStatus('NotebookLM : ' + String(e.message || e));
+    } finally {state.current=null;}
+    return;
+  }
+  if (job.type && job.type !== 'transcript') {
+    await api('POST', '/api/devices/jobs/' + job.id, {error:'Type de tâche non pris en charge'});
+    return;
+  }
   state.current = job.videoId;
   setStatus('Transcription en cours : ' + job.videoId);
   let r;
