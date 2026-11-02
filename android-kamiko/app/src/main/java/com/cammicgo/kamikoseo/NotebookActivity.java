@@ -23,7 +23,7 @@ import android.widget.TextView;
  * NotebookLM may reject WebView sign-in; external Chrome is always available.
  */
 public final class NotebookActivity extends Activity {
-  private static final String HOME="https://notebooklm.google.com/";
+  private static final String HOME="https://notebook.google.com/";
   private WebView browser;
   private TextView location;
   private String lastNotebookUrl;
@@ -51,12 +51,12 @@ public final class NotebookActivity extends Activity {
       @Override public void onPageFinished(WebView view,String url) {
         if(url!=null&&url.startsWith(HOME)) {
           location.setText(url);
-          if(url.matches("https://notebooklm\\.google\\.com/notebook/[A-Za-z0-9_-]+.*"))lastNotebookUrl=url;
+          if(url.matches("https://(?:notebooklm|notebook)\\.google\\.com/notebook/[A-Za-z0-9_-]+.*"))lastNotebookUrl=url;
         }
       }
       @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){
         Uri uri=request.getUrl();
-        if("notebooklm.google.com".equals(uri.getHost())||"accounts.google.com".equals(uri.getHost()))return false;
+        if("notebooklm.google.com".equals(uri.getHost())||"notebook.google.com".equals(uri.getHost())||"accounts.google.com".equals(uri.getHost()))return false;
         startActivity(new Intent(Intent.ACTION_VIEW,uri));
         return true;
       }
