@@ -5,6 +5,9 @@ on:
     paths:
       - 'android-kamiko/**'
       - '.github/workflows/android-kamiko-apk.yml'
+concurrency:
+  group: cammicgo-android-release
+  cancel-in-progress: true
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -44,5 +47,5 @@ jobs:
           if gh release view android-test-latest >/dev/null 2>&1; then
             gh release upload android-test-latest CamMicGo-SEO-MCP-Android-test.apk --clobber
           else
-            gh release create android-test-latest CamMicGo-SEO-MCP-Android-test.apk --title "CamMicGo Android test APK" --notes "CamMicGo Android test build. Includes paired transcript relay and NotebookLM browser handoff. Personal NotebookLM notebook creation is not automated." --prerelease --target "$GITHUB_SHA"
+            gh release create android-test-latest CamMicGo-SEO-MCP-Android-test.apk --title "CamMicGo Android test APK" --notes "CamMicGo Android test build. Includes paired transcript relay and NotebookLM browser handoff. NotebookLM Java RPC support (experimental). Google login in app WebView required." --prerelease --target "$GITHUB_SHA"
           fi
