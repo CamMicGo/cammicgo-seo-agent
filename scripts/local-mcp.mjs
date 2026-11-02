@@ -207,10 +207,10 @@ async function stdio(){
   const update=await upsertTranscriptCsv({path,videos:extracted,source:a.source,channelName:ch.snippet?.title,channelId:a.channelId});
   return asText({...update,channel:ch.snippet?.title,scanned,missingFound:missing.length,extractionAttempted:Math.min(missing.length,a.maxExtract),remainingUnprocessed:Math.max(0,missing.length-a.maxExtract),scanComplete:!next,errors,notebookSynced:false});
  });
- m.registerTool('notebook_publish_google_doc',{description:'Publish the existing local transcript CSV as a live Google Doc source. Creates or updates the document in the signed-in Google account. This does NOT create a NotebookLM notebook; attach the returned Google Doc to NotebookLM once, then refresh its source as needed.',inputSchema:z.object({filename:z.string().regex(/^[a-zA-Z0-9_-]{1,80}\\.csv$/).default('youtube-transcripts.csv'),documentId:z.string().regex(/^[A-Za-z0-9_-]{10,200}$/).optional(),title:z.string().min(1).max(160).default('YouTube transcript knowledge base')})},async a=>{
+ m.registerTool('notebook_publish_google_doc',{description:'Publish the existing local transcript CSV as a live Google Doc source. Creates or updates the document in the signed-in Google account. This does NOT create a NotebookLM notebook; attach the returned Google Doc to NotebookLM once, then refresh its source as needed.',inputSchema:z.object({filename:z.string().regex(/^[a-zA-Z0-9_-]{1,80}\.csv$/).default('youtube-transcripts.csv'),documentId:z.string().regex(/^[A-Za-z0-9_-]{10,200}$/).optional(),title:z.string().min(1).max(160).default('YouTube transcript knowledge base')})},async a=>{
   const path=join(dir,'notebooklm-exports',a.filename);const rows=parseCsv(readFileSync(path,'utf8'));
   if(!rows.length)throw Error('CSV has no transcripts');
-  const textBody=rows.map(r=>'# '+r.video_title+'\\nChannel: '+r.channel_name+'\\nAuthor: '+r.author+'\\nPublished: '+r.published_at+'\\nLanguage: '+r.original_language+'\\nURL: '+r.video_url+'\\n\\n'+r.transcript).join('\\n\\n---\\n\\n');
+  const textBody=rows.map(r=>'# '+r.video_title+'\nChannel: '+r.channel_name+'\nAuthor: '+r.author+'\nPublished: '+r.published_at+'\nLanguage: '+r.original_language+'\nURL: '+r.video_url+'\n\n'+r.transcript).join('\n\n---\n\n');
   if(textBody.length>800000)throw Error('Corpus too large for one Google Doc. Split by channel or period before publishing.');
   const accessToken=await token();
   const doc=a.documentId?{documentId:a.documentId}:await createLiveDoc({accessToken,title:a.title});
