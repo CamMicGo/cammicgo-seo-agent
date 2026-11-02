@@ -127,7 +127,7 @@ public final class TranscriptFetcher {
         || m.contains("failed to connect") || m.contains("network is unreachable");
   }
 
-  static Result titled(Result r, JSONObject player) {
+  static Result titled(Result r, JSONObject player) throws IOException {
     JSONObject d = player == null ? null : player.optJSONObject("videoDetails");
     String t = d == null ? "" : d.optString("title", "");
     if (!t.isEmpty()) r.title = t;
@@ -135,6 +135,7 @@ public final class TranscriptFetcher {
       try { r.durationSeconds = Long.parseLong(d.optString("lengthSeconds", "-1")); }
       catch (NumberFormatException ignored) { r.durationSeconds = -1; }
     }
+    if (r.durationSeconds > 5L * 3600L) throw new IOException("Vidéo de plus de 5 heures : limite du MVP.");
     return r;
   }
 
