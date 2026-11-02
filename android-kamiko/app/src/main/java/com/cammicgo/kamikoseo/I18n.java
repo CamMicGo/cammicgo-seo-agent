@@ -35,6 +35,12 @@ public final class I18n {
   }
 
   static {
+    m.put("notebook_section", new String[]{"NotebookLM operations", "Opérations NotebookLM", "Operaciones de NotebookLM", "NotebookLM-Vorgänge", "Operações do NotebookLM", "Operazioni NotebookLM", "Операции NotebookLM", "NotebookLM 操作", "NotebookLM 操作", "NotebookLM 작업", "عمليات NotebookLM"});
+    m.put("notebook_empty", new String[]{"No NotebookLM requests received yet.", "Aucune demande NotebookLM reçue pour le moment.", "Aún no se han recibido solicitudes de NotebookLM.", "Noch keine NotebookLM-Anfragen empfangen.", "Nenhuma solicitação do NotebookLM recebida.", "Nessuna richiesta NotebookLM ricevuta.", "Запросы NotebookLM пока не поступали.", "尚未收到 NotebookLM 请求。", "NotebookLM のリクエストはまだありません。", "아직 NotebookLM 요청이 없습니다.", "لم تُستلم طلبات NotebookLM بعد."});
+    m.put("notebook_done", new String[]{"Completed", "Terminée", "Completada", "Abgeschlossen", "Concluída", "Completata", "Завершено", "已完成", "完了", "완료", "مكتملة"});
+    m.put("notebook_working", new String[]{"In progress", "En cours", "En curso", "In Bearbeitung", "Em andamento", "In corso", "Выполняется", "进行中", "処理中", "진행 중", "قيد التنفيذ"});
+    m.put("notebook_failed", new String[]{"Failed", "Échec", "Error", "Fehlgeschlagen", "Falhou", "Errore", "Ошибка", "失败", "失敗", "실패", "فشل"});
+    m.put("notebook_unavailable", new String[]{"NotebookLM history unavailable.", "Historique NotebookLM indisponible.", "Historial de NotebookLM no disponible.", "NotebookLM-Verlauf nicht verfügbar.", "Histórico do NotebookLM indisponível.", "Cronologia NotebookLM non disponibile.", "История NotebookLM недоступна.", "NotebookLM 历史记录不可用。", "NotebookLM の履歴を取得できません。", "NotebookLM 기록을 사용할 수 없습니다.", "سجل NotebookLM غير متاح."});
     m.put("tab_assistant", new String[]{"AI assistant", "Assistant IA", "Asistente IA", "KI-Assistent", "Assistente IA", "Assistente IA", "ИИ-ассистент", "AI 助手", "AI アシスタント", "AI 어시스턴트", "المساعد الذكي"});
     m.put("tab_extract", new String[]{"Extract", "Extraire", "Extraer", "Extrahieren", "Extrair", "Estrai", "Извлечь", "提取", "抽出", "추출", "استخراج"});
     m.put("tab_help", new String[]{"Help", "Aide", "Ayuda", "Hilfe", "Ajuda", "Aiuto", "Помощь", "帮助", "ヘルプ", "도움말", "مساعدة"});
