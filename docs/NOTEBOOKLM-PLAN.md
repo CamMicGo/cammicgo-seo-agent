@@ -32,3 +32,13 @@ The official Gemini Notebook Android app is optional for reading and chatting. F
 
 ## Important sync caveat
 Importing a Markdown file as a NotebookLM source does not guarantee that editing the file later refreshes the source automatically. Until a tested, permitted update mechanism exists, return `notebookCreated:false` and never claim automatic sync.
+
+
+## November 2026: incremental channel archive
+- Android app source is present in `android-kamiko/` and the existing GitHub Actions workflow publishes the test APK only after a push to `main`.
+- Branch adds an Android Markdown export and a five-hour transcript duration check. The APK has **not** been built or published from this branch.
+- `lib/notebooklm-channel-archive.mjs` exports `updateChannelArchive({channel,videos,root,maxWords})`, keeping a local manifest and stable per-channel Markdown path. It deduplicates by video ID and rejects transcripts over five hours. This module is not yet wired into remote MCP tools.
+- Run `node --test tests/notebooklm-channel-archive.test.mjs` when a runner is available. No test run has been verified yet.
+- Drive OAuth file upload/update, source ID tracking, daily YouTube discovery, and NotebookLM personal session-based notebook creation are **not implemented**. Google OAuth alone does not authorize NotebookLM personal RPC access.
+- NotebookLM-py is an **unofficial** community client. A TypeScript port needs explicit local user authorization, a security review, protocol compatibility tests and handling of service changes. Never send NotebookLM session cookies or master tokens to the hosted MCP.
+- Do not merge/deploy the branch or replace the Android release until Android build, integration tests and a real user-authorized NotebookLM test have succeeded.
