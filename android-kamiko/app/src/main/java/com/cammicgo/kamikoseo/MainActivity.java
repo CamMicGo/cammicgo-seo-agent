@@ -667,6 +667,9 @@ public class MainActivity extends Activity {
     tip(tips, "🔄", t("tip_resume_t"), t("tip_resume"));
     tip(tips, "⏱️", t("tip_a15_t"), t("tip_a15"));
 
+    TextView versionBanner = text(root, "CamMicGo SEO MCP — VERSION INSTALLÉE : " + version(), 17, BLUE, true);
+    versionBanner.setPadding(dp(12), dp(14), dp(12), dp(14));
+    versionBanner.setContentDescription("Version installée de CamMicGo SEO MCP : " + version());
     TextView v = text(root, "CamMicGo SEO MCP · " + t("version") + " " + version() + " · seo.cammicgo.com", 12, MUTED, false);
     v.setGravity(Gravity.CENTER);
     v.setPadding(0, dp(6), 0, 0);
