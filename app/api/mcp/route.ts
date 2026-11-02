@@ -76,6 +76,24 @@ async function handler(req:NextRequest){
      return {isError:true,content:[{type:'text',text:JSON.stringify({error:'tool_failed',tool:name,message:msg,instructions:'Tell the user briefly that this source failed and offer to retry.'})}]};}
     finally{logCall(name,performance.now()-t0,ok);}
    });
+   // NotebookLM personal actions execute only on a paired, signed-in desktop browser.
+   const notebookJob=async(operation:'create'|'list'|'add_url_source',payload:Record<string,string>)=>{
+    const devices=await relay.listDevices(user.id);
+    if(!devices.some(relay.isOnline))return asText({status:'device_offline',created:false,messageForUser:'Connectez le relais CamMicGo sur votre ordinateur, avec une session NotebookLM Google ouverte. Les actions ne sont pas exécutées dans le cloud.'});
+    const job=await relay.createNotebookJob(user.id,operation,payload);
+    const deadline=Date.now()+40_000;
+    while(Date.now()<deadline){
+     await new Promise(r=>setTimeout(r,1500));
+     const current=await relay.getNotebookJob(user.id,job.id);
+     if(current?.status==='done')return asText({status:'done',...((current.result&&typeof current.result==='object')?current.result as Record<string,unknown>:{result:current.result})});
+     if(current?.status==='error')return asText({status:'error',error:current.error});
+    }
+    return asText({status:'pending',jobId:job.id,messageForUser:'Opération en cours sur le navigateur connecté. Vérifiez son état avec notebook_job_status.'});
+   };
+   server.registerTool('notebook_create',{title:'Create personal NotebookLM notebook',description:'Create a notebook through a paired desktop browser signed into NotebookLM; success requires verification in notebook list.',inputSchema:z.object({title:z.string().trim().min(1).max(160)})},async a=>notebookJob('create',{title:a.title}));
+   server.registerTool('notebook_list',{title:'List personal NotebookLM notebooks',annotations:{readOnlyHint:true},description:'List personal notebooks through the paired authenticated desktop browser.',inputSchema:z.object({})},async()=>notebookJob('list',{}));
+   server.registerTool('source_add',{title:'Add NotebookLM website source',description:'Add a public website URL to an existing personal notebook through the paired desktop browser. Returns sourceAdded only if verified.',inputSchema:z.object({notebookUrl:z.string().url(),sourceUrl:z.string().url()})},async a=>notebookJob('add_url_source',a));
+   server.registerTool('notebook_job_status',{title:'NotebookLM job status',annotations:{readOnlyHint:true},description:'Check a pending personal NotebookLM job by its ID.',inputSchema:z.object({jobId:z.string().uuid()})},async a=>{const job=await relay.getNotebookJob(user.id,a.jobId);return asText(job??{error:'not_found'})});
    server.registerTool('notebooklm_prepare_personal_notebook',{
     annotations:{readOnlyHint:true,openWorldHint:true},
     title:'Prepare personal NotebookLM notebook',
