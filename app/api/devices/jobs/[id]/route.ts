@@ -1,5 +1,5 @@
 import {NextRequest,NextResponse} from 'next/server';
-import {completeJob,deviceFromAuthorization,releaseJob,sanitizeDeviceResult} from '@/lib/device-relay';
+import {completeJob,completeNotebookJob,deviceFromAuthorization,releaseJob,sanitizeDeviceResult} from '@/lib/device-relay';
 export const runtime='nodejs';
 const noStore={'Cache-Control':'no-store'};
 /** Device posts {result} (transcript JSON) or {error} for a job it claimed. */
@@ -12,6 +12,13 @@ export async function POST(req:NextRequest,{params}:{params:Promise<{id:string}>
   if(!device)return NextResponse.json({error:'Appareil non appairé ou révoqué'},{status:401,headers:noStore});
   const body=await req.json().catch(()=>null) as {result?:unknown;error?:unknown;videoId?:unknown}|null;
   if(!body)return NextResponse.json({error:'Invalid body'},{status:400,headers:noStore});
+  if((body as {type?:unknown}).type==='notebooklm'){
+   const result=body.result;
+   const safe=JSON.stringify(result??null);
+   if(safe.length>100000)return NextResponse.json({error:'Notebook result too large'},{status:413,headers:noStore});
+   const ok=await completeNotebookJob(device,id,typeof body.error==='string'?{error:body.error}:{result});
+   return ok?NextResponse.json({ok:true},{headers:noStore}):NextResponse.json({error:'Notebook job unavailable'},{status:409,headers:noStore});
+  }
   let ok:boolean;
   if((body as {release?:unknown}).release===true)ok=await releaseJob(device,id);
   else if(typeof body.error==='string')ok=await completeJob(device,id,{error:body.error});
