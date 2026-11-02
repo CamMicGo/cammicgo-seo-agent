@@ -443,17 +443,6 @@ public class MainActivity extends Activity {
 
     section(root, t("notebook_section"));
     notebookRequests=card(root);
-    Button clearNotebook=flat(t("notebook_clear"),RED);
-    clearNotebook.setOnClickListener(v->new AlertDialog.Builder(this)
-        .setTitle(t("notebook_clear"))
-        .setMessage(t("notebook_clear_confirm"))
-        .setPositiveButton(t("clear_ok"),(dialog,which)->{
-          RelayClient.prefs(this).edit().putString("notebookHistory","[]").apply();
-          notebookHistoryShown=null;
-          refreshNotebookRequests(RelayClient.prefs(this));
-        })
-        .setNegativeButton(t("cancel"),null).show());
-    notebookRequests.addView(clearNotebook,new LinearLayout.LayoutParams(-1,-2));
     section(root, t("sec_sent"));
     TextView hint = text(root, t("long_press"), 12, MUTED, false);
     hint.setPadding(dp(4), 0, 0, dp(8));
