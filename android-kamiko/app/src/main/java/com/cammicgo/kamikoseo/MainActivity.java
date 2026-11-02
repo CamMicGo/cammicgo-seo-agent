@@ -591,6 +591,36 @@ public class MainActivity extends Activity {
       catch (Exception e) { Toast.makeText(this, "Navigateur indisponible", Toast.LENGTH_LONG).show(); }
     });
     notebookCard.addView(notebookButton, gapTop(8));
+    Button copyNotebook = secondary("Copier le lien du notebook");
+    copyNotebook.setOnClickListener(v -> {
+      final EditText link = field("https://notebooklm.google.com/notebook/...");
+      new AlertDialog.Builder(this)
+          .setTitle("Associer un notebook existant")
+          .setMessage("Collez l'URL de votre notebook ouvert dans le navigateur. Le lien reste enregistré uniquement sur ce téléphone.")
+          .setView(link)
+          .setNegativeButton("Annuler", null)
+          .setPositiveButton("Enregistrer", (dialog, which) -> {
+            String value = link.getText().toString().trim();
+            if (!value.matches("https://notebooklm\\.google\\.com/notebook/[A-Za-z0-9_-]+/?")) {
+              Toast.makeText(this, "Lien NotebookLM invalide", Toast.LENGTH_LONG).show();
+              return;
+            }
+            getPreferences(MODE_PRIVATE).edit().putString("notebooklm_url", value).apply();
+            Toast.makeText(this, "Notebook enregistré sur cet appareil", Toast.LENGTH_LONG).show();
+          }).show();
+    });
+    notebookCard.addView(copyNotebook, gapTop(8));
+    Button openSavedNotebook = secondary("Ouvrir mon notebook enregistré");
+    openSavedNotebook.setOnClickListener(v -> {
+      String saved = getPreferences(MODE_PRIVATE).getString("notebooklm_url", "");
+      if (saved.isEmpty()) {
+        Toast.makeText(this, "Enregistrez d'abord l'URL du notebook", Toast.LENGTH_LONG).show();
+        return;
+      }
+      startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(saved)));
+    });
+    notebookCard.addView(openSavedNotebook, gapTop(8));
+
 
     section(root, t("sec_prompts"));
     LinearLayout c = card(root);
