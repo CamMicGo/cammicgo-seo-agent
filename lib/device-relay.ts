@@ -166,3 +166,25 @@ export async function deviceProgress(userId:string):Promise<DeviceProgress|null>
   .map(j=>({videoId:j.video_id,title:j.title||titles.get(j.video_id)||null,status:state(j),at:j.completed_at,...(state(j)==='failed'?{error:(j.error||'Expirée').split('\n')[0].slice(0,140)}:{})}));
  return {total:wave.length,...counts,startedAt:wave[wave.length-1].created_at,finishedAt:finished&&lastDone?new Date(lastDone).toISOString():null,recent};
 }
+
+/** NotebookLM jobs are separate from transcript jobs and scoped to the authenticated owner. */
+export type NotebookOperation='create'|'list'|'add_url_source';
+export async function createNotebookJob(userId:string,operation:NotebookOperation,payload:Record<string,string>){
+ const rows=await sb<Array<{id:string}>>('/rest/v1/cmg_notebook_jobs',{method:'POST',body:JSON.stringify({user_id:userId,operation,payload}),prefer:'return=representation'});
+ return rows[0];
+}
+export async function getNotebookJob(userId:string,id:string){
+ if(!/^[0-9a-f-]{36}$/i.test(id))return null;
+ const rows=await sb<Array<{id:string;status:string;result:unknown;error:string|null}>>('/rest/v1/cmg_notebook_jobs?id=eq.'+id+'&user_id=eq.'+userId+'&select=id,status,result,error');
+ return rows[0]??null;
+}
+export async function claimNotebookJob(device:Device){
+ const rows=await sb<Array<{id:string;operation:NotebookOperation;payload:Record<string,string>}>>('/rest/v1/rpc/cmg_claim_notebook_job',{method:'POST',body:JSON.stringify({p_user_id:device.user_id,p_device_id:device.id})});
+ return rows[0]??null;
+}
+export async function completeNotebookJob(device:Device,id:string,outcome:{result?:unknown;error?:string}){
+ if(!/^[0-9a-f-]{36}$/i.test(id))return false;
+ const patch=outcome.error!==undefined?{status:'error',error:outcome.error.slice(0,2000),completed_at:nowIso()}:{status:'done',result:outcome.result,completed_at:nowIso()};
+ const rows=await sb<Array<{id:string}>>('/rest/v1/cmg_notebook_jobs?id=eq.'+id+'&device_id=eq.'+device.id+'&status=eq.claimed',{method:'PATCH',body:JSON.stringify(patch),prefer:'return=representation'});
+ return rows.length>0;
+}
