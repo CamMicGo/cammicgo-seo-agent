@@ -63,7 +63,21 @@ public final class NotebookActivity extends Activity {
     });
     root.addView(browser,new LinearLayout.LayoutParams(-1,0,1));
     setContentView(root);
-    home.setOnClickListener(v->browser.loadUrl(HOME));
+    home.setOnClickListener(v->{
+      browser.loadUrl(HOME);
+      browser.postDelayed(()->browser.evaluateJavascript("(function(){const items=[...document.querySelectorAll('a[href*=\\\"/notebook/\\\"]')].map(a=>({title:(a.getAttribute('aria-label')||a.innerText||'').trim(),url:a.href})).filter(x=>x.title&&/^https:\\\\/\\\\/notebooklm\\\\.google\\\\.com\\\\/notebook\\\\//.test(x.url));return JSON.stringify(items)})()",value->{
+        try{
+          String json=new JSONArray(value).getString(0);
+          JSONArray items=new JSONArray(json);
+          if(items.length()==0){notice("Aucun notebook trouvé dans cette session, ou connexion Google nécessaire.");return;}
+          String[] names=new String[items.length()];
+          for(int i=0;i<items.length();i++)names[i]=items.getJSONObject(i).getString("title");
+          new AlertDialog.Builder(this).setTitle("Notebooks ("+items.length()+")").setItems(names,(dialog,which)->{
+            try{String url=items.getJSONObject(which).getString("url");lastNotebookUrl=url;browser.loadUrl(url);}catch(Exception e){notice("Impossible d'ouvrir ce notebook.");}
+          }).setNegativeButton("Fermer",null).show();
+        }catch(Exception e){notice("Impossible de lire la liste. Vérifiez votre connexion à NotebookLM.");}
+      }),2500);
+    });
     create.setOnClickListener(v->{
       EditText title=new EditText(this);
       title.setSingleLine(true);
