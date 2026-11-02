@@ -132,6 +132,10 @@ public class RelayService extends Service {
 
   private void handle(String token, JSONObject job) throws IOException {
     String id = job.optString("id"), videoId = job.optString("videoId"), lang = job.optString("language", "original");
+    if (job.optString("type").startsWith("notebooklm_")) {
+      handleNotebook(token, job);
+      return;
+    }
     status(I18n.t(this, "working", videoId));
     current(videoId);
     TranscriptFetcher.Result r;
@@ -189,6 +193,38 @@ public class RelayService extends Service {
     history(videoId, r.title, "done", r.segments.size(), null);
     status(I18n.t(this, "sent", r.title != null ? r.title : videoId, r.segments.size()));
     rateLimitStrikes = 0;
+  }
+
+  /** Notebook tasks are tracked separately; never pass them to the YouTube transcript parser. */
+  private void handleNotebook(String token, JSONObject job) throws IOException {
+    String id=job.optString("id");
+    String operation=job.optString("type").replace("notebooklm_", "");
+    String title=job.optString("title", job.optString("notebookUrl", "NotebookLM"));
+    String label=("create".equals(operation)?"Créer un notebook": "list".equals(operation)?"Lister les notebooks":"Ajouter une source")+" · "+title;
+    notebookHistory(label, "working", null);
+    status("NotebookLM : "+label);
+    // Chrome authentication is isolated from the app WebView. A background service cannot
+    // operate a Chrome tab or borrow its Google cookies. Explicitly report unsupported work.
+    String error="Cette version Android ne peut pas encore exécuter NotebookLM depuis la session Chrome. Ouvrez NotebookLM dans l'application ou utilisez le relais ordinateur.";
+    try {
+      JSONObject body=new JSONObject();body.put("type","notebooklm");body.put("error",error);
+      RelayClient.request("POST","/api/devices/jobs/"+id,token,body.toString());
+    } catch (org.json.JSONException e) { throw new IOException("NotebookLM response error",e); }
+    notebookHistory(label,"failed",error);
+    status("NotebookLM : opération non prise en charge");
+  }
+
+  private void notebookHistory(String label,String state,String error) {
+    SharedPreferences p=RelayClient.prefs(this);
+    try {
+      org.json.JSONArray old=new org.json.JSONArray(p.getString("notebookHistory","[]"));
+      org.json.JSONArray out=new org.json.JSONArray();
+      JSONObject e=new JSONObject();e.put("label",label);e.put("status",state);e.put("at",System.currentTimeMillis());
+      if(error!=null)e.put("error",error);
+      out.put(e);
+      for(int i=0;i<old.length()&&out.length()<30;i++)out.put(old.get(i));
+      p.edit().putString("notebookHistory",out.toString()).apply();
+    } catch(Exception ignored) {}
   }
 
   private void current(String videoId) {
