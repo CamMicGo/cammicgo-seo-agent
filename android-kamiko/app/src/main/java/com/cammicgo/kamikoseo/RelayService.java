@@ -201,7 +201,7 @@ public class RelayService extends Service {
     String operation=job.optString("type").replace("notebooklm_", "");
     String title=job.optString("title", job.optString("notebookUrl", "NotebookLM"));
     String label=("create".equals(operation)?"Créer un notebook": "list".equals(operation)?"Lister les notebooks":"Ajouter une source")+" · "+title;
-    notebookHistory(label, "working", null);
+    notebookHistory(id,label, "working", null);
     status("NotebookLM : "+label);
     try {
       NotebookClient client=new NotebookClient(this);
@@ -213,7 +213,7 @@ public class RelayService extends Service {
       else throw new IOException("Opération NotebookLM non prise en charge : "+operation);
       JSONObject body=new JSONObject().put("type","notebooklm").put("result",result);
       RelayClient.request("POST","/api/devices/jobs/"+id,token,body.toString());
-      notebookHistory(label,"done",null);
+      notebookHistory(id,label,"done",null);
       status("NotebookLM : opération exécutée");
     } catch (Exception ex) {
       String error=ex.getMessage()==null?ex.getClass().getSimpleName():ex.getMessage();
@@ -221,20 +221,30 @@ public class RelayService extends Service {
         JSONObject body=new JSONObject().put("type","notebooklm").put("error",error);
         RelayClient.request("POST","/api/devices/jobs/"+id,token,body.toString());
       } catch(org.json.JSONException jsonError){throw new IOException(jsonError);}
-      notebookHistory(label,"failed",error);
+      notebookHistory(id,label,"failed",error);
       status("NotebookLM : "+error);
     }
   }
 
-  private void notebookHistory(String label,String state,String error) {
+  private void notebookHistory(String jobId,String label,String state,String error) {
     SharedPreferences p=RelayClient.prefs(this);
     try {
       org.json.JSONArray old=new org.json.JSONArray(p.getString("notebookHistory","[]"));
       org.json.JSONArray out=new org.json.JSONArray();
-      JSONObject e=new JSONObject();e.put("label",label);e.put("status",state);e.put("at",System.currentTimeMillis());
+      JSONObject e=new JSONObject();e.put("jobId",jobId);e.put("label",label);
+      e.put("status",state);e.put("at",System.currentTimeMillis());
       if(error!=null)e.put("error",error);
       out.put(e);
-      for(int i=0;i<old.length()&&out.length()<30;i++)out.put(old.get(i));
+      for(int i=0;i<old.length()&&out.length()<30;i++){
+        JSONObject prior=old.optJSONObject(i);
+        if(prior==null||jobId.equals(prior.optString("jobId")))continue;
+        // Older entries without job IDs may be stale; never present them as running forever.
+        if(!prior.has("jobId")&&"working".equals(prior.optString("status"))){
+          prior.put("status","failed");
+          prior.put("error","Ancienne opération interrompue avant confirmation");
+        }
+        out.put(prior);
+      }
       p.edit().putString("notebookHistory",out.toString()).apply();
     } catch(Exception ignored) {}
   }
