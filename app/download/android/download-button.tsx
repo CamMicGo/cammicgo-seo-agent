@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { useT } from '../../lang-provider';
 import type { Dict } from '@/lib/i18n';
 
@@ -25,10 +24,6 @@ const copy: Dict<C> = {
 /** Android APK download button with progress, in the site's gradient style and the Android logo. */
 export default function DownloadButton() {
   const t = useT(copy);
-  const [progress, setProgress] = useState<number | null>(null);
-  const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
-  const [message, setMessage] = useState('');
-
   // Use a native browser download instead of fetch -> Blob -> object URL.
   // Android WebViews may fetch the full APK yet silently refuse to save blob: URLs.
   // A direct HTTPS link lets Chrome/Android Download Manager handle the APK.
@@ -37,15 +32,9 @@ export default function DownloadButton() {
     <div className="apk-dl">
       <a href="/download/android/apk" download={filename} className="apk-btn">
         <span className="apk-btn-logo"><img src="/os-logos/android.svg" alt="" width="34" height="34" /></span>
-        <span className="apk-btn-text"><small>{t.small}</small><strong>{status === 'loading' ? t.loading : t.cta}</strong><em>{t.meta}</em></span>
-        <span className="apk-btn-arrow" aria-hidden="true">{status === 'loading' ? '…' : '↓'}</span>
+        <span className="apk-btn-text"><small>{t.small}</small><strong>{t.cta}</strong><em>{t.meta}</em></span>
+        <span className="apk-btn-arrow" aria-hidden="true">↓</span>
       </a>
-      {status !== 'idle' && (
-        <div role="status" aria-live="polite" className="apk-progress">
-          <div className="apk-bar"><div style={{ width: (progress ?? (status === 'loading' ? 8 : 0)) + '%' }} /></div>
-          <p className={status === 'error' ? 'err' : ''}>{progress !== null ? progress + '% — ' : ''}{message}</p>
-        </div>
-      )}
       <p className="apk-fallback">{t.fallback1} <a href={fallback}>{t.fallback2}</a>.</p>
     </div>
   );
