@@ -170,6 +170,14 @@ export async function deviceProgress(userId:string):Promise<DeviceProgress|null>
 /** NotebookLM jobs are separate from transcript jobs and scoped to the authenticated owner. */
 export type NotebookOperation='create'|'list'|'add_url_source';
 export async function createNotebookJob(userId:string,operation:NotebookOperation,payload:Record<string,string>){
+ // Avoid enqueueing duplicate mutations while a previous request is still active.
+ if(operation==='create' && payload.title){
+  const active=await sb<Array<{id:string;payload:Record<string,string>}>>(
+   '/rest/v1/cmg_notebook_jobs?user_id=eq.'+encodeURIComponent(userId)+
+   '&operation=eq.create&status=in.(pending,claimed)&select=id,payload&order=created_at.desc&limit=30');
+  const duplicate=active.find(j=>j.payload?.title===payload.title);
+  if(duplicate)return {id:duplicate.id};
+ }
  const rows=await sb<Array<{id:string}>>('/rest/v1/cmg_notebook_jobs',{method:'POST',body:JSON.stringify({user_id:userId,operation,payload}),prefer:'return=representation'});
  return rows[0];
 }
