@@ -591,6 +591,9 @@ public class MainActivity extends Activity {
       catch (Exception e) { Toast.makeText(this, "Navigateur indisponible", Toast.LENGTH_LONG).show(); }
     });
     notebookCard.addView(notebookButton, gapTop(8));
+    Button workspace = primary("Agent NotebookLM · ouvrir l’espace de travail");
+    workspace.setOnClickListener(v -> startActivity(new Intent(this, NotebookActivity.class)));
+    notebookCard.addView(workspace, gapTop(8));
     Button copyNotebook = secondary("Copier le lien du notebook");
     copyNotebook.setOnClickListener(v -> {
       final EditText link = field("https://notebooklm.google.com/notebook/...");
