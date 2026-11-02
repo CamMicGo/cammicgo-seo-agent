@@ -20,7 +20,7 @@ import java.util.regex.Pattern;
  * Google's private RPC interface can change without notice.
  */
 final class NotebookClient {
-  private static final String HOME="https://notebooklm.google.com/";
+  private static final String HOME="https://notebook.google.com/";
   private final Context context;
   NotebookClient(Context c){context=c.getApplicationContext();}
 
@@ -36,7 +36,7 @@ final class NotebookClient {
     }
   }
   private String cookie() throws IOException {
-    String c=CookieManager.getInstance().getCookie(HOME);
+    String c=CookieManager.getInstance().getCookie(new URL(HOME).toString());
     if(c==null||c.trim().isEmpty())throw new IOException("Connectez votre compte Google dans l'onglet NotebookLM de l'APK (la session Chrome est distincte).");
     return c;
   }
@@ -62,7 +62,7 @@ final class NotebookClient {
       if(status==301||status==302||status==303||status==307||status==308){
         String location=c.getHeaderField("Location");
         URL next=location==null?null:new URL(new URL(url),location);
-        if(next!=null&&"https".equals(next.getProtocol())&&"notebooklm.google.com".equalsIgnoreCase(next.getHost())&&redirects<3){
+        if(next!=null&&"https".equals(next.getProtocol())&&("notebook.google.com".equalsIgnoreCase(next.getHost())||"notebooklm.google.com".equalsIgnoreCase(next.getHost()))&&redirects<3){
           return request(next.toString(),status==307||status==308?method:"GET",status==307||status==308?body:null,redirects+1);
         }
         throw new IOException("NotebookLM redirige vers "+(next==null?"une adresse inconnue":next.getHost())+" (HTTP "+status+"). Vérifiez la session WebView.");
@@ -140,7 +140,7 @@ final class NotebookClient {
   }
   JSONObject addUrl(String notebookUrl,String sourceUrl) throws Exception {
     if(notebookUrl==null||sourceUrl==null)throw new IOException("Notebook and source URL required");
-    Matcher m=Pattern.compile("^https://notebooklm\\.google\\.com/notebook/([A-Za-z0-9_-]+)").matcher(notebookUrl);
+    Matcher m=Pattern.compile("^https://(?:notebooklm|notebook)\\.google\\.com/notebook/([A-Za-z0-9_-]+)").matcher(notebookUrl);
     if(!m.find())throw new IOException("Invalid NotebookLM notebook URL");
     URL source=new URL(sourceUrl);
     if(!"https".equals(source.getProtocol())||source.getHost().isEmpty())throw new IOException("Source must be HTTPS");
