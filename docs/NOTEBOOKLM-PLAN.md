@@ -19,3 +19,16 @@ This feature is **experimental and not connected to NotebookLM yet**.
 9. Add integration tests for NotebookLM only after a user account is connected and has explicitly authorized a test notebook.
 
 **No claim is made that this branch already creates notebooks, monitors channels or updates NotebookLM.**
+
+## Current local MCP prototype (not yet deployed)
+The local MCP now exposes `notebook_export_youtube_markdown`, accepting `videos` (1–25 YouTube IDs/URLs), optional `title`, `language` and `maxWords`. It calls the existing local caption extractor and writes `.md` files under `~/.cammicgo-seo-agent/notebooklm-exports/`. Output includes file paths, video IDs, SHA-256 digests and per-video errors. There is no NotebookLM login, account creation, or import automation yet.
+
+Example request to a local MCP client: "Use notebook_export_youtube_markdown with videos [https://www.youtube.com/watch?v=abcdefghijk], title My channel." The ID above is a placeholder; use a real public video with captions.
+
+Tests added: `node --test tests/notebooklm-local.test.mjs`. Existing TypeScript batch tests can be run using `node --experimental-strip-types --test tests/notebooklm-transcript-batches.test.ts`. These tests have not been executed by this assistant.
+
+## Android pilot: no second app required for the manual path
+The official Gemini Notebook Android app is optional for reading and chatting. For a first import of `.md`, the **browser desktop interface** is preferable because the Android app's supported source types are narrower. An Android user can use the browser's desktop-site option where available, or copy text as a source. Do not claim that Kamigo Android already supports NotebookLM: its APK repository/build must be located and audited first.
+
+## Important sync caveat
+Importing a Markdown file as a NotebookLM source does not guarantee that editing the file later refreshes the source automatically. Until a tested, permitted update mechanism exists, return `notebookCreated:false` and never claim automatic sync.
