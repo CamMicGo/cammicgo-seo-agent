@@ -203,15 +203,27 @@ public class RelayService extends Service {
     String label=("create".equals(operation)?"Créer un notebook": "list".equals(operation)?"Lister les notebooks":"Ajouter une source")+" · "+title;
     notebookHistory(label, "working", null);
     status("NotebookLM : "+label);
-    // Chrome authentication is isolated from the app WebView. A background service cannot
-    // operate a Chrome tab or borrow its Google cookies. Explicitly report unsupported work.
-    String error="Cette version Android ne peut pas encore exécuter NotebookLM depuis la session Chrome. Ouvrez NotebookLM dans l'application ou utilisez le relais ordinateur.";
     try {
-      JSONObject body=new JSONObject();body.put("type","notebooklm");body.put("error",error);
+      NotebookClient client=new NotebookClient(this);
+      JSONObject result;
+      if ("create".equals(operation)) result=client.create(job.optString("title"));
+      else if ("list".equals(operation)) result=client.list();
+      else if ("add_url_source".equals(operation))
+        result=client.addUrl(job.optString("notebookUrl"),job.optString("sourceUrl"));
+      else throw new IOException("Opération NotebookLM non prise en charge : "+operation);
+      JSONObject body=new JSONObject().put("type","notebooklm").put("result",result);
       RelayClient.request("POST","/api/devices/jobs/"+id,token,body.toString());
-    } catch (org.json.JSONException e) { throw new IOException("NotebookLM response error",e); }
-    notebookHistory(label,"failed",error);
-    status("NotebookLM : opération non prise en charge");
+      notebookHistory(label,"done",null);
+      status("NotebookLM : opération exécutée");
+    } catch (Exception ex) {
+      String error=ex.getMessage()==null?ex.getClass().getSimpleName():ex.getMessage();
+      try {
+        JSONObject body=new JSONObject().put("type","notebooklm").put("error",error);
+        RelayClient.request("POST","/api/devices/jobs/"+id,token,body.toString());
+      } catch(org.json.JSONException jsonError){throw new IOException(jsonError);}
+      notebookHistory(label,"failed",error);
+      status("NotebookLM : "+error);
+    }
   }
 
   private void notebookHistory(String label,String state,String error) {
