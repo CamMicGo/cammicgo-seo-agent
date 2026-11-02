@@ -81,7 +81,7 @@ public class MainActivity extends Activity {
   // assistant tab
   private EditText codeInput;
   private Button pairButton, connectButton;
-  private LinearLayout unpairedBox, pairedBox, historyList;
+  private LinearLayout unpairedBox, pairedBox, historyList, notebookRequests;
   private View statusDot;
   private TextView statusLine, relayDetail;
   private TextView progressCount, progressLabel, progressCurrent, progressNote, statDone, statWaiting, statFailed;
@@ -441,6 +441,8 @@ public class MainActivity extends Activity {
     progressNote = text(p, "", 12, MUTED, false);
     progressNote.setPadding(0, dp(6), 0, 0);
 
+    section(root, "OPÉRATIONS NOTEBOOKLM");
+    notebookRequests=card(root);
     section(root, t("sec_sent"));
     TextView hint = text(root, t("long_press"), 12, MUTED, false);
     hint.setPadding(dp(4), 0, 0, dp(8));
@@ -747,7 +749,28 @@ public class MainActivity extends Activity {
       relayDetail.setText(b.toString());
     }
     refreshProgress(p, paired, connected);
+    refreshNotebookRequests(p);
     refreshHistory(p);
+  }
+
+  private String notebookHistoryShown;
+  private void refreshNotebookRequests(SharedPreferences p) {
+    if(notebookRequests==null)return;
+    String raw=p.getString("notebookHistory","[]");
+    if(raw.equals(notebookHistoryShown))return;
+    notebookHistoryShown=raw;
+    notebookRequests.removeAllViews();
+    try {
+      JSONArray entries=new JSONArray(raw);
+      if(entries.length()==0){text(notebookRequests,"Aucune opération NotebookLM reçue pour le moment.",12,MUTED,false);return;}
+      for(int i=0;i<Math.min(entries.length(),12);i++){
+        JSONObject e=entries.optJSONObject(i);if(e==null)continue;
+        String state=e.optString("status");
+        String label="done".equals(state)?"Terminée":"working".equals(state)?"En cours":"Échec";
+        text(notebookRequests,label+" · "+e.optString("label"),13,"failed".equals(state)?RED:INK,true);
+        if(e.has("error"))text(notebookRequests,e.optString("error"),11,MUTED,false);
+      }
+    }catch(Exception ex){text(notebookRequests,"Historique NotebookLM indisponible.",12,RED,false);}
   }
 
   private void refreshProgress(SharedPreferences p, boolean paired, boolean connected) {
