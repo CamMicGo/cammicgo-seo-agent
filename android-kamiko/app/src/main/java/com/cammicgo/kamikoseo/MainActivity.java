@@ -586,7 +586,7 @@ public class MainActivity extends Activity {
     section(root, "NotebookLM · CamMicGo");
     LinearLayout notebookCard = card(root);
     text(notebookCard, "Ouvrir NotebookLM sur ce téléphone", 15, INK, true);
-    text(notebookCard, "Utilise votre session Google dans le navigateur. Créez un notebook, puis Sources → Ajouter des sources → Drive. Cette ouverture n'automatise pas encore la création ni l'import.", 13, MUTED, false);
+    text(notebookCard, "Pour les commandes de l’assistant IA, connectez votre compte Google dans « Agent NotebookLM · ouvrir l’espace de travail ». La session Chrome externe ne peut pas être utilisée par l’APK. Les opérations sont exécutées localement et doivent être confirmées par NotebookLM.", 13, MUTED, false);
     Button notebookButton = secondary("Ouvrir NotebookLM");
     notebookButton.setOnClickListener(v -> {
       try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://notebooklm.google.com/"))); }
