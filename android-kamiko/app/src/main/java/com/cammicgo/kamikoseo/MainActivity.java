@@ -536,9 +536,9 @@ public class MainActivity extends Activity {
     exportTitle.setPadding(0, dp(14), 0, dp(6));
     String[][] formats = {
         {"SRT", t("fmt_srt")}, {"VTT", t("fmt_vtt")}, {"TXT", t("fmt_txt")},
-        {t("fmt_plain_label"), t("fmt_plain")}, {"JSON", t("fmt_json")}};
+        {t("fmt_plain_label"), t("fmt_plain")}, {"JSON", t("fmt_json")}, {"Markdown", "NotebookLM · .md"}};
     LinearLayout row = null;
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < formats.length; i++) {
       if (i % 3 == 0) { row = new LinearLayout(this); resultCard.addView(row, gapTop(i == 0 ? 0 : 8)); }
       final int kind = i;
       LinearLayout tile = new LinearLayout(this);
@@ -581,6 +581,17 @@ public class MainActivity extends Activity {
   // ---------- tab 3: help ----------
 
   private void buildHelpPage(LinearLayout root) {
+    section(root, "NotebookLM · CamMicGo");
+    LinearLayout notebookCard = card(root);
+    text(notebookCard, "Ouvrir NotebookLM sur ce téléphone", 15, INK, true);
+    text(notebookCard, "Utilise votre session Google dans le navigateur. Créez un notebook, puis Sources → Ajouter des sources → Drive. Cette ouverture n'automatise pas encore la création ni l'import.", 13, MUTED, false);
+    Button notebookButton = secondary("Ouvrir NotebookLM");
+    notebookButton.setOnClickListener(v -> {
+      try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://notebooklm.google.com/"))); }
+      catch (Exception e) { Toast.makeText(this, "Navigateur indisponible", Toast.LENGTH_LONG).show(); }
+    });
+    notebookCard.addView(notebookButton, gapTop(8));
+
     section(root, t("sec_prompts"));
     LinearLayout c = card(root);
     TextView sub = text(c, t("prompts_sub"), 13, MUTED, false);
@@ -839,7 +850,10 @@ public class MainActivity extends Activity {
       case 1: save(TranscriptFetcher.toVtt(last), "text/vtt", id + "." + lang + ".vtt"); break;
       case 2: save(TranscriptFetcher.toText(last), "text/plain", id + "." + lang + ".txt"); break;
       case 3: save(TranscriptFetcher.toPlain(last), "text/plain", id + "." + lang + ".texte.txt"); break;
-      default: save(TranscriptFetcher.toJson(last), "application/json", id + "." + lang + ".json");
+      case 4: save(TranscriptFetcher.toJson(last), "application/json", id + "." + lang + ".json"); break;
+      case 5: try { save(TranscriptFetcher.toMarkdown(last), "text/markdown", id + "." + lang + ".md"); }
+        catch (java.io.IOException e) { Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show(); } break;
+      default: break;
     }
   }
 
