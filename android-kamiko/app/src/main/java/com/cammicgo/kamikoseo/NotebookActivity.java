@@ -36,7 +36,14 @@ public final class NotebookActivity extends Activity {
     location.setPadding(16,12,16,12);
     root.addView(location);
     LinearLayout actions=new LinearLayout(this);
+    Button back=button("← Retour"), refresh=button("↻ Actualiser");
     Button home=button("Notebooks"), create=button("Créer"), source=button("Sources"), chrome=button("Chrome");
+    LinearLayout navigation=new LinearLayout(this);
+    navigation.addView(back,new LinearLayout.LayoutParams(0,-2,1));
+    navigation.addView(refresh,new LinearLayout.LayoutParams(0,-2,1));
+    root.addView(navigation);
+    back.setOnClickListener(v->finish());
+    refresh.setOnClickListener(v->browser.reload());
     actions.addView(home,new LinearLayout.LayoutParams(0,-2,1));
     actions.addView(create,new LinearLayout.LayoutParams(0,-2,1));
     actions.addView(source,new LinearLayout.LayoutParams(0,-2,1));
@@ -105,6 +112,10 @@ public final class NotebookActivity extends Activity {
     });
     chrome.setOnClickListener(v->startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(lastNotebookUrl==null?HOME:lastNotebookUrl))));
     browser.loadUrl(HOME);
+  }
+  @Override protected void onResume(){
+    super.onResume();
+    if(browser!=null&&browser.getUrl()!=null)browser.reload();
   }
   private void notice(String message){new AlertDialog.Builder(this).setMessage(message).setPositiveButton("OK",null).show();}
   private void setNotebookTitle(String name){
