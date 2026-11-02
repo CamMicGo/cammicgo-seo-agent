@@ -257,15 +257,15 @@ public final class TranscriptFetcher {
     if (r.segments.isEmpty()) throw new IOException("Transcription vide.");
     StringBuilder b = new StringBuilder();
     b.append("# Transcriptions YouTube\\n\\n");
-    b.append("## Vidéo 1 — ").append(r.title == null ? r.videoId : r.title.replace('\\n', ' ')).append('\\n');
+    b.append("## Vidéo 1 — ").append(r.title == null ? r.videoId : r.title.replace('\n', ' ')).append('\n');
     b.append("- Chaîne : à renseigner lors du regroupement par chaîne\\n");
     b.append("- Auteur : à renseigner depuis les métadonnées YouTube\\n");
     b.append("- Date de publication : à renseigner depuis les métadonnées YouTube\\n");
-    b.append("- URL : https://www.youtube.com/watch?v=").append(r.videoId).append('\\n');
-    b.append("- Langue : ").append(r.language).append('\\n');
-    if (r.durationSeconds >= 0) b.append("- Durée (secondes) : ").append(r.durationSeconds).append('\\n');
+    b.append("- URL : https://www.youtube.com/watch?v=").append(r.videoId).append('\n');
+    b.append("- Langue : ").append(r.language).append('\n');
+    if (r.durationSeconds >= 0) b.append("- Durée (secondes) : ").append(r.durationSeconds).append('\n');
     b.append("### Transcription horodatée\\n");
-    for (Segment s : r.segments) b.append('[').append(clock(s.start)).append("] ").append(s.text.replace('\\n',' ')).append('\\n');
+    for (Segment s : r.segments) b.append('[').append(clock(s.start)).append("] ").append(s.text.replace('\n',' ')).append('\n');
     return b.toString();
   }
 
