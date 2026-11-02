@@ -18,7 +18,7 @@ import {StdioServerTransport} from '@modelcontextprotocol/server/stdio';
 import {z} from 'zod';
 import {fetchYouTubeCaptions} from '../lib/youtube-captions.mjs';
 import {exportYouTubeVideos} from '../lib/notebooklm-local.mjs';
-import {upsertTranscriptCsv} from '../lib/notebooklm-transcript-csv.mjs';
+import {upsertTranscriptCsv,parseCsv} from '../lib/notebooklm-transcript-csv.mjs';
 import * as sci from '../lib/science.mjs';
 
 const dir=join(homedir(),'.cammicgo-seo-agent');
@@ -180,7 +180,32 @@ async function stdio(){
  });
  m.registerTool('notebook_export_youtube_markdown',{description:'Create local timestamped Markdown files from public YouTube transcripts for manual import into a personal Gemini Notebook. Does NOT create or connect a notebook. Files stay on this computer.',inputSchema:z.object({videos:z.array(z.string().min(11).max(250)).min(1).max(25),title:z.string().min(1).max(160).default('YouTube transcripts'),language:z.string().regex(/^(original|[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})?)$/).default('original'),maxWords:z.number().int().min(1000).max(400000).default(300000)})},async a=>asText(await exportYouTubeVideos({urls:a.videos,title:a.title,language:a.language,maxWords:a.maxWords})));
  m.registerTool('notebook_update_youtube_csv',{description:'Fetch up to 25 YouTube videos and incrementally update a local multi-channel timestamped CSV knowledge base. Does not create a NotebookLM notebook or sync Google Drive.',inputSchema:z.object({videos:z.array(z.string().min(11).max(250)).min(1).max(25),source:z.string().min(1).max(160).default('YouTube knowledge base'),filename:z.string().regex(/^[a-zA-Z0-9_-]{1,80}\\.csv$/).default('youtube-transcripts.csv'),language:z.string().regex(/^(original|[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})?)$/).default('original')})},async a=>{const videos=[],errors=[];for(const url of a.videos){try{videos.push(await fetchYouTubeCaptions(url,a.language))}catch(e){errors.push({url,error:String(e.message||e).slice(0,240)})}}const path=join(dir,'notebooklm-exports',a.filename);const result=await upsertTranscriptCsv({path,videos,source:a.source});return asText({...result,requested:a.videos.length,extracted:videos.length,errors})});
- m.registerTool('service_info',{description:'Show local MCP capabilities and security limits',inputSchema:z.object({})},async()=>asText({name:'CamMicGo SEO MCP Local',mode:'stdio',remoteDependency:false,googleCloudProject:process.env.GOOGLE_CLOUD_PROJECT||null,credentials:'your own Google OAuth Desktop client, stored only on this computer (.env.local); nothing is sent to CamMicGo',googleReadOnly:true,tools:['science_search','science_latest','science_paper','science_author','science_author_works','science_citations','science_fulltext','science_verify_references','science_sources','find_google_properties','list_search_sites','search_performance','seo_keyword_opportunities','list_ga4_properties','ga4_top_pages','ga4_countries','youtube_my_channels','youtube_my_videos','youtube_video_metrics','youtube_get_transcript','notebook_export_youtube_markdown','notebook_update_youtube_csv','calendar_list','calendar_upcoming_events'],adsCampaignWrites:false,calendar:true,youtube:true}));
+ m.registerTool('notebook_check_channel_updates',{description:'On demand: compare a YouTube channel uploads playlist with video IDs already in the local knowledge-base CSV; extract only missing transcripts and upsert the CSV. Requires channel ID (UC...) and Google YouTube OAuth. Does not sync NotebookLM.',inputSchema:z.object({channelId:z.string().regex(/^UC[A-Za-z0-9_-]{22}$/),filename:z.string().regex(/^[a-zA-Z0-9_-]{1,80}\\.csv$/).default('youtube-transcripts.csv'),source:z.string().min(1).max(160).default('YouTube knowledge base'),maxScan:z.number().int().min(1).max(500).default(100),maxExtract:z.number().int().min(1).max(50).default(10)})},async a=>{
+  const path=join(dir,'notebooklm-exports',a.filename);
+  let old=[];try{old=parseCsv(readFileSync(path,'utf8'))}catch(e){if(e.code!=='ENOENT')throw e}
+  const existing=new Set(old.map(x=>x.video_id));
+  const channel=await google('https://www.googleapis.com/youtube/v3/channels?part=snippet,contentDetails&id='+encodeURIComponent(a.channelId));
+  const ch=channel.items?.[0];if(!ch)throw Error('YouTube channel not found');
+  const playlist=ch.contentDetails?.relatedPlaylists?.uploads;if(!playlist)throw Error('No uploads playlist');
+  const missing=[];let scanned=0,next='',knownStreak=0;
+  while(scanned<a.maxScan){
+   const limit=Math.min(50,a.maxScan-scanned);
+   const page=await google('https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId='+encodeURIComponent(playlist)+'&maxResults='+limit+(next?'&pageToken='+encodeURIComponent(next):''));
+   for(const item of page.items||[]){
+    scanned++;const id=item.contentDetails?.videoId||item.snippet?.resourceId?.videoId;
+    if(!id)continue;
+    if(existing.has(id)){knownStreak++;continue}
+    knownStreak=0;missing.push({id,title:item.snippet?.title,publishedAt:item.contentDetails?.videoPublishedAt||item.snippet?.publishedAt});
+   }
+   next=page.nextPageToken||'';
+   if(!next||knownStreak>=20)break;
+  }
+  const extracted=[],errors=[];
+  for(const item of missing.slice(0,a.maxExtract)){try{const result=await fetchYouTubeCaptions(item.id,'original');extracted.push({...result,videoId:item.id,title:result.title||item.title,publishedAt:item.publishedAt,channelName:ch.snippet?.title,channelId:a.channelId,author:ch.snippet?.title})}catch(e){errors.push({videoId:item.id,error:String(e.message||e).slice(0,200)})}}
+  const update=await upsertTranscriptCsv({path,videos:extracted,source:a.source,channelName:ch.snippet?.title,channelId:a.channelId});
+  return asText({...update,channel:ch.snippet?.title,scanned,missingFound:missing.length,extractionAttempted:Math.min(missing.length,a.maxExtract),remainingUnprocessed:Math.max(0,missing.length-a.maxExtract),scanComplete:!next,errors,notebookSynced:false});
+ });
+ m.registerTool('service_info',{description:'Show local MCP capabilities and security limits',inputSchema:z.object({})},async()=>asText({name:'CamMicGo SEO MCP Local',mode:'stdio',remoteDependency:false,googleCloudProject:process.env.GOOGLE_CLOUD_PROJECT||null,credentials:'your own Google OAuth Desktop client, stored only on this computer (.env.local); nothing is sent to CamMicGo',googleReadOnly:true,tools:['science_search','science_latest','science_paper','science_author','science_author_works','science_citations','science_fulltext','science_verify_references','science_sources','find_google_properties','list_search_sites','search_performance','seo_keyword_opportunities','list_ga4_properties','ga4_top_pages','ga4_countries','youtube_my_channels','youtube_my_videos','youtube_video_metrics','youtube_get_transcript','notebook_export_youtube_markdown','notebook_update_youtube_csv','notebook_check_channel_updates','calendar_list','calendar_upcoming_events'],adsCampaignWrites:false,calendar:true,youtube:true}));
  await m.connect(new StdioServerTransport());
 }
 async function doctor(){env();console.log('Science keys (.env.local): Semantic Scholar '+(process.env.SEMANTIC_SCHOLAR_API_KEY?'set':'not set (shared public pool)')+', OpenAlex '+(process.env.OPENALEX_API_KEY?'set':'not set (small daily quota)')+', NCBI/PubMed '+(process.env.NCBI_API_KEY?'set (10 req/s)':'not set (3 req/s)')+'; arXiv and HAL need no key.');const c=credentials();console.log('Google OAuth credentials: configured (client '+c.clientId.slice(0,12)+'…'+(process.env.GOOGLE_CLOUD_PROJECT?', project '+process.env.GOOGLE_CLOUD_PROJECT:'')+', stored only on this computer)');if(existsSync(secretsPath)){await token();console.log('Encrypted Google token: valid');}else console.log('Encrypted Google token: missing; run npm run local:login');console.log('This local MCP supports read-only GSC, GA4, YouTube and Calendar, plus local YouTube captions (built-in fetcher, yt-dlp optional fallback); no ads spending. If you previously signed in, run npm run local:login to grant new scopes.')}
