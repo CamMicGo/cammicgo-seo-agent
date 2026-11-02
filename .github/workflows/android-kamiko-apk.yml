@@ -44,5 +44,5 @@ jobs:
           if gh release view android-test-latest >/dev/null 2>&1; then
             gh release upload android-test-latest CamMicGo-SEO-MCP-Android-test.apk --clobber
           else
-            gh release create android-test-latest CamMicGo-SEO-MCP-Android-test.apk --title "CamMicGo Android test APK" --notes "Experimental debug build: on-device YouTube transcripts (InnerTube Android client + watch-page fallback); remote MCP pairing is not yet implemented." --prerelease --target "$GITHUB_SHA"
+            gh release create android-test-latest CamMicGo-SEO-MCP-Android-test.apk --title "CamMicGo Android test APK" --notes "CamMicGo Android test build. Includes paired transcript relay and NotebookLM browser handoff. Personal NotebookLM notebook creation is not automated." --prerelease --target "$GITHUB_SHA"
           fi
