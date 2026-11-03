@@ -192,4 +192,48 @@ final class NotebookClient {
     return new JSONObject().put("sourceAdded",true).put("notebookUrl",notebookUrl)
       .put("sourceUrl",sourceUrl).put("method","android-java-rpc");
   }
+  private String ownedNotebookId(String notebookUrl) throws Exception {
+    if(notebookUrl==null)throw new IOException("Notebook URL required");
+    Matcher match=Pattern.compile("^https://(?:notebooklm|notebook)\\.google\\.com/notebook/([A-Za-z0-9_-]+)$").matcher(notebookUrl);
+    if(!match.matches())throw new IOException("Invalid notebook URL");
+    String id=match.group(1);
+    JSONArray owned=list().getJSONArray("notebooks");
+    for(int i=0;i<owned.length();i++)if(id.equals(owned.getJSONObject(i).optString("id")))return id;
+    throw new IOException("Notebook not found in the authenticated account's owned notebooks");
+  }
+  JSONObject getNotebook(String notebookUrl) throws Exception {
+    String id=ownedNotebookId(notebookUrl);
+    JSONArray items=list().getJSONArray("notebooks");
+    JSONObject notebook=null;
+    for(int i=0;i<items.length();i++)if(id.equals(items.getJSONObject(i).optString("id")))notebook=items.getJSONObject(i);
+    Object raw=rpc(NotebookRpcCodec.GET,new JSONArray().put(id).put(JSONObject.NULL).put(new JSONArray().put(2)).put(JSONObject.NULL).put(0),"/notebook/"+id);
+    if(!(raw instanceof JSONArray))throw new IOException("Notebook details unavailable");
+    JSONArray details=(JSONArray)raw;
+    JSONArray sources=details.optJSONArray(1);
+    JSONArray output=new JSONArray();
+    if(sources!=null)for(int i=0;i<sources.length();i++){
+      JSONArray src=sources.optJSONArray(i);if(src==null)continue;
+      JSONArray ids=src.optJSONArray(0);
+      output.put(new JSONObject().put("id",ids==null?JSONObject.NULL:ids.optString(0))
+        .put("title",src.optString(1,"Sans titre")));
+    }
+    return new JSONObject().put("id",id).put("url",notebookUrl)
+      .put("title",notebook.optString("title")).put("sourceCount",output.length())
+      .put("sources",output).put("verified",true);
+  }
+  JSONObject renameNotebook(String notebookUrl,String title) throws Exception {
+    if(title==null||title.trim().isEmpty()||title.length()>160)throw new IOException("Invalid title");
+    String id=ownedNotebookId(notebookUrl);
+    JSONArray update=new JSONArray().put(JSONObject.NULL).put(JSONObject.NULL).put(JSONObject.NULL)
+      .put(new JSONArray().put(JSONObject.NULL).put(title.trim()));
+    rpc(NotebookRpcCodec.RENAME,new JSONArray().put(id).put(new JSONArray().put(update)),"/notebook/"+id);
+    JSONArray after=list().getJSONArray("notebooks");
+    for(int i=0;i<after.length();i++){
+      JSONObject nb=after.getJSONObject(i);
+      if(id.equals(nb.optString("id"))&&title.trim().equals(nb.optString("title")))
+        return new JSONObject().put("renamed",true).put("id",id).put("title",title.trim()).put("verified",true);
+    }
+    throw new IOException("Rename was not confirmed by NotebookLM notebook list");
+  }
+
 }
