@@ -318,4 +318,59 @@ final class NotebookClient {
     return addStructuredSource(notebookUrl,source,title);
   }
 
+  private String findTier(Object node,int depth){
+    if(depth>12||node==null)return null;
+    if(node instanceof String){
+      String v=(String)node;return v.startsWith("NOTEBOOKLM_TIER_")?v:null;
+    }
+    if(node instanceof JSONArray){
+      JSONArray a=(JSONArray)node;
+      for(int j=0;j<a.length();j++){String t=findTier(a.opt(j),depth+1);if(t!=null)return t;}
+    }
+    return null;
+  }
+  JSONObject usage() throws Exception {
+    JSONArray header=new JSONArray().put(2).put(JSONObject.NULL).put(new JSONArray().put(1));
+    JSONArray metadata=new JSONArray().put(1);
+    for(int i=0;i<9;i++)metadata.put(JSONObject.NULL);
+    metadata.put(new JSONArray().put(1).put(3));
+    header.put(metadata);
+    Object raw=rpc("EylDcb",new JSONArray().put(header),"/");
+    if(!(raw instanceof JSONArray))throw new IOException("NotebookLM usage RPC returned invalid response");
+    JSONArray windows=((JSONArray)raw).optJSONArray(1);
+    if(windows==null)throw new IOException("NotebookLM usage windows unavailable");
+    JSONArray output=new JSONArray();
+    for(int i=0;i<windows.length();i++){
+      JSONArray w=windows.optJSONArray(i);
+      if(w==null||w.length()<8)continue;
+      int kind=w.optInt(4,-1);
+      if(kind!=1&&kind!=2)continue;
+      JSONObject entry=new JSONObject().put("window",kind==1?"rolling":"weekly");
+      if(w.opt(6) instanceof Number)entry.put("percentUsed",w.optDouble(6));
+      if(w.opt(7) instanceof Number)entry.put("percentRemaining",w.optDouble(7));
+      JSONArray reset=w.optJSONArray(5);
+      if(reset!=null&&reset.opt(0) instanceof Number)entry.put("resetsAtEpochSeconds",reset.optLong(0));
+      output.put(entry);
+    }
+    if(output.length()==0)throw new IOException("No usable NotebookLM usage windows");
+    JSONArray entitlement=new JSONArray().put(
+      new JSONArray().put(
+        new JSONArray().put(
+          new JSONArray().put(JSONObject.NULL).put("1").put(627)
+        ).put(new JSONArray().put(JSONObject.NULL).put(JSONObject.NULL).put(JSONObject.NULL)
+          .put(JSONObject.NULL).put(JSONObject.NULL).put(JSONObject.NULL).put(JSONObject.NULL)
+          .put(JSONObject.NULL).put(JSONObject.NULL).put(new JSONArray().put(JSONObject.NULL).put(JSONObject.NULL).put(2))
+        ).put(1)
+      )
+    );
+    String tier=null,entitlementError=null;
+    try{tier=findTier(rpc("ozz5Z",entitlement,"/"),0);}
+    catch(Exception e){entitlementError=e.getMessage();}
+    JSONObject result=new JSONObject().put("windows",output).put("tier",tier==null?JSONObject.NULL:tier)
+      .put("source","notebooklm-live-rpc").put("fetchedAt",System.currentTimeMillis())
+      .put("quotaScope","account").put("generationAvailability","not-guaranteed");
+    if(entitlementError!=null)result.put("tierError",entitlementError);
+    return result;
+  }
+
 }
