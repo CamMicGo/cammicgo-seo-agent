@@ -181,7 +181,7 @@ export async function deviceProgress(userId:string):Promise<DeviceProgress|null>
 }
 
 /** NotebookLM jobs are separate from transcript jobs and scoped to the authenticated owner. */
-export type NotebookOperation='create'|'list'|'add_url_source'|'get'|'rename'|'delete_preview'|'delete'|'add_text_source'|'add_drive_source'|'usage'|'source_list'|'studio_create'|'studio_status'|'mindmap_create'|'notebook_share_status'|'query'|'notebook_share_public'|'notebook_share_invite'|'artifact_download_link'|'source_rename'|'source_sync_drive'|'source_delete'|'studio_get'|'research_start'|'research_status'|'research_import'|'note'|'source_describe'|'source_get_content';
+export type NotebookOperation='create'|'list'|'add_url_source'|'get'|'rename'|'delete_preview'|'delete'|'add_text_source'|'add_drive_source'|'usage'|'source_list'|'studio_create'|'studio_status'|'mindmap_create'|'notebook_share_status'|'query'|'notebook_share_public'|'notebook_share_invite'|'artifact_download_link'|'source_rename'|'source_sync_drive'|'source_delete'|'studio_get'|'research_start'|'research_status'|'research_import'|'note'|'source_describe'|'source_get_content'|'artifact_download_binary';
 export async function createNotebookJob(userId:string,operation:NotebookOperation,payload:Record<string,string>){
  // Avoid enqueueing duplicate mutations while a previous request is still active.
  if(operation==='create' && payload.title){
@@ -208,4 +208,17 @@ export async function completeNotebookJob(device:Device,id:string,outcome:{resul
  const patch=outcome.error!==undefined?{status:'error',error:outcome.error.slice(0,2000),completed_at:nowIso()}:{status:'done',result:outcome.result,completed_at:nowIso()};
  const rows=await sb<Array<{id:string}>>('/rest/v1/cmg_notebook_jobs?id=eq.'+id+'&device_id=eq.'+device.id+'&status=eq.claimed',{method:'PATCH',body:JSON.stringify(patch),prefer:'return=representation'});
  return rows.length>0;
+}
+
+/** Issue a short-lived download URL only for a private artifact owned by this MCP user.
+ * The bearer credential never goes to the agent; the signed URL expires in 5 minutes. */
+export async function signedNotebookArtifact(userId:string,storagePath:string){
+ if(!/^[0-9a-f-]{36}\/[0-9a-f-]{36}\/artifact\.(m4a|mp4|pdf|png|jpg|md|txt|json|pptx|xlsx)$/i.test(storagePath)||
+    !storagePath.startsWith(userId+'/'))throw Error('Invalid or foreign artifact path');
+ const result=await sb<{signedURL?:string;signedUrl?:string}>(
+  '/storage/v1/object/sign/cmg-notebook-artifacts/'+storagePath,
+  {method:'POST',body:JSON.stringify({expiresIn:300})});
+ const signed=result.signedURL||result.signedUrl;
+ if(!signed||!signed.startsWith('/'))throw Error('Artifact signing failed');
+ return url+signed;
 }
