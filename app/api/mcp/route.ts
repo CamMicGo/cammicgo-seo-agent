@@ -77,7 +77,7 @@ async function handler(req:NextRequest){
     finally{logCall(name,performance.now()-t0,ok);}
    });
    // NotebookLM personal actions execute only on a paired, signed-in desktop browser.
-   const notebookJob=async(operation:'create'|'list'|'add_url_source'|'get'|'rename'|'delete_preview'|'delete'|'add_text_source'|'add_drive_source'|'usage'|'source_list'|'studio_create'|'studio_status'|'mindmap_create'|'notebook_share_status'|'query'|'notebook_share_public'|'notebook_share_invite'|'artifact_download_link'|'source_rename'|'source_sync_drive'|'source_delete'|'studio_get'|'research_start'|'research_status'|'research_import'|'note'|'source_describe'|'source_get_content',payload:Record<string,string>)=>{
+   const notebookJob=async(operation:'create'|'list'|'add_url_source'|'get'|'rename'|'delete_preview'|'delete'|'add_text_source'|'add_drive_source'|'usage'|'source_list'|'studio_create'|'studio_status'|'mindmap_create'|'notebook_share_status'|'query'|'notebook_share_public'|'notebook_share_invite'|'artifact_download_link'|'source_rename'|'source_sync_drive'|'source_delete'|'studio_get'|'research_start'|'research_status'|'research_import'|'note'|'source_describe'|'source_get_content'|'artifact_download_binary',payload:Record<string,string>)=>{
     const devices=await relay.listDevices(user.id);
     if(!devices.some(relay.isOnline))return asText({status:'device_offline',created:false,messageForUser:'Connectez le relais CamMicGo sur votre ordinateur, avec une session NotebookLM Google ouverte. Les actions ne sont pas exécutées dans le cloud.'});
     const job=await relay.createNotebookJob(user.id,operation,payload);
@@ -85,7 +85,14 @@ async function handler(req:NextRequest){
     while(Date.now()<deadline){
      await new Promise(r=>setTimeout(r,1500));
      const current=await relay.getNotebookJob(user.id,job.id);
-     if(current?.status==='done')return asText({status:'done',...((current.result&&typeof current.result==='object')?current.result as Record<string,unknown>:{result:current.result})});
+     if(current?.status==='done'){
+      const result=(current.result&&typeof current.result==='object')?current.result as Record<string,unknown>:{result:current.result};
+      if(operation==='artifact_download_binary'&&typeof result.storagePath==='string'){
+       const downloadUrl=await relay.signedNotebookArtifact(user.id,result.storagePath);
+       return asText({status:'done',...result,downloadUrl,expiresInSeconds:300,transfer:'private-signed-binary-url'});
+      }
+      return asText({status:'done',...result});
+     }
      if(current?.status==='error')return asText({status:'error',error:current.error});
     }
     return asText({status:'pending',jobId:job.id,messageForUser:'Opération en cours sur le navigateur connecté. Vérifiez son état avec notebook_job_status.'});
@@ -117,9 +124,16 @@ async function handler(req:NextRequest){
    server.registerTool('source_describe',{title:'Summarize NotebookLM source and keywords',annotations:{readOnlyHint:true},description:'Read the NotebookLM AI-generated source guide and keyword chips.',inputSchema:z.object({notebookUrl:z.string().url(),sourceId:z.string().min(8).max(128)})},async a=>notebookJob('source_describe',a));
    server.registerTool('source_get_content',{title:'Retrieve indexed NotebookLM source text',annotations:{readOnlyHint:true},description:'Read indexed source text, up to 85k characters per request; refuses silent truncation.',inputSchema:z.object({notebookUrl:z.string().url(),sourceId:z.string().min(8).max(128)})},async a=>notebookJob('source_get_content',a));
    server.registerTool('note',{title:'Manage NotebookLM notes',description:'List, create, update or delete NotebookLM notes. Delete requires explicit confirmation.',inputSchema:z.object({notebookUrl:z.string().url(),action:z.enum(['list','create','update','delete']),noteId:z.string().default(''),title:z.string().max(200).default(''),content:z.string().max(75000).optional(),confirm:z.boolean().default(false)})},async a=>notebookJob('note',{notebookUrl:a.notebookUrl,action:a.action,noteId:a.noteId,title:a.title,...(a.content===undefined?{}:{content:a.content}),confirm:String(a.confirm)}));
+   server.registerTool('download_artifact',{title:'Transfer NotebookLM audio/video binary to connected AI agent',description:'Download a completed NotebookLM audio or video on the paired Android device, upload up to 15 MB into a private per-user Supabase bucket and return a 5-minute signed binary URL. The agent must fetch the URL before expiry; no Google cookies leave Android.',inputSchema:z.object({notebookUrl:z.string().url(),artifactId:z.string().min(8).max(128)})},async a=>notebookJob('artifact_download_binary',a));
    server.registerTool('source_add_text',{title:'Add pasted Markdown or text to NotebookLM',description:'Add a text source through the signed-in Android NotebookLM session. Does not need public Drive sharing. For long transcripts split into bounded Markdown files.',inputSchema:z.object({notebookUrl:z.string().url(),title:z.string().min(1).max(200),text:z.string().min(1).max(400000)})},async a=>notebookJob('add_text_source',a));
    server.registerTool('source_add_drive',{title:'Add a native Google Drive source to NotebookLM',description:'Import a Google Sheet, Doc, Slides or PDF by Drive file ID, not by treating its URL as a website. The authenticated NotebookLM account must have access to the file; public sharing is not required.',inputSchema:z.object({notebookUrl:z.string().url(),documentId:z.string().regex(/^[A-Za-z0-9_-]{10,200}$/),title:z.string().min(1).max(200),mimeType:z.enum(['application/vnd.google-apps.spreadsheet','application/vnd.google-apps.document','application/vnd.google-apps.presentation','application/pdf'])})},async a=>notebookJob('add_drive_source',a));
-   server.registerTool('notebook_job_status',{title:'NotebookLM job status',annotations:{readOnlyHint:true},description:'Check a pending personal NotebookLM job by its ID.',inputSchema:z.object({jobId:z.string().uuid()})},async a=>{const job=await relay.getNotebookJob(user.id,a.jobId);return asText(job??{error:'not_found'})});
+   server.registerTool('notebook_job_status',{title:'NotebookLM job status',annotations:{readOnlyHint:true},description:'Check a pending personal NotebookLM job by its ID.',inputSchema:z.object({jobId:z.string().uuid()})},async a=>{const job=await relay.getNotebookJob(user.id,a.jobId);if(job?.status==='done'&&job.result&&typeof job.result==='object'){
+    const result=job.result as Record<string,unknown>;
+    if(typeof result.storagePath==='string'&&result.uploaded===true){
+     const downloadUrl=await relay.signedNotebookArtifact(user.id,result.storagePath);
+     return asText({...job,result:{...result,downloadUrl,expiresInSeconds:300,transfer:'private-signed-binary-url'}});
+    }
+   }return asText(job??{error:'not_found'})});
    server.registerTool('notebooklm_prepare_personal_notebook',{
     annotations:{readOnlyHint:true,openWorldHint:true},
     title:'Prepare personal NotebookLM notebook',
