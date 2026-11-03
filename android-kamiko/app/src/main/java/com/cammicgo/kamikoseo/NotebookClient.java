@@ -478,4 +478,60 @@ final class NotebookClient {
     return new JSONObject().put("notebookId",id).put("shareData",(JSONArray)raw);
   }
 
+  JSONObject queryNotebook(String notebookUrl,String question) throws Exception {
+    String id=ownedNotebookId(notebookUrl);
+    if(question==null||question.trim().isEmpty()||question.length()>10000)
+      throw new IOException("Question required (max 10000 characters)");
+    JSONArray ready=getNotebook(notebookUrl).getJSONArray("sources");
+    JSONArray sources=new JSONArray();
+    for(int i=0;i<ready.length();i++){
+      JSONObject src=ready.getJSONObject(i);
+      if("ready".equals(src.optString("status"))&&!src.optString("id").isEmpty())
+        sources.put(new JSONArray().put(new JSONArray().put(src.getString("id"))));
+    }
+    if(sources.length()==0)throw new IOException("No ready NotebookLM sources to query");
+    String page=request(HOME,"GET",null);
+    String csrf=field(page,"SNlM0e"),sid=field(page,"FdrFJe"),bl=field(page,"cfb2h");
+    if(csrf.isEmpty())throw new IOException("NotebookLM session token missing");
+    String convId=java.util.UUID.randomUUID().toString();
+    JSONArray params=new JSONArray().put(sources).put(question).put(JSONObject.NULL)
+      .put(new JSONArray().put(2).put(JSONObject.NULL).put(new JSONArray().put(1))).put(convId);
+    JSONArray req=new JSONArray().put(JSONObject.NULL).put(params.toString());
+    String endpoint=HOME+"_/LabsTailwindUi/data/google.internal.labs.tailwind.orchestration.v1.LabsTailwindOrchestrationService/GenerateFreeFormStreamed";
+    String url=endpoint+"?hl=fr&rt=c&_reqid=100000";
+    if(!bl.isEmpty())url+="&bl="+URLEncoder.encode(bl,"UTF-8");
+    if(!sid.isEmpty())url+="&f.sid="+URLEncoder.encode(sid,"UTF-8");
+    String body="f.req="+URLEncoder.encode(req.toString(),"UTF-8")+"&at="+URLEncoder.encode(csrf,"UTF-8")+"&";
+    String stream=request(url,"POST",body);
+    String answer="",thinking="";
+    for(String line:stream.replace(")]}'","").split("\\r?\\n")){
+      if(!line.trim().startsWith("["))continue;
+      JSONArray frames;
+      try{frames=new JSONArray(line);}catch(Exception ignored){continue;}
+      for(int i=0;i<frames.length();i++){
+        JSONArray frame=frames.optJSONArray(i);
+        if(frame==null||!"wrb.fr".equals(frame.optString(0)))continue;
+        JSONArray error=frame.optJSONArray(5);
+        if(frame.isNull(2)&&error!=null&&error.length()>0)
+          throw new IOException("NotebookLM query rejected (code "+error.optInt(0)+")");
+        String payload=frame.optString(2,"");
+        if(payload.isEmpty())continue;
+        JSONArray parsed;
+        try{parsed=new JSONArray(payload);}catch(Exception ignored){continue;}
+        JSONArray first=parsed.optJSONArray(0);if(first==null)continue;
+        String text=first.optString(0,"");
+        JSONArray type=first.optJSONArray(4);
+        boolean actual=type!=null&&type.optInt(type.length()-1,-1)==1;
+        if(actual&&text.length()>answer.length())answer=text;
+        else if(!actual&&text.length()>thinking.length())thinking=text;
+        JSONArray conv=first.optJSONArray(2);
+        if(conv!=null&&!conv.optString(0).isEmpty())convId=conv.optString(0);
+      }
+    }
+    if(answer.isEmpty())throw new IOException("NotebookLM returned no final answer; do not present thinking as answer");
+    return new JSONObject().put("answer",answer).put("conversationId",convId)
+      .put("notebookId",id).put("sourceCount",sources.length())
+      .put("citationsVerified",false).put("followUpHistorySupported",false);
+  }
+
 }
