@@ -470,7 +470,7 @@ final class NotebookClient {
       for(int j=0;j<9;j++)template.put(JSONObject.NULL);
       template.put(new JSONArray().put(optionA>=1?optionA:1));
       config.put(template);
-      config.put(new JSONArray().put(new JSONArray().put(1).put(3).put(4).put(7).put(8)));
+      config.put(new JSONArray().put(new JSONArray().put(1).put(4).put(8).put(10).put(14).put(2).put(3).put(6)));
     }
     Object result=rpc("R7cb6c",new JSONArray().put(config).put(id).put(content),"/notebook/"+id);
     if(!(result instanceof JSONArray))throw new IOException("Studio generation not accepted");
