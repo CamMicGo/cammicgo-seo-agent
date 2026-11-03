@@ -74,6 +74,7 @@ public class RelayService extends Service {
   @Override public void onDestroy() {
     running = false;
     if (loop != null) loop.interrupt();
+    RelayClient.prefs(this).edit().putBoolean("connected", false).apply();
     super.onDestroy();
   }
 
