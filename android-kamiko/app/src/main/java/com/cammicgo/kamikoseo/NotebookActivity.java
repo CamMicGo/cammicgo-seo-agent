@@ -147,6 +147,11 @@ public final class NotebookActivity extends Activity {
   }
   @Override protected void onResume(){
     super.onResume();
+    active=new WeakReference<>(this);
+    if(browser!=null){
+      String url=browser.getUrl();
+      notebookPageReady=url!=null&&(url.startsWith(HOME)||url.startsWith("https://notebooklm.google.com/"));
+    }
     // Do not force-reload Google's sign-in flow when returning from another app.
     // Reloading here can restart the login form and discard user input.
   }
@@ -161,8 +166,13 @@ public final class NotebookActivity extends Activity {
   /** Same-origin fetch from the signed-in WebView; no Google credentials leave Android. */
   static String authenticatedRequest(String url,String method,String body) throws Exception {
     NotebookActivity a=active.get();
-    if(a==null||a.browser==null||!a.notebookPageReady)
-      throw new java.io.IOException("Ouvrez NotebookLM dans l'APK et gardez cet écran ouvert pendant la requête.");
+    if(a==null||a.browser==null)
+      throw new java.io.IOException("NotebookLM : écran Android fermé. Ouvrez NotebookLM dans CamMicGo.");
+    String currentUrl=a.browser.getUrl();
+    if(currentUrl==null||!(currentUrl.startsWith(HOME)||currentUrl.startsWith("https://notebooklm.google.com/")))
+      throw new java.io.IOException("NotebookLM : page Google non active dans l'APK (URL="+(currentUrl==null?"aucune":currentUrl)+").");
+    if(!a.notebookPageReady)
+      android.util.Log.w("CamMicGoNotebook","NotebookLM URL active despite stale page-ready flag");
     if(Looper.myLooper()==Looper.getMainLooper())throw new java.io.IOException("WebView RPC called on UI thread");
     java.net.URL u=new java.net.URL(url);
     if(!"https".equals(u.getProtocol())||!"notebook.google.com".equalsIgnoreCase(u.getHost()))
