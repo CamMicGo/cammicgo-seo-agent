@@ -165,7 +165,12 @@ public final class NotebookActivity extends Activity {
     if(!latch.await(45,TimeUnit.SECONDS))throw new java.io.IOException("NotebookLM WebView timeout (45 s)");
     String raw=response.get();
     if(raw==null||"null".equals(raw))throw new java.io.IOException("NotebookLM WebView returned no response");
-    JSONObject o=new JSONObject(new org.json.JSONTokener(raw).nextValue().toString());
+    // evaluateJavascript returns a JSON-encoded JavaScript string. Unwrap it
+    // before parsing the actual {status,text} object returned by fetch().
+    Object decoded=new org.json.JSONTokener(raw).nextValue();
+    if(!(decoded instanceof String))
+      throw new java.io.IOException("NotebookLM WebView unexpected JS response type");
+    JSONObject o=new JSONObject((String)decoded);
     if(o.has("error"))throw new java.io.IOException("NotebookLM WebView: "+o.optString("error"));
     int code=o.optInt("status");
     if(code<200||code>=300)throw new java.io.IOException("NotebookLM WebView HTTP "+code);
