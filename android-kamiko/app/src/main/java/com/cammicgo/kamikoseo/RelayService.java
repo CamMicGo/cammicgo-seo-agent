@@ -32,6 +32,8 @@ public class RelayService extends Service {
   private volatile long pausedUntil;
   private int rateLimitStrikes;
   private long nextTranscriptAt;
+  private static final int DAILY_TRANSCRIPT_LIMIT = 10;
+  private static final long DAY_MS = 86_400_000L;
   private Thread loop;
   private final Handler heartbeatHandler = new Handler(Looper.getMainLooper());
   private final Runnable heartbeat = new Runnable() {
@@ -67,6 +69,9 @@ public class RelayService extends Service {
     else startForeground(NOTIFICATION_ID, n);
     RelayClient.prefs(this).edit().putBoolean("connected", true).putString("status", I18n.t(this, "waiting")).apply();
 
+    pausedUntil = RelayClient.prefs(this).getLong("youtubePausedUntil", 0L);
+    nextTranscriptAt = Math.max(pausedUntil, RelayClient.prefs(this).getLong("nextTranscriptAt", 0L));
+    rateLimitStrikes = RelayClient.prefs(this).getInt("youtube429Strikes", 0);
     if (loop == null || !loop.isAlive()) {
       running = true;
       loop = new Thread(this::run, "cammicgo-relay");
@@ -109,7 +114,16 @@ public class RelayService extends Service {
         long wait = pausedUntil - System.currentTimeMillis();
         if (wait > 0) { RelayClient.poll(this, token, false); sleep(Math.min(wait, 30_000)); continue; }
         // Poll for status without claiming another YouTube job during the cooldown.
-        boolean mayClaim = System.currentTimeMillis() >= nextTranscriptAt;
+        long now = System.currentTimeMillis();
+        SharedPreferences safety = RelayClient.prefs(this);
+        long windowStart = safety.getLong("youtubeDailyWindowStart", 0L);
+        if (windowStart == 0 || now - windowStart >= DAY_MS) {
+          safety.edit().putLong("youtubeDailyWindowStart", now).putInt("youtubeDailyCount", 0).apply();
+          windowStart = now;
+        }
+        boolean dailyLimitReached = safety.getInt("youtubeDailyCount", 0) >= DAILY_TRANSCRIPT_LIMIT;
+        if (dailyLimitReached) nextTranscriptAt = Math.max(nextTranscriptAt, windowStart + DAY_MS);
+        boolean mayClaim = now >= nextTranscriptAt && !dailyLimitReached;
         JSONObject res = RelayClient.poll(this, token, mayClaim);
         if (backoff > 5000) status(I18n.t(this, "reconnected"));
         backoff = 5000;
@@ -179,6 +193,8 @@ public class RelayService extends Service {
         long pause = Math.min(120, 15L << Math.min(rateLimitStrikes - 1, 3)) * 60_000L;
         pausedUntil = System.currentTimeMillis() + pause;
         nextTranscriptAt = pausedUntil;
+        RelayClient.prefs(this).edit().putLong("youtubePausedUntil", pausedUntil)
+            .putLong("nextTranscriptAt", nextTranscriptAt).putInt("youtube429Strikes", rateLimitStrikes).apply();
         status(I18n.t(this, "rate_limited", java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(new java.util.Date(pausedUntil))));
         current(null);
         return;
@@ -224,6 +240,9 @@ public class RelayService extends Service {
     status(I18n.t(this, "sent", r.title != null ? r.title : videoId, r.segments.size()));
     // Avoid bursts: at most one transcript every 30-45 seconds on this device.
     nextTranscriptAt = System.currentTimeMillis() + 30_000L + (long)(Math.random() * 15_000L);
+    SharedPreferences limits = RelayClient.prefs(this);
+    limits.edit().putLong("nextTranscriptAt", nextTranscriptAt)
+        .putInt("youtubeDailyCount", limits.getInt("youtubeDailyCount", 0) + 1).apply();
     // Do not erase the rate-limit history immediately after one successful fetch.
   }
 
