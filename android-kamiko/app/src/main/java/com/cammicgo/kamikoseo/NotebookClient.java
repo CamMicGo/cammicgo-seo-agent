@@ -454,12 +454,25 @@ final class NotebookClient {
       content.put(new JSONArray().put(new JSONArray().put(prompt.isEmpty()?JSONObject.NULL:prompt)
         .put(lang).put(JSONObject.NULL).put(optionA>=1?optionA:1)
         .put(optionB>=1?optionB:2).put(1)));
+    }else if("interactive_report".equals(kind)){
+      content.put(11).put(nested);
+      for(int j=0;j<30;j++)content.put(JSONObject.NULL);
+      content.put(new JSONArray().put(JSONObject.NULL).put(new JSONArray().put(prompt).put(lang)));
     }else if("data_table".equals(kind)){
       content.put(9).put(nested);
       for(int j=0;j<14;j++)content.put(JSONObject.NULL);
       content.put(new JSONArray().put(JSONObject.NULL).put(new JSONArray().put(prompt).put(lang)));
     }else throw new IOException("Unsupported Studio artifact type: "+kind);
-    Object result=rpc("R7cb6c",new JSONArray().put(new JSONArray().put(2)).put(id).put(content),"/notebook/"+id);
+    JSONArray config=new JSONArray().put(2);
+    if("interactive_report".equals(kind)){
+      config.put(JSONObject.NULL).put(JSONObject.NULL);
+      JSONArray template=new JSONArray().put(1);
+      for(int j=0;j<9;j++)template.put(JSONObject.NULL);
+      template.put(new JSONArray().put(optionA>=1?optionA:1));
+      config.put(template);
+      config.put(new JSONArray().put(new JSONArray().put(1).put(3).put(4).put(7).put(8)));
+    }
+    Object result=rpc("R7cb6c",new JSONArray().put(config).put(id).put(content),"/notebook/"+id);
     if(!(result instanceof JSONArray))throw new IOException("Studio generation not accepted");
     JSONArray artifact=((JSONArray)result).optJSONArray(0);
     if(artifact==null||artifact.optString(0).isEmpty())
