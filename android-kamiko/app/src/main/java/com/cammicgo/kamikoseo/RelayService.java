@@ -73,8 +73,8 @@ public class RelayService extends Service {
     pausedUntil = RelayClient.prefs(this).getLong("youtubePausedUntil", 0L);
     nextTranscriptAt = Math.max(pausedUntil, RelayClient.prefs(this).getLong("nextTranscriptAt", 0L));
     rateLimitStrikes = RelayClient.prefs(this).getInt("youtube429Strikes", 0);
+    running = true;
     if (loop == null || !loop.isAlive()) {
-      running = true;
       loop = new Thread(this::run, "cammicgo-relay");
       loop.start();
     }
@@ -111,7 +111,14 @@ public class RelayService extends Service {
       if (token == null) break;
       try {
         long wait = pausedUntil - System.currentTimeMillis();
-        if (wait > 0) { RelayClient.poll(this, token, false); sleep(Math.min(wait, 30_000)); continue; }
+        // A YouTube HTTP 429 pauses only transcript claims, never the server heartbeat.
+        // Keep polling through the normal error handler so network failures cannot kill the worker.
+        if (wait > 0) {
+          RelayClient.poll(this, token, false);
+          RelayClient.prefs(this).edit().putLong("lastSync", System.currentTimeMillis()).apply();
+          sleep(Math.min(wait, 15_000));
+          continue;
+        }
         // Poll for status without claiming another YouTube job during the cooldown.
         long now = System.currentTimeMillis();
         boolean mayClaim = now >= nextTranscriptAt;
@@ -179,7 +186,8 @@ public class RelayService extends Service {
     } catch (IOException e) {
       String msg = e.getMessage() == null ? "" : e.getMessage();
       if (msg.contains("HTTP 429")) {
-        // YouTube rate-limits this phone: give the job back and pause instead of failing the whole queue.
+        // This HTTP 429 applies to the failed extraction request, not necessarily the whole phone.
+        // Release the job and throttle transcript claims; keep the relay heartbeat active.
         RelayClient.release(token, id);
         rateLimitStrikes++;
         // Conservative backoff: 15, 30, 60, then 120 minutes.
@@ -188,7 +196,7 @@ public class RelayService extends Service {
         nextTranscriptAt = pausedUntil;
         RelayClient.prefs(this).edit().putLong("youtubePausedUntil", pausedUntil)
             .putLong("nextTranscriptAt", nextTranscriptAt).putInt("youtube429Strikes", rateLimitStrikes).apply();
-        status(I18n.t(this, "rate_limited", java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(new java.util.Date(pausedUntil))));
+        status("Extraction automatique : réponse HTTP 429 sur une requête YouTube. Nouvel essai après " + java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(new java.util.Date(pausedUntil)) + ". Connexion serveur maintenue.");
         current(null);
         return;
       }
