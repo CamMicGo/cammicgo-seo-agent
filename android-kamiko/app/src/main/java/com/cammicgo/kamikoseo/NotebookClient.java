@@ -939,4 +939,21 @@ final class NotebookClient {
     }finally{if(c!=null)c.disconnect();}
   }
 
+  JSONObject studioDelete(String notebookUrl,String artifactId,boolean confirm) throws Exception {
+    if(!confirm)throw new IOException("Studio deletion requires explicit confirmation");
+    String id=ownedNotebookId(notebookUrl);
+    JSONArray artifacts=studioStatus(notebookUrl).getJSONArray("artifacts");
+    boolean exists=false;
+    for(int j=0;j<artifacts.length();j++)
+      if(artifactId.equals(artifacts.getJSONObject(j).optString("id")))exists=true;
+    if(!exists)throw new IOException("Artifact not found in notebook Studio");
+    Object raw=rpc("V5N4be",new JSONArray().put(new JSONArray().put(2)).put(artifactId),"/");
+    if(raw==null)throw new IOException("Studio deletion not accepted");
+    JSONArray after=studioStatus(notebookUrl).getJSONArray("artifacts");
+    for(int j=0;j<after.length();j++)
+      if(artifactId.equals(after.getJSONObject(j).optString("id")))
+        throw new IOException("Studio artifact deletion not verified");
+    return new JSONObject().put("artifactId",artifactId).put("deleted",true).put("verified",true).put("notebookId",id);
+  }
+
 }
