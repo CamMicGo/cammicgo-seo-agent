@@ -766,6 +766,11 @@ public class MainActivity extends Activity {
       for(int i=0;i<Math.min(entries.length(),12);i++){
         JSONObject e=entries.optJSONObject(i);if(e==null)continue;
         String state=e.optString("status");
+        // A worker killed by Android may never update its local history entry.
+        if("working".equals(state) && System.currentTimeMillis()-e.optLong("at",0)>10*60*1000L) {
+          state="failed";
+          e.put("error","Délai dépassé : aucune confirmation reçue. Vérifiez les notebooks avant toute nouvelle création.");
+        }
         String label="done".equals(state)?t("notebook_done"):"working".equals(state)?t("notebook_working"):t("notebook_failed");
         text(notebookRequests,label+" · "+e.optString("label"),13,"failed".equals(state)?RED:INK,true);
         if(e.has("error"))text(notebookRequests,e.optString("error"),11,MUTED,false);
