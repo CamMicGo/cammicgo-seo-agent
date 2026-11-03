@@ -31,7 +31,7 @@ final class NotebookClient {
   private static String read(InputStream stream) throws IOException {
     try(InputStream in=stream;ByteArrayOutputStream out=new ByteArrayOutputStream()){
       byte[] b=new byte[8192];int n;
-      while((n=in.read(b))!=-1){out.write(b,0,n);if(out.size()>4_000_000)throw new IOException("NotebookLM response too large");}
+      while((n=in.read(b))!=-1){out.write(b,0,n);if(out.size()>8_000_000)throw new IOException("NotebookLM response too large");}
       return out.toString("UTF-8");
     }
   }
@@ -56,7 +56,8 @@ final class NotebookClient {
       throw new IOException("NotebookLM : aucune session Google persistante. Connectez-vous une fois dans l'APK.");
     return c;
   }
-  private String request(String url,String method,String body) throws IOException {
+  private String request(String url,String method,String body) throws IOException { return request(url,method,body,25000); }
+  private String request(String url,String method,String body,int readTimeoutMs) throws IOException {
     URL u=new URL(url);
     if(!"https".equalsIgnoreCase(u.getProtocol())||!"notebook.google.com".equalsIgnoreCase(u.getHost()))
       throw new IOException("NotebookLM : origine HTTP interdite");
@@ -65,7 +66,7 @@ final class NotebookClient {
       connection=(HttpURLConnection)u.openConnection();
       connection.setInstanceFollowRedirects(false);
       connection.setConnectTimeout(12000);
-      connection.setReadTimeout(25000);
+      connection.setReadTimeout(readTimeoutMs);
       connection.setRequestMethod(method);
       connection.setRequestProperty("Cookie",cookie());
       connection.setRequestProperty("Accept","*/*");
@@ -529,7 +530,7 @@ final class NotebookClient {
     if(!bl.isEmpty())url+="&bl="+URLEncoder.encode(bl,"UTF-8");
     if(!sid.isEmpty())url+="&f.sid="+URLEncoder.encode(sid,"UTF-8");
     String body="f.req="+URLEncoder.encode(req.toString(),"UTF-8")+"&at="+URLEncoder.encode(csrf,"UTF-8")+"&";
-    String stream=request(url,"POST",body);
+    String stream=request(url,"POST",body,120000);
     String answer="",thinking="";
     for(String line:stream.replace(")]}'","").split("\\r?\\n")){
       if(!line.trim().startsWith("["))continue;
