@@ -765,7 +765,15 @@ public class MainActivity extends Activity {
   private void startConnected() {
     if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
       requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 7);
-    RelayService.start(this);
+    try {
+      RelayClient.prefs(this).edit().putString("status", "Démarrage du relais…").putString("lastRelayError", null).apply();
+      RelayService.start(this);
+      Toast.makeText(this, "Démarrage du mode connecté demandé", Toast.LENGTH_SHORT).show();
+    } catch (RuntimeException e) {
+      String detail = e.getClass().getSimpleName() + ": " + String.valueOf(e.getMessage());
+      RelayClient.prefs(this).edit().putBoolean("connected", false).putString("lastRelayError", detail).putString("status", detail).apply();
+      Toast.makeText(this, "Démarrage impossible : " + detail, Toast.LENGTH_LONG).show();
+    }
   }
 
   private void refreshRelay() {
@@ -791,7 +799,13 @@ public class MainActivity extends Activity {
         if (sync > 0) b.append(t("server_contact", DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(sync))));
         String status = p.getString("status", null);
         if (status != null) b.append('\n').append(status);
-      } else b.append('\n').append(t("activate_hint"));
+      } else {
+        b.append('\n').append(t("activate_hint"));
+        String lastError = p.getString("lastRelayError", null);
+        if (lastError != null && !lastError.isEmpty()) b.append('\n').append("Erreur : ").append(lastError);
+        String lastStatus = p.getString("status", null);
+        if (lastStatus != null && !lastStatus.isEmpty()) b.append('\n').append(lastStatus);
+      }
       relayDetail.setText(b.toString());
     }
     refreshProgress(p, paired, connected);
