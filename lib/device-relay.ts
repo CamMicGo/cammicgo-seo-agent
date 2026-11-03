@@ -220,5 +220,5 @@ export async function signedNotebookArtifact(userId:string,storagePath:string){
   {method:'POST',body:JSON.stringify({expiresIn:300})});
  const signed=result.signedURL||result.signedUrl;
  if(!signed||!signed.startsWith('/'))throw Error('Artifact signing failed');
- return url+signed;
+ return url+(signed.startsWith('/storage/v1/')?'':'/storage/v1')+signed;
 }
