@@ -190,8 +190,8 @@ public class RelayService extends Service {
         // Release the job and throttle transcript claims; keep the relay heartbeat active.
         RelayClient.release(token, id);
         rateLimitStrikes++;
-        // Conservative backoff: 15, 30, 60, then 120 minutes.
-        long pause = Math.min(120, 15L << Math.min(rateLimitStrikes - 1, 3)) * 60_000L;
+        // Retry with bounded jitter (60-120 seconds) rather than freezing the agent queue for hours.
+        long pause = 60_000L + (long)(Math.random() * 60_000L);
         pausedUntil = System.currentTimeMillis() + pause;
         nextTranscriptAt = pausedUntil;
         RelayClient.prefs(this).edit().putLong("youtubePausedUntil", pausedUntil)
