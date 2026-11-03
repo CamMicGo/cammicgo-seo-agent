@@ -217,13 +217,16 @@ public class RelayService extends Service {
       status("NotebookLM : opération exécutée");
     } catch (Exception ex) {
       String error=ex.getMessage()==null?ex.getClass().getSimpleName():ex.getMessage();
+      // Persist the failure locally before any network request. A failed error
+      // acknowledgement must never leave the UI showing "working" indefinitely.
+      notebookHistory(id,label,"failed",error);
+      status("NotebookLM : "+error);
       try {
         JSONObject body=new JSONObject().put("type","notebooklm").put("error",error);
         RelayClient.request("POST","/api/devices/jobs/"+id,token,body.toString());
-      } catch(org.json.JSONException jsonError){throw new IOException(jsonError);}
-      notebookHistory(id,label,"failed",error);
-      status("NotebookLM : "+error);
-    }
+      } catch (Exception reportFailure) {
+        android.util.Log.e("CamMicGoNotebook","Unable to report notebook job failure "+id,reportFailure);
+      }
   }
 
   private void notebookHistory(String jobId,String label,String state,String error) {
