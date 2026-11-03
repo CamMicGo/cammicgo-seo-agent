@@ -41,15 +41,15 @@ public class RelayService extends Service {
   }
 
   public static void stop(Context c) {
+    RelayClient.prefs(c).edit().putBoolean("relayDesired", false).putBoolean("connected", false).putLong("lastSync", 0L).apply();
     c.stopService(new Intent(c, RelayService.class));
-    RelayClient.prefs(c).edit().putBoolean("connected", false).putLong("lastSync", 0L).apply();
   }
 
   @Override public IBinder onBind(Intent intent) { return null; }
 
   @Override public int onStartCommand(Intent intent, int flags, int startId) {
     if (intent != null && ACTION_STOP.equals(intent.getAction())) {
-      RelayClient.prefs(this).edit().putBoolean("connected", false).apply();
+      RelayClient.prefs(this).edit().putBoolean("relayDesired", false).putBoolean("connected", false).apply();
       shutdown();
       return START_NOT_STICKY;
     }
@@ -59,8 +59,8 @@ public class RelayService extends Service {
       shutdown(); return START_NOT_STICKY;
     }
 
-    Notification n = notification(I18n.t(this, "notif_waiting"));
     try {
+      Notification n = notification(I18n.t(this, "notif_waiting"));
       if (Build.VERSION.SDK_INT >= 29) startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
       else startForeground(NOTIFICATION_ID, n);
     } catch (RuntimeException e) {
@@ -68,7 +68,7 @@ public class RelayService extends Service {
           .putString("lastRelayError", "Notification/service Android : " + e.getClass().getSimpleName() + ": " + firstLine(e.getMessage())).apply();
       stopSelf(); return START_NOT_STICKY;
     }
-    RelayClient.prefs(this).edit().putBoolean("connected", true).putString("status", I18n.t(this, "waiting")).apply();
+    RelayClient.prefs(this).edit().putBoolean("connected", true).putString("status", I18n.t(this, "waiting")).putString("lastRelayError", null).apply();
 
     pausedUntil = RelayClient.prefs(this).getLong("youtubePausedUntil", 0L);
     nextTranscriptAt = Math.max(pausedUntil, RelayClient.prefs(this).getLong("nextTranscriptAt", 0L));
@@ -92,7 +92,8 @@ public class RelayService extends Service {
   @Override public void onDestroy() {
     running = false;
     if (loop != null) loop.interrupt();
-    RelayClient.prefs(this).edit().putBoolean("connected", false).putLong("lastSync", 0L).apply();
+    RelayClient.prefs(this).edit().putBoolean("connected", false).putLong("lastSync", 0L)
+        .putString("lastRelayError", RelayClient.prefs(this).getBoolean("relayDesired", false) ? "Service Android interrompu : tentative de reprise à l’ouverture de l’application." : null).apply();
     super.onDestroy();
   }
 
@@ -144,7 +145,7 @@ public class RelayService extends Service {
         backoff = Math.min(backoff * 2, 60_000);
       }
     }
-    if (running) { RelayClient.prefs(this).edit().putBoolean("connected", false).apply(); shutdown(); }
+    if (running) { RelayClient.prefs(this).edit().putBoolean("connected", false).putString("lastRelayError", "Boucle relais terminée sans arrêt demandé.").apply(); shutdown(); }
   }
 
   private boolean isPausedStatus() { return pausedUntil > System.currentTimeMillis(); }
