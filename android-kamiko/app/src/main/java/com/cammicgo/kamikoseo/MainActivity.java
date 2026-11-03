@@ -318,9 +318,10 @@ public class MainActivity extends Activity {
     seg.setBackground(shape(Color.rgb(230, 237, 250), 14, 0));
     for (int i = 0; i < TABS.length; i++) {
       final int index = i;
-      TextView t = text(null, t(TABS[i]), 14, MUTED, true);
+      TextView t = text(null, i == 2 ? "NotebookLM" : t(TABS[i]), 12, MUTED, true);
       t.setGravity(Gravity.CENTER);
-      t.setPadding(dp(4), dp(9), dp(4), dp(9));
+      t.setSingleLine(true);
+      t.setPadding(dp(2), dp(10), dp(2), dp(10));
       t.setOnClickListener(v -> selectTab(index));
       seg.addView(t, new LinearLayout.LayoutParams(0, -2, 1));
       tabViews[i] = t;
