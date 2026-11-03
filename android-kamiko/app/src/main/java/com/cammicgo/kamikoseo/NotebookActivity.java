@@ -169,10 +169,27 @@ public final class NotebookActivity extends Activity {
       throw new java.io.IOException("NotebookLM origin not allowed");
     CountDownLatch latch=new CountDownLatch(1);
     AtomicReference<String> response=new AtomicReference<>();
-    String js="(async()=>{try{const r=await fetch("+JSONObject.quote(url)+",{method:"+JSONObject.quote(method)+",credentials:'include',headers:{'Accept':'*/*'"+(body==null?"":",'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'")+"}"+(body==null?"":",body:"+JSONObject.quote(body))+"});return JSON.stringify({status:r.status,text:(await r.text()).slice(0,4000000)});}catch(e){return JSON.stringify({error:String(e)});}})()";
-    new Handler(Looper.getMainLooper()).post(()->{
-      try{a.browser.evaluateJavascript(js,value->{response.set(value);latch.countDown();});}
-      catch(Exception e){response.set(null);latch.countDown();}
+    // evaluateJavascript does not await a Promise: async IIFEs return "null".
+    // Store the fetch result on the page and poll it from the UI thread.
+    String js="window.__cmgRpcResult=null;(async()=>{try{const r=await fetch("+JSONObject.quote(url)+",{method:"+JSONObject.quote(method)+",credentials:'include',headers:{'Accept':'*/*'"+(body==null?"":",'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'")+"}"+(body==null?"":",body:"+JSONObject.quote(body))+"});window.__cmgRpcResult=JSON.stringify({status:r.status,text:(await r.text()).slice(0,4000000)});}catch(e){window.__cmgRpcResult=JSON.stringify({error:String(e)});}})();";
+    Handler ui=new Handler(Looper.getMainLooper());
+    ui.post(()->{
+      try{
+        a.browser.evaluateJavascript(js,ignored->{
+          final Runnable[] poll=new Runnable[1];
+          poll[0]=()->{
+            try{
+              a.browser.evaluateJavascript("window.__cmgRpcResult",value->{
+                if(value!=null&&!"null".equals(value)){
+                  response.set(value);
+                  latch.countDown();
+                }else if(latch.getCount()>0)ui.postDelayed(poll[0],200);
+              });
+            }catch(Exception e){response.set(null);latch.countDown();}
+          };
+          ui.post(poll[0]);
+        });
+      }catch(Exception e){response.set(null);latch.countDown();}
     });
     if(!latch.await(45,TimeUnit.SECONDS))throw new java.io.IOException("NotebookLM WebView timeout (45 s)");
     String raw=response.get();
