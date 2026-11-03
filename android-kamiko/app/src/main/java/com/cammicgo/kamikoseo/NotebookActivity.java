@@ -168,11 +168,10 @@ public final class NotebookActivity extends Activity {
     NotebookActivity a=active.get();
     if(a==null||a.browser==null)
       throw new java.io.IOException("NotebookLM : écran Android fermé. Ouvrez NotebookLM dans CamMicGo.");
-    String currentUrl=a.browser.getUrl();
-    if(currentUrl==null||!(currentUrl.startsWith(HOME)||currentUrl.startsWith("https://notebooklm.google.com/")))
-      throw new java.io.IOException("NotebookLM : page Google non active dans l'APK (URL="+(currentUrl==null?"aucune":currentUrl)+").");
+    // WebView.getUrl() is UI-thread-only. Use the URL cached by WebViewClient.
+    // Never access WebView methods from the relay worker thread.
     if(!a.notebookPageReady)
-      android.util.Log.w("CamMicGoNotebook","NotebookLM URL active despite stale page-ready flag");
+      throw new java.io.IOException("NotebookLM : page non prête dans l'APK. Attendez son chargement.");
     if(Looper.myLooper()==Looper.getMainLooper())throw new java.io.IOException("WebView RPC called on UI thread");
     java.net.URL u=new java.net.URL(url);
     if(!"https".equals(u.getProtocol())||!"notebook.google.com".equalsIgnoreCase(u.getHost()))
