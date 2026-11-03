@@ -442,8 +442,35 @@ final class NotebookClient {
     JSONArray output=new JSONArray();
     for(int j=0;j<items.length();j++){
       JSONArray a=items.optJSONArray(j);if(a==null||a.length()<5)continue;
-      output.put(new JSONObject().put("id",a.optString(0)).put("title",a.optString(1))
-        .put("typeCode",a.optInt(2,-1)).put("statusRaw",a.opt(4)));
+      int type=a.optInt(2,-1),status=a.optInt(4,-1);
+      JSONObject entry=new JSONObject().put("id",a.optString(0)).put("title",a.optString(1))
+        .put("typeCode",type).put("statusCode",status);
+      String mediaUrl=null;
+      if(type==1){
+        JSONArray options=a.optJSONArray(6),media=options==null?null:options.optJSONArray(5);
+        if(media!=null){
+          for(int k=0;k<media.length();k++){
+            JSONArray candidate=media.optJSONArray(k);
+            if(candidate==null)continue;
+            String url=candidate.optString(0,"");
+            if(url.startsWith("https://")&&"audio/mp4".equals(candidate.optString(2))){
+              if(mediaUrl==null||url.endsWith("-dv"))mediaUrl=url;
+            }
+          }
+        }
+        if(mediaUrl==null&&options!=null&&options.optString(3,"").startsWith("https://"))
+          mediaUrl=options.optString(3);
+      }else if(type==3){
+        JSONArray options=a.optJSONArray(8);
+        if(options!=null&&options.optString(3,"").startsWith("https://"))
+          mediaUrl=options.optString(3);
+      }
+      if(mediaUrl!=null)entry.put("mediaUrl",mediaUrl);
+      String label=status==1?"in_progress":status==3?"completed":status==4?"failed":
+        status==5?"suggested":status==2?"queued":"unknown";
+      if(type==1&&status==2&&mediaUrl!=null)label="completed";
+      entry.put("status",label);
+      output.put(entry);
     }
     return new JSONObject().put("notebookId",id).put("artifacts",output).put("count",output.length());
   }
