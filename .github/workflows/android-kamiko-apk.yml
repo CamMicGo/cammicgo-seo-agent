@@ -31,7 +31,7 @@ jobs:
           gradle-version: '8.9'
       - name: Build debug APK
         working-directory: android-kamiko
-        run: gradle :app:assembleDebug --no-daemon
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
       - uses: actions/upload-artifact@v4
         with:
           name: cammicgo-seo-android-debug-apk
