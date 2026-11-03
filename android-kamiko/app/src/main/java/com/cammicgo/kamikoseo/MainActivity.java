@@ -420,34 +420,34 @@ public class MainActivity extends Activity {
     });
 
     // Per-device safety settings; the queue size is discovered from each channel, not user-capped.
-    section(root, "Cadence YouTube");
+    section(root, t("youtube_pacing"));
     LinearLayout safetyCard = card(root);
-    text(safetyCard, "Nombre maximal de transcriptions par 24 h", 14, INK, true);
+    text(safetyCard, t("youtube_daily_limit"), 14, INK, true);
     Spinner dailyPicker = new Spinner(this);
     final Integer[] dailyValues = {10, 20, 30, 40, 50};
-    String[] dailyLabels = {"10 vidéos (test)", "20 vidéos", "30 vidéos", "40 vidéos", "50 vidéos"};
+    String[] dailyLabels = {t("youtube_test_count",10),t("youtube_count",20),t("youtube_count",30),t("youtube_count",40),t("youtube_count",50)};
     dailyPicker.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, dailyLabels));
     SharedPreferences safetyPrefs = RelayClient.prefs(this);
     int currentDaily = safetyPrefs.getInt("youtubeDailyLimit", 10);
     for (int i = 0; i < dailyValues.length; i++) if (dailyValues[i] == currentDaily) dailyPicker.setSelection(i);
     safetyCard.addView(dailyPicker, gapTop(6));
-    text(safetyCard, "Délai minimum entre deux vidéos", 14, INK, true).setPadding(0, dp(12), 0, 0);
+    text(safetyCard, t("youtube_min_delay"), 14, INK, true).setPadding(0, dp(12), 0, 0);
     Spinner delayPicker = new Spinner(this);
     final Integer[] delayValues = {60, 120, 180, 300, 600};
-    String[] delayLabels = {"1 minute", "2 minutes", "3 minutes (recommandé)", "5 minutes", "10 minutes"};
+    String[] delayLabels = {t("youtube_minutes",1),t("youtube_minutes",2),t("youtube_recommended",3),t("youtube_minutes",5),t("youtube_minutes",10)};
     delayPicker.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, delayLabels));
     int currentDelay = safetyPrefs.getInt("youtubeDelaySeconds", 180);
     for (int i = 0; i < delayValues.length; i++) if (delayValues[i] == currentDelay) delayPicker.setSelection(i);
     safetyCard.addView(delayPicker, gapTop(6));
-    Button saveSafety = secondary("Enregistrer les réglages");
+    Button saveSafety = secondary(t("youtube_save"));
     safetyCard.addView(saveSafety, gapTop(12));
     saveSafety.setOnClickListener(v -> {
       int daily = dailyValues[dailyPicker.getSelectedItemPosition()];
       int delay = delayValues[delayPicker.getSelectedItemPosition()];
       safetyPrefs.edit().putInt("youtubeDailyLimit", daily).putInt("youtubeDelaySeconds", delay).apply();
-      Toast.makeText(this, "Cadence enregistrée : " + daily + " vidéos/24 h, " + delay + " s minimum", Toast.LENGTH_LONG).show();
+      Toast.makeText(this, t("youtube_saved",daily,delay), Toast.LENGTH_LONG).show();
     });
-    text(safetyCard, "Les vidéos sont découvertes automatiquement par chaîne. Un quota quotidien n'est pas une garantie contre les restrictions YouTube.", 12, MUTED, false).setPadding(0, dp(10), 0, 0);
+    text(safetyCard, t("youtube_pacing_note"), 12, MUTED, false).setPadding(0, dp(10), 0, 0);
 
     section(root, t("sec_requests"));
     LinearLayout p = card(root);
@@ -691,9 +691,9 @@ public class MainActivity extends Activity {
     tip(tips, "🔄", t("tip_resume_t"), t("tip_resume"));
     tip(tips, "⏱️", t("tip_a15_t"), t("tip_a15"));
 
-    TextView versionBanner = text(root, "CamMicGo SEO MCP — VERSION INSTALLÉE : " + version(), 17, BLUE, true);
+    TextView versionBanner = text(root, t("installed_version",version()), 17, BLUE, true);
     versionBanner.setPadding(dp(12), dp(14), dp(12), dp(14));
-    versionBanner.setContentDescription("Version installée de CamMicGo SEO MCP : " + version());
+    versionBanner.setContentDescription(t("installed_version",version()));
     TextView v = text(root, "CamMicGo SEO MCP · " + t("version") + " " + version() + " · seo.cammicgo.com", 12, MUTED, false);
     v.setGravity(Gravity.CENTER);
     v.setPadding(0, dp(6), 0, 0);
@@ -797,7 +797,7 @@ public class MainActivity extends Activity {
         // A worker killed by Android may never update its local history entry.
         if("working".equals(state) && System.currentTimeMillis()-e.optLong("at",0)>10*60*1000L) {
           state="failed";
-          e.put("error","Délai dépassé : aucune confirmation reçue. Vérifiez les notebooks avant toute nouvelle création.");
+          e.put("error",t("notebook_timeout"));
         }
         String label="done".equals(state)?t("notebook_done"):"working".equals(state)?t("notebook_working"):t("notebook_failed");
         text(notebookRequests,label+" · "+e.optString("label"),13,"failed".equals(state)?RED:INK,true);
