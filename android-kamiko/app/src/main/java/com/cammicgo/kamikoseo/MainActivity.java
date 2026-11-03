@@ -417,9 +417,6 @@ public class MainActivity extends Activity {
       Toast.makeText(this, t("unpaired_toast"), Toast.LENGTH_SHORT).show();
     });
 
-    // The old aggregate server-side 4/25 queue is intentionally not shown.
-    // Agent requests remain visible through current activity and local history.
-
     section(root, t("notebook_section"));
     notebookRequests=card(root);
     section(root, t("sec_sent"));
@@ -748,7 +745,7 @@ public class MainActivity extends Activity {
       }
       relayDetail.setText(b.toString());
     }
-    // Legacy aggregate progress intentionally removed from the Assistant tab.
+    refreshProgress(p, paired, connected);
     long age = System.currentTimeMillis() - p.getLong("progressAt", 0);
     boolean fresh = p.getLong("progressAt", 0) > 0 && age >= 0 && age < 30000L;
     if (progressFreshness != null) {
