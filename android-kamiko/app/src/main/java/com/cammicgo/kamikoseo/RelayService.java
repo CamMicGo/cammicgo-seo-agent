@@ -11,6 +11,8 @@ import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.Handler;
+import android.os.Looper;
 
 import org.json.JSONObject;
 
@@ -30,6 +32,14 @@ public class RelayService extends Service {
   private volatile long pausedUntil;
   private int rateLimitStrikes;
   private Thread loop;
+  private final Handler heartbeatHandler = new Handler(Looper.getMainLooper());
+  private final Runnable heartbeat = new Runnable() {
+    @Override public void run() {
+      if (!running) return;
+      RelayClient.prefs(RelayService.this).edit().putLong("lastSync", System.currentTimeMillis()).apply();
+      heartbeatHandler.postDelayed(this, 5000);
+    }
+  };
 
   public static void start(Context c) {
     Intent i = new Intent(c, RelayService.class);
@@ -60,6 +70,8 @@ public class RelayService extends Service {
       running = true;
       loop = new Thread(this::run, "cammicgo-relay");
       loop.start();
+      heartbeatHandler.removeCallbacks(heartbeat);
+      heartbeatHandler.post(heartbeat);
     }
     return START_STICKY;
   }
@@ -72,6 +84,7 @@ public class RelayService extends Service {
   }
 
   @Override public void onDestroy() {
+    heartbeatHandler.removeCallbacks(heartbeat);
     running = false;
     if (loop != null) loop.interrupt();
     RelayClient.prefs(this).edit().putBoolean("connected", false).apply();
@@ -79,6 +92,7 @@ public class RelayService extends Service {
   }
 
   private void shutdown() {
+    heartbeatHandler.removeCallbacks(heartbeat);
     running = false;
     if (loop != null) loop.interrupt();
     if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE); else stopForeground(true);
