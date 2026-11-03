@@ -411,6 +411,36 @@ public class MainActivity extends Activity {
       Toast.makeText(this, t("unpaired_toast"), Toast.LENGTH_SHORT).show();
     });
 
+    // Per-device safety settings; the queue size is discovered from each channel, not user-capped.
+    section(root, "Cadence YouTube");
+    LinearLayout safetyCard = card(root);
+    text(safetyCard, "Nombre maximal de transcriptions par 24 h", 14, INK, true);
+    Spinner dailyPicker = new Spinner(this);
+    final Integer[] dailyValues = {10, 20, 30, 40, 50};
+    String[] dailyLabels = {"10 vidéos (test)", "20 vidéos", "30 vidéos", "40 vidéos", "50 vidéos"};
+    dailyPicker.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, dailyLabels));
+    SharedPreferences safetyPrefs = RelayClient.prefs(this);
+    int currentDaily = safetyPrefs.getInt("youtubeDailyLimit", 10);
+    for (int i = 0; i < dailyValues.length; i++) if (dailyValues[i] == currentDaily) dailyPicker.setSelection(i);
+    safetyCard.addView(dailyPicker, gapTop(6));
+    text(safetyCard, "Délai minimum entre deux vidéos", 14, INK, true).setPadding(0, dp(12), 0, 0);
+    Spinner delayPicker = new Spinner(this);
+    final Integer[] delayValues = {60, 120, 180, 300, 600};
+    String[] delayLabels = {"1 minute", "2 minutes", "3 minutes (recommandé)", "5 minutes", "10 minutes"};
+    delayPicker.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, delayLabels));
+    int currentDelay = safetyPrefs.getInt("youtubeDelaySeconds", 180);
+    for (int i = 0; i < delayValues.length; i++) if (delayValues[i] == currentDelay) delayPicker.setSelection(i);
+    safetyCard.addView(delayPicker, gapTop(6));
+    Button saveSafety = secondary("Enregistrer les réglages");
+    safetyCard.addView(saveSafety, gapTop(12));
+    saveSafety.setOnClickListener(v -> {
+      int daily = dailyValues[dailyPicker.getSelectedItemPosition()];
+      int delay = delayValues[delayPicker.getSelectedItemPosition()];
+      safetyPrefs.edit().putInt("youtubeDailyLimit", daily).putInt("youtubeDelaySeconds", delay).apply();
+      Toast.makeText(this, "Cadence enregistrée : " + daily + " vidéos/24 h, " + delay + " s minimum", Toast.LENGTH_LONG).show();
+    });
+    text(safetyCard, "Les vidéos sont découvertes automatiquement par chaîne. Un quota quotidien n'est pas une garantie contre les restrictions YouTube.", 12, MUTED, false).setPadding(0, dp(10), 0, 0);
+
     section(root, t("sec_requests"));
     LinearLayout p = card(root);
     LinearLayout head = new LinearLayout(this);
