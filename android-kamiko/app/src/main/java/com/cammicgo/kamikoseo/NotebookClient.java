@@ -589,4 +589,22 @@ final class NotebookClient {
       .put("operationAccepted",true).put("shareStatusRecheckRequired",true);
   }
 
+  JSONObject artifactDownloadLink(String notebookUrl,String artifactId) throws Exception {
+    if(artifactId==null||!artifactId.matches("[A-Za-z0-9_-]{8,128}"))
+      throw new IOException("Invalid artifact ID");
+    JSONArray artifacts=studioStatus(notebookUrl).getJSONArray("artifacts");
+    for(int j=0;j<artifacts.length();j++){
+      JSONObject item=artifacts.getJSONObject(j);
+      if(!artifactId.equals(item.optString("id")))continue;
+      if(!"completed".equals(item.optString("status")))
+        throw new IOException("Artifact is not completed");
+      String media=item.optString("mediaUrl","");
+      if(media.isEmpty())throw new IOException("Artifact has no downloadable media URL");
+      return new JSONObject().put("artifactId",artifactId).put("downloadUrl",media)
+        .put("typeCode",item.optInt("typeCode")).put("title",item.optString("title"))
+        .put("warning","Signed media URLs may expire; remote agents may need authenticated download proxy");
+    }
+    throw new IOException("Artifact not found in notebook Studio");
+  }
+
 }
