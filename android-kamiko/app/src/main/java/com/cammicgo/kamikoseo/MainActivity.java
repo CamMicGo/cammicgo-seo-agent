@@ -84,7 +84,7 @@ public class MainActivity extends Activity {
   private LinearLayout unpairedBox, pairedBox, historyList, notebookRequests;
   private View statusDot;
   private TextView statusLine, relayDetail;
-  private TextView progressCount, progressLabel, progressCurrent, progressNote, statDone, statWaiting, statFailed;
+  private TextView progressCount, progressLabel, progressCurrent, progressNote, progressFreshness, statDone, statWaiting, statFailed;
   private ProgressBar progressBar, progressSpinner;
   private LinearLayout progressStats;
   private String historyShown;
@@ -412,34 +412,34 @@ public class MainActivity extends Activity {
     });
 
     // Per-device safety settings; the queue size is discovered from each channel, not user-capped.
-    section(root, "Cadence YouTube");
+    section(root, t("youtube_pacing"));
     LinearLayout safetyCard = card(root);
-    text(safetyCard, "Nombre maximal de transcriptions par 24 h", 14, INK, true);
+    text(safetyCard, t("youtube_daily"), 14, INK, true);
     Spinner dailyPicker = new Spinner(this);
     final Integer[] dailyValues = {10, 20, 30, 40, 50};
-    String[] dailyLabels = {"10 vidéos (test)", "20 vidéos", "30 vidéos", "40 vidéos", "50 vidéos"};
+    String[] dailyLabels = {t("daily_test",10), t("daily_videos",20), t("daily_videos",30), t("daily_videos",40), t("daily_videos",50)};
     dailyPicker.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, dailyLabels));
     SharedPreferences safetyPrefs = RelayClient.prefs(this);
     int currentDaily = safetyPrefs.getInt("youtubeDailyLimit", 10);
     for (int i = 0; i < dailyValues.length; i++) if (dailyValues[i] == currentDaily) dailyPicker.setSelection(i);
     safetyCard.addView(dailyPicker, gapTop(6));
-    text(safetyCard, "Délai minimum entre deux vidéos", 14, INK, true).setPadding(0, dp(12), 0, 0);
+    text(safetyCard, t("youtube_delay"), 14, INK, true).setPadding(0, dp(12), 0, 0);
     Spinner delayPicker = new Spinner(this);
     final Integer[] delayValues = {60, 120, 180, 300, 600};
-    String[] delayLabels = {"1 minute", "2 minutes", "3 minutes (recommandé)", "5 minutes", "10 minutes"};
+    String[] delayLabels = {t("minutes",1), t("minutes",2), t("minutes_recommended",3), t("minutes",5), t("minutes",10)};
     delayPicker.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, delayLabels));
     int currentDelay = safetyPrefs.getInt("youtubeDelaySeconds", 180);
     for (int i = 0; i < delayValues.length; i++) if (delayValues[i] == currentDelay) delayPicker.setSelection(i);
     safetyCard.addView(delayPicker, gapTop(6));
-    Button saveSafety = secondary("Enregistrer les réglages");
+    Button saveSafety = secondary(t("save_settings"));
     safetyCard.addView(saveSafety, gapTop(12));
     saveSafety.setOnClickListener(v -> {
       int daily = dailyValues[dailyPicker.getSelectedItemPosition()];
       int delay = delayValues[delayPicker.getSelectedItemPosition()];
       safetyPrefs.edit().putInt("youtubeDailyLimit", daily).putInt("youtubeDelaySeconds", delay).apply();
-      Toast.makeText(this, "Cadence enregistrée : " + daily + " vidéos/24 h, " + delay + " s minimum", Toast.LENGTH_LONG).show();
+      Toast.makeText(this, t("pacing_saved", daily, delay), Toast.LENGTH_LONG).show();
     });
-    text(safetyCard, "Les vidéos sont découvertes automatiquement par chaîne. Un quota quotidien n'est pas une garantie contre les restrictions YouTube.", 12, MUTED, false).setPadding(0, dp(10), 0, 0);
+    text(safetyCard, t("pacing_note"), 12, MUTED, false).setPadding(0, dp(10), 0, 0);
 
     section(root, t("sec_requests"));
     LinearLayout p = card(root);
@@ -475,7 +475,7 @@ public class MainActivity extends Activity {
     spinnerParams.setMargins(0, 0, dp(10), 0);
     activityRow.addView(progressSpinner, spinnerParams);
     progressSpinner.setVisibility(View.GONE);
-    TextView activityLabel = text(null, "Traitement en cours", 12, BLUE, true);
+    TextView activityLabel = text(null, t("processing"), 12, BLUE, true);
     activityRow.addView(activityLabel);
     p.addView(activityRow);
     progressSpinner.setTag(activityRow);
@@ -486,6 +486,19 @@ public class MainActivity extends Activity {
     progressCurrent.setEllipsize(TextUtils.TruncateAt.END);
     progressNote = text(p, "", 12, MUTED, false);
     progressNote.setPadding(0, dp(6), 0, 0);
+    progressFreshness = text(p, "", 12, MUTED, false);
+    progressFreshness.setPadding(0, dp(8), 0, 0);
+    Button refreshButton = secondary(t("refresh_now"));
+    p.addView(refreshButton, gapTop(8));
+    refreshButton.setOnClickListener(v -> {
+      if (!RelayClient.isPaired(this)) return;
+      refreshButton.setEnabled(false);
+      worker.execute(() -> {
+        try { RelayClient.poll(this, RelayClient.token(this), false); }
+        catch (Exception ex) { RelayClient.prefs(this).edit().putString("syncError", ex.getMessage()).apply(); }
+        ui.post(() -> { refreshButton.setEnabled(true); refreshRelay(); });
+      });
+    });
 
     section(root, t("notebook_section"));
     notebookRequests=card(root);
@@ -796,6 +809,14 @@ public class MainActivity extends Activity {
       relayDetail.setText(b.toString());
     }
     refreshProgress(p, paired, connected);
+    long age = System.currentTimeMillis() - p.getLong("progressAt", 0);
+    boolean fresh = p.getLong("progressAt", 0) > 0 && age >= 0 && age < 30000L;
+    if (progressFreshness != null) {
+      String error = p.getString("syncError", null);
+      progressFreshness.setText(!paired ? "" : !fresh ? t("sync_stale") : t("sync_updated", DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(p.getLong("progressAt", 0)))));
+      progressFreshness.setTextColor(fresh ? MUTED : AMBER);
+      if (!fresh && error != null) progressFreshness.append(" · " + t("sync_error"));
+    }
     refreshNotebookRequests(p);
     refreshHistory(p);
   }
@@ -850,6 +871,17 @@ public class MainActivity extends Activity {
       return;
     }
     int total = o.optInt("total"), done = o.optInt("done"), failed = o.optInt("failed"), waiting = o.optInt("pending") + o.optInt("working");
+    boolean stale = System.currentTimeMillis() - p.getLong("progressAt", 0) >= 30000L;
+    if (stale) {
+      progressCount.setText("— / " + total);
+      progressLabel.setText(t("sync_stale"));
+      progressBar.setProgress(0);
+      progressStats.setVisibility(View.GONE);
+      ((View) progressSpinner.getTag()).setVisibility(View.GONE);
+      progressCurrent.setText("");
+      progressNote.setText(t("sync_stale_detail"));
+      return;
+    }
     int handled = done + failed;
     ((View) progressSpinner.getTag()).setVisibility(connected && o.optInt("working") > 0 ? View.VISIBLE : View.GONE);
     progressStats.setVisibility(View.VISIBLE);
