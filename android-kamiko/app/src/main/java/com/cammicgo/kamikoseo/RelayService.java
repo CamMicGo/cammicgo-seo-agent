@@ -108,6 +108,16 @@ public class RelayService extends Service {
         status(I18n.t(this, "lost", backoff / 1000));
         sleep(backoff);
         backoff = Math.min(backoff * 2, 60_000);
+      } catch (RuntimeException e) {
+        // A malformed response or an unexpected YouTube parser error must not
+        // terminate the foreground relay and strand the rest of a large batch.
+        android.util.Log.e("CamMicGoRelay", "Unexpected relay loop error", e);
+        String detail = e.getClass().getSimpleName() + ": " + firstLine(e.getMessage());
+        RelayClient.prefs(this).edit().putString("lastRelayError", detail).apply();
+        status("Erreur temporaire du relais : " + detail);
+        current(null);
+        sleep(backoff);
+        backoff = Math.min(backoff * 2, 60_000);
       }
     }
     if (running) { RelayClient.prefs(this).edit().putBoolean("connected", false).apply(); shutdown(); }
