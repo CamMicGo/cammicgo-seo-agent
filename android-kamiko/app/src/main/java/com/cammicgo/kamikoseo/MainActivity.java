@@ -767,6 +767,7 @@ public class MainActivity extends Activity {
       requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 7);
     try {
       RelayClient.prefs(this).edit().putString("status", "Démarrage du relais…").putString("lastRelayError", null).apply();
+      RelayClient.prefs(this).edit().putLong("startRequestedAt", System.currentTimeMillis()).apply();
       RelayService.start(this);
       Toast.makeText(this, "Démarrage du mode connecté demandé", Toast.LENGTH_SHORT).show();
     } catch (RuntimeException e) {
@@ -780,19 +781,23 @@ public class MainActivity extends Activity {
     if (statusLine == null) return;
     SharedPreferences p = RelayClient.prefs(this);
     boolean paired = RelayClient.isPaired(this);
-    boolean connected = paired && p.getBoolean("connected", false)
-        && System.currentTimeMillis()-p.getLong("lastSync",0)<30000L;
+    long now = System.currentTimeMillis();
+    long syncAge = now - p.getLong("lastSync", 0L);
+    long startAge = now - p.getLong("startRequestedAt", 0L);
+    boolean serviceRunning = paired && p.getBoolean("connected", false);
+    boolean connected = serviceRunning && syncAge >= 0 && syncAge < 30000L;
+    boolean starting = paired && !connected && startAge >= 0 && startAge < 30000L;
     unpairedBox.setVisibility(paired ? View.GONE : View.VISIBLE);
     pairedBox.setVisibility(paired ? View.VISIBLE : View.GONE);
 
-    int chipColor = !paired ? GREY : connected ? GREEN : AMBER;
+    int chipColor = !paired ? GREY : connected ? GREEN : starting ? AMBER : AMBER;
     chipDot.setBackground(dot(chipColor));
-    chipText.setText(!paired ? t("chip_unpaired") : connected ? t("chip_connected") : t("chip_stopped"));
+    chipText.setText(!paired ? t("chip_unpaired") : connected ? t("chip_connected") : starting ? "Démarrage…" : t("chip_stopped"));
 
     if (paired) {
       statusDot.setBackground(dot(connected ? GREEN : GREY));
-      statusLine.setText(connected ? t("status_on") : t("status_off"));
-      connectButton.setText(connected ? t("connect_off") : t("connect_on"));
+      statusLine.setText(connected ? t("status_on") : starting ? "Connexion au serveur en cours…" : t("status_off"));
+      connectButton.setText(connected ? t("connect_off") : starting ? "Connexion en cours…" : t("connect_on"));
       StringBuilder b = new StringBuilder(p.getString("deviceName", "Android"));
       if (connected) {
         long sync = p.getLong("lastSync", 0);
@@ -800,7 +805,7 @@ public class MainActivity extends Activity {
         String status = p.getString("status", null);
         if (status != null) b.append('\n').append(status);
       } else {
-        b.append('\n').append(t("activate_hint"));
+        b.append('\n').append(starting ? "Le relais démarre, vérification du premier contact serveur…" : t("activate_hint"));
         String lastError = p.getString("lastRelayError", null);
         if (lastError != null && !lastError.isEmpty()) b.append('\n').append("Erreur : ").append(lastError);
         String lastStatus = p.getString("status", null);
