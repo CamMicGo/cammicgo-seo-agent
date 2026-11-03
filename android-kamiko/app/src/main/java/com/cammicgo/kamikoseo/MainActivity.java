@@ -85,7 +85,7 @@ public class MainActivity extends Activity {
   private View statusDot;
   private TextView statusLine, relayDetail;
   private TextView progressCount, progressLabel, progressCurrent, progressNote, statDone, statWaiting, statFailed;
-  private ProgressBar progressBar;
+  private ProgressBar progressBar, progressSpinner;
   private LinearLayout progressStats;
   private String historyShown;
   private Button clearHistory;
@@ -436,6 +436,20 @@ public class MainActivity extends Activity {
     statWaiting = stat(progressStats, BLUE, t("stat_waiting"));
     statFailed = stat(progressStats, RED, t("stat_failed"));
     p.addView(progressStats, gapTop(12));
+    LinearLayout activityRow = new LinearLayout(this);
+    activityRow.setOrientation(LinearLayout.HORIZONTAL);
+    activityRow.setGravity(Gravity.CENTER_VERTICAL);
+    activityRow.setPadding(0, dp(12), 0, 0);
+    progressSpinner = new ProgressBar(this, null, android.R.attr.progressBarStyleSmall);
+    LinearLayout.LayoutParams spinnerParams = new LinearLayout.LayoutParams(dp(22), dp(22));
+    spinnerParams.setMargins(0, 0, dp(10), 0);
+    activityRow.addView(progressSpinner, spinnerParams);
+    progressSpinner.setVisibility(View.GONE);
+    TextView activityLabel = text(null, "Traitement en cours", 12, BLUE, true);
+    activityRow.addView(activityLabel);
+    p.addView(activityRow);
+    progressSpinner.setTag(activityRow);
+    activityRow.setVisibility(View.GONE);
     progressCurrent = text(p, "", 13, INK, true);
     progressCurrent.setPadding(0, dp(12), 0, 0);
     progressCurrent.setMaxLines(2);
@@ -800,12 +814,14 @@ public class MainActivity extends Activity {
       progressLabel.setText(paired ? t("no_request") : t("pair_to_start"));
       progressBar.setProgress(0);
       progressStats.setVisibility(View.GONE);
+      ((View) progressSpinner.getTag()).setVisibility(View.GONE);
       progressCurrent.setText("");
       progressNote.setText(paired ? t("progress_hint") : "");
       return;
     }
     int total = o.optInt("total"), done = o.optInt("done"), failed = o.optInt("failed"), waiting = o.optInt("pending") + o.optInt("working");
     int handled = done + failed;
+    ((View) progressSpinner.getTag()).setVisibility(connected && o.optInt("working") > 0 ? View.VISIBLE : View.GONE);
     progressStats.setVisibility(View.VISIBLE);
     progressCount.setText(handled + " / " + total);
     progressLabel.setText(waiting > 0 ? t("processed") : t("finished"));
