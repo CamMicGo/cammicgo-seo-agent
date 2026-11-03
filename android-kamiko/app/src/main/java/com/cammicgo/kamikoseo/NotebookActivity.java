@@ -72,7 +72,7 @@ public final class NotebookActivity extends Activity {
     setContentView(root);
     home.setOnClickListener(v->{
       browser.loadUrl(HOME);
-      browser.postDelayed(()->browser.evaluateJavascript("(function(){const items=[...document.querySelectorAll('a[href*=\\\"/notebook/\\\"]')].map(a=>({title:(a.getAttribute('aria-label')||a.innerText||'').trim(),url:a.href})).filter(x=>x.title&&/^https:\\\\/\\\\/notebooklm\\\\.google\\\\.com\\\\/notebook\\\\//.test(x.url));return JSON.stringify(items)})()",value->{
+      browser.postDelayed(()->browser.evaluateJavascript("(function(){const items=[...document.querySelectorAll('a[href*=\\\"/notebook/\\\"]')].map(a=>({title:(a.getAttribute('aria-label')||a.innerText||'').trim(),url:a.href})).filter(x=>x.title&&/^https:\\\\/\\\\/(?:notebook|notebooklm)\\\\.google\\\\.com\\\\/notebook\\\\//.test(x.url));return JSON.stringify(items)})()",value->{
         try{
           String json=new JSONArray(value).getString(0);
           JSONArray items=new JSONArray(json);
