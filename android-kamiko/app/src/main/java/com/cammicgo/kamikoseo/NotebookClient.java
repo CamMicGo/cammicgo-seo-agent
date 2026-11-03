@@ -846,4 +846,52 @@ final class NotebookClient {
     throw new IOException("Unsupported note action");
   }
 
+  JSONObject sourceDescribe(String notebookUrl,String sourceId) throws Exception {
+    requireSource(notebookUrl,sourceId);
+    Object raw=rpc("tr032e",new JSONArray().put(new JSONArray().put(new JSONArray()
+      .put(new JSONArray().put(sourceId)))),"/");
+    if(!(raw instanceof JSONArray))throw new IOException("Source guide unavailable");
+    JSONArray outer=(JSONArray)raw,level1=outer.optJSONArray(0);
+    JSONArray inner=level1==null?null:level1.optJSONArray(0);
+    String summary="";
+    JSONArray keywords=new JSONArray();
+    if(inner!=null){
+      JSONArray summaryArray=inner.optJSONArray(1);
+      if(summaryArray!=null)summary=summaryArray.optString(0,"");
+      JSONArray keywordArray=inner.optJSONArray(2);
+      if(keywordArray!=null&&keywordArray.optJSONArray(0)!=null)keywords=keywordArray.optJSONArray(0);
+    }
+    return new JSONObject().put("sourceId",sourceId).put("summary",summary).put("keywords",keywords);
+  }
+  private void collectSourceText(JSONArray array,StringBuilder output) throws Exception {
+    for(int j=0;j<array.length();j++){
+      Object part=array.opt(j);
+      if(part instanceof String){
+        String t=(String)part;
+        if(!t.isEmpty()){
+          if(output.length()+t.length()>85000)throw new IOException("Source text exceeds relay limit; use local export");
+          output.append(t).append("\\n");
+        }
+      }else if(part instanceof JSONArray)collectSourceText((JSONArray)part,output);
+    }
+  }
+  JSONObject sourceContent(String notebookUrl,String sourceId) throws Exception {
+    requireSource(notebookUrl,sourceId);
+    Object raw=rpc("hizoJc",new JSONArray().put(new JSONArray().put(sourceId))
+      .put(new JSONArray().put(2)).put(new JSONArray().put(2)),"/");
+    if(!(raw instanceof JSONArray))throw new IOException("Source content unavailable");
+    JSONArray outer=(JSONArray)raw,meta=outer.optJSONArray(0);
+    JSONArray blocks=outer.optJSONArray(3),texts=blocks==null?null:blocks.optJSONArray(0);
+    if(texts==null)throw new IOException("Source content blocks missing; not treating as empty");
+    StringBuilder content=new StringBuilder();
+    for(int j=0;j<texts.length();j++){
+      JSONArray block=texts.optJSONArray(j);
+      if(block!=null)collectSourceText(block,content);
+    }
+    return new JSONObject().put("sourceId",sourceId)
+      .put("title",meta==null?"":meta.optString(1))
+      .put("content",content.toString()).put("charCount",content.length())
+      .put("truncated",false);
+  }
+
 }
