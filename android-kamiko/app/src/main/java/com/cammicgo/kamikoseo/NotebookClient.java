@@ -204,22 +204,42 @@ final class NotebookClient {
   JSONObject getNotebook(String notebookUrl) throws Exception {
     String id=ownedNotebookId(notebookUrl);
     JSONArray items=list().getJSONArray("notebooks");
-    JSONObject notebook=null;
-    for(int i=0;i<items.length();i++)if(id.equals(items.getJSONObject(i).optString("id")))notebook=items.getJSONObject(i);
-    Object raw=rpc(NotebookRpcCodec.GET,new JSONArray().put(id).put(JSONObject.NULL).put(new JSONArray().put(2)).put(JSONObject.NULL).put(0),"/notebook/"+id);
+    String title=null;
+    for(int i=0;i<items.length();i++)if(id.equals(items.getJSONObject(i).optString("id")))
+      title=items.getJSONObject(i).optString("title");
+    Object raw=rpc(NotebookRpcCodec.GET,new JSONArray().put(id).put(JSONObject.NULL)
+      .put(new JSONArray().put(2)).put(JSONObject.NULL).put(0),"/notebook/"+id);
     if(!(raw instanceof JSONArray))throw new IOException("Notebook details unavailable");
-    JSONArray details=(JSONArray)raw;
+    JSONArray wrapper=(JSONArray)raw;
+    JSONArray details=wrapper.optJSONArray(0);
+    if(details==null)details=wrapper;
     JSONArray sources=details.optJSONArray(1);
+    if(sources==null)throw new IOException("Source list unavailable: do not treat notebook as empty");
     JSONArray output=new JSONArray();
-    if(sources!=null)for(int i=0;i<sources.length();i++){
-      JSONArray src=sources.optJSONArray(i);if(src==null)continue;
-      JSONArray ids=src.optJSONArray(0);
-      output.put(new JSONObject().put("id",ids==null?JSONObject.NULL:ids.optString(0))
-        .put("title",src.optString(1,"Sans titre")));
+    for(int i=0;i<sources.length();i++){
+      JSONArray src=sources.optJSONArray(i);
+      if(src==null)throw new IOException("Malformed NotebookLM source; cannot verify completeness");
+      JSONArray ids=src.optJSONArray(0),meta=src.optJSONArray(2),state=src.optJSONArray(3);
+      int status=state==null?-1:state.optInt(1,-1);
+      int sourceType=meta==null?-1:meta.optInt(4,-1);
+      JSONArray drive=meta==null?null:meta.optJSONArray(0);
+      JSONObject entry=new JSONObject().put("id",ids==null?JSONObject.NULL:ids.optString(0))
+        .put("title",src.optString(1,"Sans titre")).put("statusCode",status)
+        .put("sourceType",sourceType).put("status",
+          status==1?"processing":status==2?"ready":status==3?"error_or_audio_completed":
+          status==5?"preparing":"unknown");
+      if(drive!=null&&drive.opt(0) instanceof String)entry.put("driveDocumentId",drive.optString(0));
+      output.put(entry);
     }
     return new JSONObject().put("id",id).put("url",notebookUrl)
-      .put("title",notebook.optString("title")).put("sourceCount",output.length())
+      .put("title",title==null?JSONObject.NULL:title).put("sourceCount",output.length())
       .put("sources",output).put("verified",true);
+  }
+  JSONObject sourceList(String notebookUrl) throws Exception {
+    JSONObject notebook=getNotebook(notebookUrl);
+    return new JSONObject().put("notebookId",notebook.getString("id"))
+      .put("sourceCount",notebook.getInt("sourceCount"))
+      .put("sources",notebook.getJSONArray("sources"));
   }
   JSONObject renameNotebook(String notebookUrl,String title) throws Exception {
     if(title==null||title.trim().isEmpty()||title.length()>160)throw new IOException("Invalid title");
@@ -238,20 +258,12 @@ final class NotebookClient {
 
   /** Source-aware deletion preview. The caller must show the exact count to the user. */
   JSONObject deletionPreview(String notebookUrl) throws Exception {
-    String id=ownedNotebookId(notebookUrl);
-    JSONArray raw=notebooks();
-    for(int i=0;i<raw.length();i++){
-      JSONArray nb=raw.optJSONArray(i);
-      if(nb==null||!id.equals(nb.optString(2)))continue;
-      JSONArray metadata=nb.optJSONArray(5);
-      if(metadata==null||metadata.optInt(0,-1)!=1)throw new IOException("Not the notebook owner");
-      JSONArray sources=nb.optJSONArray(1);
-      if(sources==null)throw new IOException("Cannot verify source count: refusing deletion");
-      return new JSONObject().put("id",id).put("title",nb.optString(0))
-        .put("sourceCount",sources.length()).put("requiresConfirmation",sources.length()>0)
-        .put("warning","Deleting a notebook permanently deletes its NotebookLM copies of sources, notes and generated audio/video. Original Google Drive files and external URLs are not deleted by this operation.");
-    }
-    throw new IOException("Notebook missing from authenticated account");
+    JSONObject notebook=getNotebook(notebookUrl);
+    int count=notebook.getInt("sourceCount");
+    return new JSONObject().put("id",notebook.getString("id"))
+      .put("title",notebook.getString("title")).put("sourceCount",count)
+      .put("requiresConfirmation",true)
+      .put("warning","NotebookLM deletes notebook sources, notes and generated artifacts. Original Drive files are preserved.");
   }
   JSONObject deleteNotebook(String notebookUrl,String expectedTitle,int expectedSourceCount,boolean confirm) throws Exception {
     JSONObject before=deletionPreview(notebookUrl);
