@@ -269,6 +269,7 @@ public class RelayService extends Service {
       JSONObject result;
       if ("create".equals(operation)) result=client.create(job.optString("title"));
       else if ("list".equals(operation)) result=client.list();
+      else if ("usage".equals(operation)) result=client.usage();
       else if ("get".equals(operation)) result=client.getNotebook(job.optString("notebookUrl"));
       else if ("delete_preview".equals(operation)) result=client.deletionPreview(job.optString("notebookUrl"));
       else if ("delete".equals(operation)) result=client.deleteNotebook(job.optString("notebookUrl"),job.optString("expectedTitle"),job.optInt("expectedSourceCount",-1),job.optBoolean("confirm",false));
