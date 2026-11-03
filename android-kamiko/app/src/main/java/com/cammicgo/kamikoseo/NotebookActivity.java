@@ -54,7 +54,7 @@ public final class NotebookActivity extends Activity {
     navigation.addView(refresh,new LinearLayout.LayoutParams(0,-2,1));
     root.addView(navigation);
     back.setOnClickListener(v->finish());
-    refresh.setOnClickListener(v->browser.reload());
+    refresh.setOnClickListener(v->{notebookPageReady=false;browser.reload();});
     actions.addView(home,new LinearLayout.LayoutParams(0,-2,1));
     actions.addView(create,new LinearLayout.LayoutParams(0,-2,1));
     actions.addView(source,new LinearLayout.LayoutParams(0,-2,1));
@@ -63,6 +63,7 @@ public final class NotebookActivity extends Activity {
     browser=new WebView(this);
     browser.getSettings().setJavaScriptEnabled(true);
     browser.getSettings().setDomStorageEnabled(true);
+    browser.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_YES);
     browser.getSettings().setSupportMultipleWindows(false);
     CookieManager.getInstance().setAcceptCookie(true);
     CookieManager.getInstance().setAcceptThirdPartyCookies(browser,true);
@@ -70,6 +71,10 @@ public final class NotebookActivity extends Activity {
     browser.setWebViewClient(new WebViewClient(){
       @Override public void onPageFinished(WebView view,String url) {
         notebookPageReady=url!=null&&(url.startsWith(HOME)||url.startsWith("https://notebooklm.google.com/"));
+        if(url!=null&&url.startsWith("https://accounts.google.com/")){
+          notebookPageReady=false;
+          location.setText("Connexion Google dans WebView distincte de Chrome");
+        }
         if(notebookPageReady) {
           location.setText(url);
           if(url.matches("https://(?:notebooklm|notebook)\\.google\\.com/notebook/[A-Za-z0-9_-]+.*"))lastNotebookUrl=url;
@@ -84,6 +89,10 @@ public final class NotebookActivity extends Activity {
       @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){
         Uri uri=request.getUrl();
         if("notebooklm.google.com".equals(uri.getHost())||"notebook.google.com".equals(uri.getHost())||"accounts.google.com".equals(uri.getHost()))return false;
+        if("https".equalsIgnoreCase(uri.getScheme())&&uri.getHost()!=null&&uri.getHost().endsWith(".google.com")){
+          // Keep Google sign-in redirects in the same WebView cookie jar.
+          return false;
+        }
         startActivity(new Intent(Intent.ACTION_VIEW,uri));
         return true;
       }
@@ -130,7 +139,10 @@ public final class NotebookActivity extends Activity {
         else notice("Sélectionnez la source dans la fenêtre NotebookLM. L'ajout n'est confirmé qu'une fois visible dans le notebook.");
       });
     });
-    chrome.setOnClickListener(v->startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(lastNotebookUrl==null?HOME:lastNotebookUrl))));
+    chrome.setOnClickListener(v->{
+      notice("Chrome utilise une session Google différente de celle de la WebView. La connexion Chrome ne permet pas encore au relais MCP de créer un notebook.");
+      startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(lastNotebookUrl==null?HOME:lastNotebookUrl)));
+    });
     browser.loadUrl(HOME);
   }
   @Override protected void onResume(){
