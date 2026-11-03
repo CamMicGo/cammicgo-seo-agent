@@ -13,7 +13,6 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.regex.Matcher;
-import android.webkit.WebView;
 import java.util.regex.Pattern;
 
 /** Pure Java, on-device NotebookLM client. Session cookies never leave the device.
