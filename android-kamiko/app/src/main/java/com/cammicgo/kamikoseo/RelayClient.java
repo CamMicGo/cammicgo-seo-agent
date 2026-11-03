@@ -88,6 +88,23 @@ public final class RelayClient {
     }
   }
 
+  static JSONObject uploadArtifact(String token,String jobId,byte[] bytes,String mime) throws IOException {
+    if(bytes==null||bytes.length==0||bytes.length>15_000_000)
+      throw new IOException("Artifact must be 1-15 MB");
+    HttpURLConnection c=(HttpURLConnection)new URL(BASE+"/api/devices/artifacts/"+jobId).openConnection();
+    try{
+      c.setConnectTimeout(15000);c.setReadTimeout(60000);c.setRequestMethod("POST");
+      c.setRequestProperty("Authorization","Bearer "+token);
+      c.setRequestProperty("Content-Type",mime);
+      c.setRequestProperty("Accept","application/json");
+      c.setDoOutput(true);c.setFixedLengthStreamingMode(bytes.length);
+      try(OutputStream os=c.getOutputStream()){os.write(bytes);}
+      int status=c.getResponseCode();
+      String response=readAll(status>=400?c.getErrorStream():c.getInputStream());
+      if(status>=400)throw new IOException("Artifact upload HTTP "+status+": "+serverError(response,"upload failed"));
+      try{return new JSONObject(response);}catch(Exception ex){throw new IOException("Invalid artifact upload response",ex);}
+    }finally{c.disconnect();}
+  }
   static String request(String method, String path, String token, String body) throws IOException {
     HttpURLConnection c = (HttpURLConnection) new URL(BASE + path).openConnection();
     try {
