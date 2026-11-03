@@ -16,6 +16,7 @@ const range=(id:string,a1:string)=>API+'/'+encodeURIComponent(id)+'/values/'+enc
 export async function createChannelSheet(token:string,channelName:string){
  const title=('YouTube — '+channelName).slice(0,100);
  const doc=await call(token,API,{method:'POST',body:JSON.stringify({properties:{title},sheets:[{properties:{title:'Transcriptions',gridProperties:{frozenRowCount:1}}}]})});
+ if(typeof doc.spreadsheetId!=='string'||!doc.spreadsheetId)throw new Error('Google Sheets returned no spreadsheet ID');
  await call(token,range(doc.spreadsheetId,'Transcriptions!A1:J1')+'?valueInputOption=RAW',{method:'PUT',body:JSON.stringify({values:[TRANSCRIPT_HEADERS]})});
  return {spreadsheetId:String(doc.spreadsheetId),url:String(doc.spreadsheetUrl)};
 }
