@@ -43,6 +43,10 @@ import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.webkit.WebChromeClient;
+import android.webkit.CookieManager;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -72,6 +76,7 @@ public class MainActivity extends Activity {
   private final ExecutorService worker = Executors.newSingleThreadExecutor();
   private final Handler ui = new Handler(Looper.getMainLooper());
   private final View[] pages = new View[4];
+  private WebView notebookWeb;
   private final TextView[] tabViews = new TextView[4];
   private int currentTab = 0;
 
@@ -242,7 +247,7 @@ public class MainActivity extends Activity {
     shell.addView(host, new LinearLayout.LayoutParams(-1, 0, 1));
     buildAssistantPage(page(host, 0));
     buildExtractPage(page(host, 1));
-    buildNotebookPage(page(host, 2));
+    buildNotebookTab(host);
     buildHelpPage(page(host, 3));
 
     setContentView(shell);
@@ -556,54 +561,37 @@ public class MainActivity extends Activity {
 
   // ---------- tab 3: NotebookLM ----------
 
-  private void buildNotebookPage(LinearLayout root) {
-    section(root, "NotebookLM · CamMicGo");
-    LinearLayout notebookCard = card(root);
-    text(notebookCard, "Ouvrir NotebookLM sur ce téléphone", 15, INK, true);
-    text(notebookCard, "Pour les commandes de l’assistant IA, connectez votre compte Google dans « Agent NotebookLM · ouvrir l’espace de travail ». La session Chrome externe ne peut pas être utilisée par l’APK. Les opérations sont exécutées localement et doivent être confirmées par NotebookLM.", 13, MUTED, false);
-    Button notebookButton = secondary("Ouvrir NotebookLM");
-    notebookButton.setOnClickListener(v -> {
-      try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://notebooklm.google.com/"))); }
-      catch (Exception e) { Toast.makeText(this, "Navigateur indisponible", Toast.LENGTH_LONG).show(); }
-    });
-    notebookCard.addView(notebookButton, gapTop(8));
-    Button workspace = primary("Agent NotebookLM · ouvrir l’espace de travail");
-    workspace.setOnClickListener(v -> startActivity(new Intent(this, NotebookActivity.class)));
-    notebookCard.addView(workspace, gapTop(8));
-    Button copyNotebook = secondary("Copier le lien du notebook");
-    copyNotebook.setOnClickListener(v -> {
-      final EditText link = field("https://notebooklm.google.com/notebook/...");
-      new AlertDialog.Builder(this)
-          .setTitle("Associer un notebook existant")
-          .setMessage("Collez l'URL de votre notebook ouvert dans le navigateur. Le lien reste enregistré uniquement sur ce téléphone.")
-          .setView(link)
-          .setNegativeButton("Annuler", null)
-          .setPositiveButton("Enregistrer", (dialog, which) -> {
-            String value = link.getText().toString().trim();
-            if (!value.matches("https://notebooklm\\.google\\.com/notebook/[A-Za-z0-9_-]+/?")) {
-              Toast.makeText(this, "Lien NotebookLM invalide", Toast.LENGTH_LONG).show();
-              return;
-            }
-            getPreferences(MODE_PRIVATE).edit().putString("notebooklm_url", value).apply();
-            Toast.makeText(this, "Notebook enregistré sur cet appareil", Toast.LENGTH_LONG).show();
-          }).show();
-    });
-    notebookCard.addView(copyNotebook, gapTop(8));
-    Button openSavedNotebook = secondary("Ouvrir mon notebook enregistré");
-    openSavedNotebook.setOnClickListener(v -> {
-      String saved = getPreferences(MODE_PRIVATE).getString("notebooklm_url", "");
-      if (saved.isEmpty()) {
-        Toast.makeText(this, "Enregistrez d'abord l'URL du notebook", Toast.LENGTH_LONG).show();
-        return;
-      }
-      startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(saved)));
-    });
-    notebookCard.addView(openSavedNotebook, gapTop(8));
-
-
+  private void buildNotebookTab(FrameLayout host) {
+    // NotebookLM lives inside the existing CamMicGo shell, beneath the permanent header and tabs.
+    // Do not launch a second Activity or show a redundant back-to-app button.
+    LinearLayout root = new LinearLayout(this);
+    root.setOrientation(LinearLayout.VERTICAL);
+    root.setBackgroundColor(BG);
+    host.addView(root, new FrameLayout.LayoutParams(-1,-1));
+    pages[2]=root;
+    LinearLayout actions=new LinearLayout(this);
+    actions.setPadding(dp(8),dp(6),dp(8),dp(6));
+    Button notebooks=secondary("Notebooks");
+    Button sources=secondary("Sources");
+    Button reload=secondary("↻");
+    actions.addView(notebooks,new LinearLayout.LayoutParams(0,-2,1));
+    actions.addView(sources,new LinearLayout.LayoutParams(0,-2,1));
+    actions.addView(reload,new LinearLayout.LayoutParams(dp(60),-2));
+    root.addView(actions);
+    notebookWeb=new WebView(this);
+    notebookWeb.getSettings().setJavaScriptEnabled(true);
+    notebookWeb.getSettings().setDomStorageEnabled(true);
+    CookieManager.getInstance().setAcceptCookie(true);
+    CookieManager.getInstance().setAcceptThirdPartyCookies(notebookWeb,true);
+    notebookWeb.setWebChromeClient(new WebChromeClient());
+    notebookWeb.setWebViewClient(new WebViewClient());
+    root.addView(notebookWeb,new LinearLayout.LayoutParams(-1,0,1));
+    notebooks.setOnClickListener(v->notebookWeb.loadUrl("https://notebooklm.google.com/"));
+    sources.setOnClickListener(v->notebookWeb.evaluateJavascript("(function(){const b=[...document.querySelectorAll('button,[role=button]')].find(x=>/add sources?|ajouter (des |une )?sources?/i.test(x.innerText||x.getAttribute('aria-label')||''));if(b){b.click();return 'ok'}return 'missing'})()",result->{if(!"\\\"ok\\\"".equals(result))Toast.makeText(this,"Ouvrez un notebook pour ajouter une source.",Toast.LENGTH_LONG).show();}));
+    reload.setOnClickListener(v->notebookWeb.reload());
+    notebookWeb.loadUrl("https://notebooklm.google.com/");
   }
 
-  // ---------- tab 4: help ----------
   private void buildHelpPage(LinearLayout root) {
     section(root, t("sec_prompts"));
     LinearLayout c = card(root);
