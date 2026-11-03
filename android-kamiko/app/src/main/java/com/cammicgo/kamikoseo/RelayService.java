@@ -110,6 +110,15 @@ public class RelayService extends Service {
       String token = RelayClient.token(this);
       if (token == null) break;
       try {
+        // A 429 is an explicit user-controlled pause: keep heartbeat but never auto-reclaim jobs.
+        if (RelayClient.prefs(this).getBoolean("youtube429ManualPause", false)) {
+          RelayClient.poll(this, token, false);
+          RelayClient.prefs(this).edit().putLong("lastSync", System.currentTimeMillis()).apply();
+          status("YouTube HTTP 429 : extraction en pause. Appuyez sur Réessayer dans Assistant IA.");
+          sleep(4000);
+          continue;
+        }
+        pausedUntil = 0L;
         long wait = pausedUntil - System.currentTimeMillis();
         // A YouTube HTTP 429 pauses only transcript claims, never the server heartbeat.
         // Keep polling through the normal error handler so network failures cannot kill the worker.
@@ -187,16 +196,16 @@ public class RelayService extends Service {
       String msg = e.getMessage() == null ? "" : e.getMessage();
       if (msg.contains("HTTP 429")) {
         // This HTTP 429 applies to the failed extraction request, not necessarily the whole phone.
-        // Release the job and throttle transcript claims; keep the relay heartbeat active.
+        // Release the job and pause transcript claims until the user explicitly retries.
         RelayClient.release(token, id);
         rateLimitStrikes++;
         // Retry with bounded jitter (60-120 seconds) rather than freezing the agent queue for hours.
-        long pause = 60_000L + (long)(Math.random() * 60_000L);
-        pausedUntil = System.currentTimeMillis() + pause;
-        nextTranscriptAt = pausedUntil;
+        pausedUntil = 0L;
+        nextTranscriptAt = 0L;
         RelayClient.prefs(this).edit().putLong("youtubePausedUntil", pausedUntil)
-            .putLong("nextTranscriptAt", nextTranscriptAt).putInt("youtube429Strikes", rateLimitStrikes).apply();
-        status("Extraction automatique : réponse HTTP 429 sur une requête YouTube. Nouvel essai après " + java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(new java.util.Date(pausedUntil)) + ". Connexion serveur maintenue.");
+            .putLong("nextTranscriptAt", nextTranscriptAt).putInt("youtube429Strikes", rateLimitStrikes)
+            .putBoolean("youtube429ManualPause", true).apply();
+        status("YouTube HTTP 429 : demandes en pause. Relance manuelle depuis Assistant IA, connexion serveur maintenue.");
         current(null);
         return;
       }
