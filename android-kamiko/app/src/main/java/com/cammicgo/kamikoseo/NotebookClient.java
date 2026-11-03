@@ -109,6 +109,9 @@ final class NotebookClient {
     for(int i=0;i<raw.length();i++){
       JSONArray nb=raw.optJSONArray(i);
       if(nb==null||nb.length()<3||! (nb.opt(2) instanceof String))continue;
+      // NotebookLM metadata[0]: 1 = owned by this Google account; 2 = shared with me.
+      JSONArray metadata=nb.optJSONArray(5);
+      if(metadata!=null&&metadata.length()>0&&metadata.optInt(0,-1)!=1)continue;
       String id=nb.optString(2),title=nb.optString(0,"Sans titre");
       items.put(new JSONObject().put("id",id).put("title",title).put("url",HOME+"notebook/"+id));
     }
