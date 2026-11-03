@@ -236,4 +236,38 @@ final class NotebookClient {
     throw new IOException("Rename was not confirmed by NotebookLM notebook list");
   }
 
+  /** Source-aware deletion preview. The caller must show the exact count to the user. */
+  JSONObject deletionPreview(String notebookUrl) throws Exception {
+    String id=ownedNotebookId(notebookUrl);
+    JSONArray raw=notebooks();
+    for(int i=0;i<raw.length();i++){
+      JSONArray nb=raw.optJSONArray(i);
+      if(nb==null||!id.equals(nb.optString(2)))continue;
+      JSONArray metadata=nb.optJSONArray(5);
+      if(metadata==null||metadata.optInt(0,-1)!=1)throw new IOException("Not the notebook owner");
+      JSONArray sources=nb.optJSONArray(1);
+      if(sources==null)throw new IOException("Cannot verify source count: refusing deletion");
+      return new JSONObject().put("id",id).put("title",nb.optString(0))
+        .put("sourceCount",sources.length()).put("requiresConfirmation",sources.length()>0)
+        .put("warning","Deleting a notebook permanently deletes its NotebookLM copies of sources, notes and generated audio/video. Original Google Drive files and external URLs are not deleted by this operation.");
+    }
+    throw new IOException("Notebook missing from authenticated account");
+  }
+  JSONObject deleteNotebook(String notebookUrl,String expectedTitle,int expectedSourceCount,boolean confirm) throws Exception {
+    JSONObject before=deletionPreview(notebookUrl);
+    if(!confirm)throw new IOException("Deletion requires explicit confirmation in a separate user message");
+    if(expectedTitle==null||!expectedTitle.equals(before.optString("title"))||
+       expectedSourceCount<0||expectedSourceCount!=before.optInt("sourceCount"))
+      throw new IOException("Notebook title/source count changed; request a new deletion preview");
+    String id=before.getString("id");
+    rpc(NotebookRpcCodec.DELETE,new JSONArray().put(new JSONArray().put(id)).put(new JSONArray().put(2)),"/");
+    JSONArray after=notebooks();
+    for(int i=0;i<after.length();i++){
+      JSONArray nb=after.optJSONArray(i);
+      if(nb!=null&&id.equals(nb.optString(2)))throw new IOException("Notebook deletion not verified");
+    }
+    return new JSONObject().put("deleted",true).put("id",id).put("title",expectedTitle)
+      .put("deletedNotebookSourceCount",expectedSourceCount).put("verified",true);
+  }
+
 }
