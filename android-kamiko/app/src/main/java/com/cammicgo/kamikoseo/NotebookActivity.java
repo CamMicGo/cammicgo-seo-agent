@@ -43,24 +43,64 @@ public final class NotebookActivity extends Activity {
     LinearLayout root=new LinearLayout(this);
     root.setOrientation(LinearLayout.VERTICAL);
     root.setBackgroundColor(android.graphics.Color.rgb(244,247,253));
-    location=new TextView(this);
-    location.setText("NotebookLM · "+(I18n.code(this).equals("fr")?"Session Google locale":"Local Google session"));
-    location.setTextSize(17);
-    location.setTypeface(null,android.graphics.Typeface.BOLD);
-    location.setTextColor(android.graphics.Color.rgb(25,43,83));
-    location.setPadding(dp(18),dp(18),dp(18),dp(14));
-    root.addView(location);
-    LinearLayout navigation=new LinearLayout(this);
-    navigation.setGravity(Gravity.CENTER_VERTICAL);
-    navigation.setPadding(dp(12),dp(2),dp(12),dp(6));
-    Button back=button(I18n.code(this).equals("fr")?"← CamMicGo":"← CamMicGo");
+    // Match CamMicGo's main header, including the existing launcher artwork.
+    LinearLayout header=new LinearLayout(this);
+    header.setGravity(Gravity.CENTER_VERTICAL);
+    header.setBackgroundColor(android.graphics.Color.WHITE);
+    header.setPadding(dp(14),dp(10),dp(14),dp(10));
+    android.widget.ImageView logo=new android.widget.ImageView(this);
+    logo.setImageResource(R.mipmap.ic_launcher);
+    header.addView(logo,new LinearLayout.LayoutParams(dp(42),dp(42)));
+    TextView appTitle=new TextView(this);
+    appTitle.setText("CamMicGo SEO MCP");
+    appTitle.setTextSize(18);
+    appTitle.setTypeface(null,android.graphics.Typeface.BOLD);
+    appTitle.setTextColor(android.graphics.Color.rgb(23,35,74));
+    appTitle.setPadding(dp(10),0,0,0);
+    header.addView(appTitle,new LinearLayout.LayoutParams(0,-2,1));
+    root.addView(header);
+    LinearLayout tabs=new LinearLayout(this);
+    tabs.setPadding(dp(8),dp(8),dp(8),dp(8));
+    tabs.setBackgroundColor(android.graphics.Color.rgb(230,237,250));
+    final String[] labels={I18n.t(this,"tab_assistant"),I18n.t(this,"tab_extract"),I18n.t(this,"tab_notebook"),I18n.t(this,"tab_help")};
+    for(int i=0;i<labels.length;i++){
+      final int index=i;
+      TextView tab=new TextView(this);
+      tab.setText(labels[i]);
+      tab.setTextSize(12);
+      tab.setGravity(Gravity.CENTER);
+      tab.setTypeface(null,android.graphics.Typeface.BOLD);
+      tab.setTextColor(i==2?android.graphics.Color.rgb(39,100,223):android.graphics.Color.rgb(92,108,137));
+      if(i==2){
+        android.graphics.drawable.GradientDrawable selected=new android.graphics.drawable.GradientDrawable();
+        selected.setColor(android.graphics.Color.WHITE);
+        selected.setCornerRadius(dp(12));
+        tab.setBackground(selected);
+      }
+      tab.setPadding(dp(2),dp(10),dp(2),dp(10));
+      tabs.addView(tab,new LinearLayout.LayoutParams(0,dp(46),1));
+      tab.setOnClickListener(v->{if(index!=2)openMainTab(index);});
+    }
+    root.addView(tabs);
+    LinearLayout toolbar=new LinearLayout(this);
+    toolbar.setGravity(Gravity.CENTER_VERTICAL);
+    toolbar.setPadding(dp(12),dp(5),dp(12),dp(5));
+    Button back=button(I18n.t(this,"notebook_back_main"));
     Button refresh=button("↻");
-    navigation.addView(back,new LinearLayout.LayoutParams(0,dp(44),1));
-    navigation.addView(refresh,new LinearLayout.LayoutParams(dp(52),dp(44)));
-    root.addView(navigation);
-    back.setOnClickListener(v->finish());
-    refresh.setContentDescription(I18n.code(this).equals("fr")?"Actualiser NotebookLM":"Refresh NotebookLM");
+    toolbar.addView(back,new LinearLayout.LayoutParams(0,dp(44),1));
+    toolbar.addView(refresh,new LinearLayout.LayoutParams(dp(52),dp(44)));
+    root.addView(toolbar);
+    back.setOnClickListener(v->openMainTab(2));
+    refresh.setContentDescription(I18n.t(this,"notebook_refresh"));
     refresh.setOnClickListener(v->{notebookPageReady=false;browser.reload();});
+    location=new TextView(this);
+    location.setText(I18n.t(this,"notebook_local_session"));
+    location.setTextSize(11);
+    location.setTextColor(android.graphics.Color.rgb(92,108,137));
+    location.setSingleLine(true);
+    location.setEllipsize(android.text.TextUtils.TruncateAt.END);
+    location.setPadding(dp(16),dp(2),dp(16),dp(6));
+    root.addView(location);
     browser=new WebView(this);
     browser.getSettings().setJavaScriptEnabled(true);
     browser.getSettings().setDomStorageEnabled(true);
@@ -116,6 +156,13 @@ public final class NotebookActivity extends Activity {
   private void setNotebookTitle(String name){
     String js="(function(){const e=[...document.querySelectorAll('input,[contenteditable=true]')].find(e=>/title|titre|notebook/i.test((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('placeholder')||'')));if(!e)return 'missing';e.focus();if(e.isContentEditable){e.textContent="+JSONObject.quote(name)+";e.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:"+JSONObject.quote(name)+"}));}else{const s=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;s.call(e,"+JSONObject.quote(name)+");e.dispatchEvent(new Event('input',{bubbles:true}));}e.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',bubbles:true}));return 'attempted'})()";
     browser.evaluateJavascript(js,result->{if(!"\\\"attempted\\\"".equals(result))notice("Notebook ouvert, mais le champ de titre n'a pas été trouvé. Renommez-le dans NotebookLM.");else notice("Renommage demandé. Vérifiez que le titre apparaît dans NotebookLM avant de considérer la création comme terminée.");});
+  }
+  private void openMainTab(int tab){
+    Intent intent=new Intent(this,MainActivity.class);
+    intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);
+    intent.putExtra("open_tab",tab);
+    startActivity(intent);
+    finish();
   }
   private int dp(int value){return Math.round(getResources().getDisplayMetrics().density*value);}
   private Button button(String text){
