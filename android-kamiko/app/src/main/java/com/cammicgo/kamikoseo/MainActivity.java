@@ -399,7 +399,7 @@ public class MainActivity extends Activity {
 
     pairButton.setOnClickListener(v -> pair());
     connectButton.setOnClickListener(v -> {
-      if (RelayClient.prefs(this).getBoolean("connected", false)) RelayService.stop(this); else startConnected();
+      if (RelayClient.prefs(this).getBoolean("connected", false)\n          && System.currentTimeMillis()-RelayClient.prefs(this).getLong("lastSync",0)<30000L) RelayService.stop(this);\n      else startConnected();
       ui.postDelayed(this::refreshRelay, 400);
     });
     unpair.setOnClickListener(v -> {
@@ -727,7 +727,7 @@ public class MainActivity extends Activity {
     if (statusLine == null) return;
     SharedPreferences p = RelayClient.prefs(this);
     boolean paired = RelayClient.isPaired(this);
-    boolean connected = paired && p.getBoolean("connected", false);
+    boolean connected = paired && p.getBoolean("connected", false)\n        && System.currentTimeMillis()-p.getLong("lastSync",0)<30000L;
     unpairedBox.setVisibility(paired ? View.GONE : View.VISIBLE);
     pairedBox.setVisibility(paired ? View.VISIBLE : View.GONE);
 
@@ -897,7 +897,7 @@ public class MainActivity extends Activity {
     }
   }
 
-  @Override protected void onResume() { super.onResume(); historyShown = null; ui.post(refresher); }
+  @Override protected void onResume() {\n    super.onResume();\n    historyShown = null;\n    // A persisted connected=true flag does not mean Android kept the service alive.\n    SharedPreferences p=RelayClient.prefs(this);\n    if(RelayClient.isPaired(this) && p.getBoolean("connected",false)\n        && System.currentTimeMillis()-p.getLong("lastSync",0)>25000L) {\n      startConnected(); // idempotent foreground service restart\n    }\n    ui.post(refresher);\n  }
   @Override protected void onPause() { ui.removeCallbacks(refresher); super.onPause(); }
 
   // ---------- manual extraction ----------
