@@ -73,12 +73,25 @@ export const isOnline=(d:Device)=>!!d.last_seen_at&&Date.now()-Date.parse(d.last
 
 // ---------- jobs ----------
 /** A transcript already fetched by any device in the last 30 days (public captions). */
-export async function cachedTranscript(videoId:string,language:string){
- if(language==='original')return null; // resolved per request; never reuse an unresolved guess
- const since=new Date(Date.now()-30*86_400_000).toISOString();
- const base=language.split('-')[0];
- const rows=await sb<Array<{result:unknown}>>('/rest/v1/cmg_transcript_jobs?video_id=eq.'+videoId+'&status=eq.done&completed_at=gt.'+encodeURIComponent(since)+'&or='+encodeURIComponent('(result->>language.eq.'+language+',result->>language.like.'+base+'-*)')+'&select=result&order=completed_at.desc&limit=1');
- return rows[0]?.result??null;
+/** No shared transcript cache: user content is not reused or retained as a service feature. */
+export async function cachedTranscript(_videoId:string,_language:string){
+ return null;
+}
+
+/** Best-effort removal of transient relay payloads. Never delete active jobs. */
+let lastPrune=0;
+export async function pruneRelayPayloads(){
+ const now=Date.now();
+ if(now-lastPrune<60*60_000)return;
+ lastPrune=now;
+ const cutoff=new Date(now-60*60_000).toISOString();
+ const expired=new Date(now).toISOString();
+ try{
+  await Promise.all([
+   sb('/rest/v1/cmg_notebook_jobs?or='+encodeURIComponent('(and(status.in.(done,error),completed_at.lt.'+cutoff+'),expires_at.lt.'+expired+') ,{method:'DELETE'}),
+   sb('/rest/v1/cmg_transcript_jobs?or='+encodeURIComponent('(and(status.in.(done,error),completed_at.lt.'+cutoff+'),expires_at.lt.'+expired+') ,{method:'DELETE'})
+  ]);
+ }catch(e){lastPrune=0;throw e;}
 }
 export async function createJob(userId:string,videoId:string,language:string,ttlMinutes=10){
  const rows=await sb<Job[]>('/rest/v1/cmg_transcript_jobs',{method:'POST',body:JSON.stringify({user_id:userId,video_id:videoId,language,expires_at:new Date(Date.now()+ttlMinutes*60_000).toISOString()}),prefer:'return=representation'});
