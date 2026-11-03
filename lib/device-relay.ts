@@ -181,7 +181,7 @@ export async function deviceProgress(userId:string):Promise<DeviceProgress|null>
 }
 
 /** NotebookLM jobs are separate from transcript jobs and scoped to the authenticated owner. */
-export type NotebookOperation='create'|'list'|'add_url_source'|'get'|'rename';
+export type NotebookOperation='create'|'list'|'add_url_source'|'get'|'rename'|'delete_preview'|'delete';
 export async function createNotebookJob(userId:string,operation:NotebookOperation,payload:Record<string,string>){
  // Avoid enqueueing duplicate mutations while a previous request is still active.
  if(operation==='create' && payload.title){
