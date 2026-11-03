@@ -71,12 +71,13 @@ public final class TranscriptFetcher {
     StringBuilder diagnostics = new StringBuilder();
     IOException networkError = null;
     boolean otherFailure = false;
+    IOException rateLimitError = null;
 
     try {
       html = http("https://www.youtube.com/watch?v=" + videoId + "&hl=en", null, WEB_UA, null);
       apiKey = firstGroup(html, "\"INNERTUBE_API_KEY\"\\s*:\\s*\"([A-Za-z0-9_-]+)\"");
     } catch (IOException e) {
-      if (e.getMessage() != null && e.getMessage().contains("HTTP 429")) throw e;
+      if (e.getMessage() != null && e.getMessage().contains("HTTP 429")) rateLimitError = e;
       diagnostics.append("watch-page : ").append(e.getMessage()).append('\n');
       if (isNetwork(e)) networkError = e; else otherFailure = true;
     }
@@ -90,7 +91,7 @@ public final class TranscriptFetcher {
       diagnostics.append("innertube-android : ").append(statusOf(player)).append('\n');
       otherFailure = true;
     } catch (IOException e) {
-      if (e.getMessage() != null && e.getMessage().contains("HTTP 429")) throw e;
+      if (e.getMessage() != null && e.getMessage().contains("HTTP 429")) rateLimitError = e;
       diagnostics.append("innertube-android : ").append(e.getMessage()).append('\n');
       if (isNetwork(e)) networkError = e; else otherFailure = true;
     }
@@ -115,7 +116,8 @@ public final class TranscriptFetcher {
     }
 
     // Connection lost (not a YouTube refusal): report it as such so the relay retries later.
-    if (networkError != null && !otherFailure) throw networkError;
+    if (networkError != null && !otherFailure && rateLimitError == null) throw networkError;
+    if (rateLimitError != null) throw rateLimitError;
     throw new IOException("Aucune piste de sous-titres accessible.\n" + diagnostics.toString().trim());
   }
 
