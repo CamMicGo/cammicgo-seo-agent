@@ -270,4 +270,52 @@ final class NotebookClient {
       .put("deletedNotebookSourceCount",expectedSourceCount).put("verified",true);
   }
 
+  private JSONArray sourceMetadata(){
+    JSONArray m=new JSONArray().put(1);
+    for(int i=0;i<9;i++)m.put(JSONObject.NULL);
+    m.put(new JSONArray().put(1));
+    return m;
+  }
+  private JSONObject addStructuredSource(String notebookUrl,JSONArray source,String expectedTitle) throws Exception {
+    String id=ownedNotebookId(notebookUrl);
+    JSONObject before=deletionPreview(notebookUrl);
+    JSONArray params=new JSONArray().put(new JSONArray().put(source)).put(id)
+      .put(new JSONArray().put(2)).put(sourceMetadata());
+    try {
+      rpc("izAoDd",params,"/notebook/"+id);
+    }catch(IOException e){
+      // Jacob's client reconciles RPC 3/9 because they may indicate accepted-pending.
+      if(!e.getMessage().matches(".*error (3|9)$"))throw e;
+    }
+    JSONObject after=deletionPreview(notebookUrl);
+    if(after.optInt("sourceCount")<=before.optInt("sourceCount"))
+      throw new IOException("Source was not verified in NotebookLM; it may still be processing. Recheck before retrying.");
+    return new JSONObject().put("sourceAdded",true).put("sourceCount",after.optInt("sourceCount"))
+      .put("title",expectedTitle).put("verified",true);
+  }
+  JSONObject addText(String notebookUrl,String title,String text) throws Exception {
+    if(title==null||title.trim().isEmpty()||text==null||text.trim().isEmpty())
+      throw new IOException("Source title and text are required");
+    if(text.length()>400000)throw new IOException("Text exceeds CamMicGo safety limit; split Markdown into parts");
+    JSONArray source=new JSONArray().put(JSONObject.NULL).put(new JSONArray().put(title.trim()).put(text))
+      .put(JSONObject.NULL).put(2);
+    for(int i=0;i<6;i++)source.put(JSONObject.NULL);
+    source.put(1);
+    return addStructuredSource(notebookUrl,source,title);
+  }
+  JSONObject addDrive(String notebookUrl,String documentId,String title,String mimeType) throws Exception {
+    if(documentId==null||!documentId.matches("[A-Za-z0-9_-]{10,200}"))
+      throw new IOException("Invalid Drive document ID");
+    if(title==null||title.trim().isEmpty())throw new IOException("Missing source title");
+    if(!("application/vnd.google-apps.spreadsheet".equals(mimeType)||
+         "application/vnd.google-apps.document".equals(mimeType)||
+         "application/vnd.google-apps.presentation".equals(mimeType)||
+         "application/pdf".equals(mimeType)))throw new IOException("Unsupported Drive MIME type");
+    JSONArray source=new JSONArray().put(new JSONArray().put(documentId).put(mimeType).put(1).put(title))
+      .put(JSONObject.NULL).put(JSONObject.NULL).put(JSONObject.NULL);
+    for(int i=0;i<6;i++)source.put(JSONObject.NULL);
+    source.put(1);
+    return addStructuredSource(notebookUrl,source,title);
+  }
+
 }
