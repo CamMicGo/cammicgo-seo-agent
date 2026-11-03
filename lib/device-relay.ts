@@ -155,7 +155,8 @@ const WAVE_GAP_MS=10*60_000;
 /** Progress of the user's latest wave of transcript requests (e.g. a 50-video batch), or null when idle for 30 min. */
 export async function deviceProgress(userId:string):Promise<DeviceProgress|null>{
  const since=new Date(Date.now()-6*3600_000).toISOString();
- const rows=await sb<WaveJob[]>('/rest/v1/cmg_transcript_jobs?user_id=eq.'+userId+'&created_at=gt.'+encodeURIComponent(since)+'&select=id,video_id,status,error,created_at,completed_at,expires_at,title:result->>title&order=created_at.desc&limit=600');
+ const expiryCutoff=new Date().toISOString();
+ const rows=await sb<WaveJob[]>('/rest/v1/cmg_transcript_jobs?user_id=eq.'+userId+'&expires_at=gt.'+encodeURIComponent(expiryCutoff)+'&created_at=gt.'+encodeURIComponent(since)+'&select=id,video_id,status,error,created_at,completed_at,expires_at,title:result->>title&order=created_at.desc&limit=600');
  if(!rows.length)return null;
  // The latest wave: consecutive requests separated by less than 10 minutes.
  const wave=[rows[0]];
