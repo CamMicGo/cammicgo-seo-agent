@@ -28,7 +28,7 @@ final class NotebookRpcCodec {
     return new JSONArray().put(new JSONArray().put(call)).toString();
   }
 
-  static String formBody(String rpcId, JSONArray params, String csrfToken) throws JSONException {
+  static String formBody(String rpcId, JSONArray params, String csrfToken) throws JSONException, java.io.UnsupportedEncodingException {
     String body = "f.req=" + URLEncoder.encode(envelope(rpcId, params), "UTF-8");
     if (csrfToken != null && !csrfToken.isEmpty())
       body += "&at=" + URLEncoder.encode(csrfToken, "UTF-8");
