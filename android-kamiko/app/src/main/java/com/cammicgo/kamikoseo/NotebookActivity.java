@@ -17,6 +17,8 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceError;
+import android.webkit.CookieManager;
 import android.widget.Button;
 import android.widget.EditText;
 import org.json.JSONObject;
@@ -62,6 +64,8 @@ public final class NotebookActivity extends Activity {
     browser.getSettings().setJavaScriptEnabled(true);
     browser.getSettings().setDomStorageEnabled(true);
     browser.getSettings().setSupportMultipleWindows(false);
+    CookieManager.getInstance().setAcceptCookie(true);
+    CookieManager.getInstance().setAcceptThirdPartyCookies(browser,true);
     browser.setWebChromeClient(new WebChromeClient());
     browser.setWebViewClient(new WebViewClient(){
       @Override public void onPageFinished(WebView view,String url) {
@@ -69,6 +73,12 @@ public final class NotebookActivity extends Activity {
         if(notebookPageReady) {
           location.setText(url);
           if(url.matches("https://(?:notebooklm|notebook)\\.google\\.com/notebook/[A-Za-z0-9_-]+.*"))lastNotebookUrl=url;
+        }
+      }
+      @Override public void onReceivedError(WebView view,WebResourceRequest request,WebResourceError error){
+        if(request.isForMainFrame()){
+          notebookPageReady=false;
+          location.setText("Erreur de chargement NotebookLM : "+error.getDescription()+" (code "+error.getErrorCode()+")");
         }
       }
       @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){
@@ -125,7 +135,8 @@ public final class NotebookActivity extends Activity {
   }
   @Override protected void onResume(){
     super.onResume();
-    if(browser!=null&&browser.getUrl()!=null)browser.reload();
+    // Do not force-reload Google's sign-in flow when returning from another app.
+    // Reloading here can restart the login form and discard user input.
   }
   private void notice(String message){new AlertDialog.Builder(this).setMessage(message).setPositiveButton("OK",null).show();}
   private void setNotebookTitle(String name){
