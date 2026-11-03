@@ -703,7 +703,7 @@ final class NotebookClient {
     if(artifactId==null||!artifactId.matches("[A-Za-z0-9_-]{8,128}"))
       throw new IOException("Invalid artifact ID");
     JSONArray allowed=new JSONArray();
-    int[] types={1,2,3,4,7,8,9,10,11};
+    int[] types={1,4,8,10,14,2,3,6,7};
     for(int type:types)allowed.put(type);
     JSONArray flags=new JSONArray().put(1);
     for(int j=0;j<9;j++)flags.put(JSONObject.NULL);
