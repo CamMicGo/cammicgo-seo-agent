@@ -42,23 +42,38 @@ public final class NotebookActivity extends Activity {
     active=new WeakReference<>(this);
     LinearLayout root=new LinearLayout(this);
     root.setOrientation(LinearLayout.VERTICAL);
+    root.setBackgroundColor(android.graphics.Color.rgb(244,247,253));
     location=new TextView(this);
-    location.setText("NotebookLM · session locale");
-    location.setPadding(16,12,16,12);
+    location.setText("Gemini Notebook · "+(I18n.code(this).equals("fr")?"Session Google locale":"Local Google session"));
+    location.setTextSize(17);
+    location.setTypeface(null,android.graphics.Typeface.BOLD);
+    location.setTextColor(android.graphics.Color.rgb(25,43,83));
+    location.setPadding(dp(18),dp(18),dp(18),dp(14));
     root.addView(location);
-    LinearLayout actions=new LinearLayout(this);
-    Button back=button("← Retour"), refresh=button("↻ Actualiser");
-    Button home=button("Notebooks"), create=button("Créer"), source=button("Sources"), chrome=button("Chrome");
     LinearLayout navigation=new LinearLayout(this);
-    navigation.addView(back,new LinearLayout.LayoutParams(0,-2,1));
-    navigation.addView(refresh,new LinearLayout.LayoutParams(0,-2,1));
+    navigation.setPadding(dp(12),dp(4),dp(12),dp(4));
+    Button back=button(I18n.code(this).equals("fr")?"← Retour à CamMicGo":"← Back to CamMicGo");
+    Button refresh=button(I18n.code(this).equals("fr")?"↻ Actualiser la page":"↻ Refresh page");
+    navigation.addView(back,new LinearLayout.LayoutParams(0,dp(52),1));
+    navigation.addView(refresh,new LinearLayout.LayoutParams(0,dp(52),1));
     root.addView(navigation);
     back.setOnClickListener(v->finish());
     refresh.setOnClickListener(v->{notebookPageReady=false;browser.reload();});
-    actions.addView(home,new LinearLayout.LayoutParams(0,-2,1));
-    actions.addView(create,new LinearLayout.LayoutParams(0,-2,1));
-    actions.addView(source,new LinearLayout.LayoutParams(0,-2,1));
-    actions.addView(chrome,new LinearLayout.LayoutParams(0,-2,1));
+    LinearLayout actions=new LinearLayout(this);
+    actions.setPadding(dp(12),dp(4),dp(12),dp(12));
+    Button home=button(I18n.code(this).equals("fr")?"Mes notebooks":"My notebooks");
+    Button create=button(I18n.code(this).equals("fr")?"Nouveau notebook":"New notebook");
+    Button source=button(I18n.code(this).equals("fr")?"Ajouter une source":"Add source");
+    Button chrome=button(I18n.code(this).equals("fr")?"Ouvrir dans Chrome":"Open in Chrome");
+    LinearLayout actionRow1=new LinearLayout(this);
+    actionRow1.addView(home,new LinearLayout.LayoutParams(0,dp(56),1));
+    actionRow1.addView(create,new LinearLayout.LayoutParams(0,dp(56),1));
+    LinearLayout actionRow2=new LinearLayout(this);
+    actionRow2.addView(source,new LinearLayout.LayoutParams(0,dp(56),1));
+    actionRow2.addView(chrome,new LinearLayout.LayoutParams(0,dp(56),1));
+    actions.setOrientation(LinearLayout.VERTICAL);
+    actions.addView(actionRow1);
+    actions.addView(actionRow2);
     root.addView(actions);
     browser=new WebView(this);
     browser.getSettings().setJavaScriptEnabled(true);
@@ -160,7 +175,18 @@ public final class NotebookActivity extends Activity {
     String js="(function(){const e=[...document.querySelectorAll('input,[contenteditable=true]')].find(e=>/title|titre|notebook/i.test((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('placeholder')||'')));if(!e)return 'missing';e.focus();if(e.isContentEditable){e.textContent="+JSONObject.quote(name)+";e.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:"+JSONObject.quote(name)+"}));}else{const s=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;s.call(e,"+JSONObject.quote(name)+");e.dispatchEvent(new Event('input',{bubbles:true}));}e.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',bubbles:true}));return 'attempted'})()";
     browser.evaluateJavascript(js,result->{if(!"\\\"attempted\\\"".equals(result))notice("Notebook ouvert, mais le champ de titre n'a pas été trouvé. Renommez-le dans NotebookLM.");else notice("Renommage demandé. Vérifiez que le titre apparaît dans NotebookLM avant de considérer la création comme terminée.");});
   }
-  private Button button(String text){Button b=new Button(this);b.setText(text);b.setTextSize(12);b.setAllCaps(false);return b;}
+  private int dp(int value){return Math.round(getResources().getDisplayMetrics().density*value);}
+  private Button button(String text){
+    Button b=new Button(this);
+    b.setText(text);
+    b.setTextSize(12);
+    b.setAllCaps(false);
+    b.setTextColor(android.graphics.Color.rgb(32,91,192));
+    b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(android.graphics.Color.WHITE));
+    b.setMinHeight(dp(48));
+    b.setPadding(dp(5),dp(4),dp(5),dp(4));
+    return b;
+  }
   @Override public void onBackPressed(){if(browser.canGoBack())browser.goBack();else super.onBackPressed();}
 
   /** Same-origin fetch from the signed-in WebView; no Google credentials leave Android. */
