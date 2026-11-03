@@ -5,7 +5,6 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 
 /**
  * Pure-Java NotebookLM Web RPC framing, without Python, Node.js or cookies.
@@ -30,9 +29,9 @@ final class NotebookRpcCodec {
   }
 
   static String formBody(String rpcId, JSONArray params, String csrfToken) throws JSONException {
-    String body = "f.req=" + URLEncoder.encode(envelope(rpcId, params), StandardCharsets.UTF_8);
+    String body = "f.req=" + URLEncoder.encode(envelope(rpcId, params), "UTF-8");
     if (csrfToken != null && !csrfToken.isEmpty())
-      body += "&at=" + URLEncoder.encode(csrfToken, StandardCharsets.UTF_8);
+      body += "&at=" + URLEncoder.encode(csrfToken, "UTF-8");
     return body;
   }
 
