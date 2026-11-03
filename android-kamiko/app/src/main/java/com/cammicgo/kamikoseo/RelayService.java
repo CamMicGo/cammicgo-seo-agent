@@ -41,7 +41,8 @@ public class RelayService extends Service {
   }
 
   public static void stop(Context c) {
-    c.startService(new Intent(c, RelayService.class).setAction(ACTION_STOP));
+    c.stopService(new Intent(c, RelayService.class));
+    RelayClient.prefs(c).edit().putBoolean("connected", false).putLong("lastSync", 0L).apply();
   }
 
   @Override public IBinder onBind(Intent intent) { return null; }
@@ -53,11 +54,20 @@ public class RelayService extends Service {
       return START_NOT_STICKY;
     }
     String token = RelayClient.token(this);
-    if (token == null) { shutdown(); return START_NOT_STICKY; }
+    if (token == null) {
+      RelayClient.prefs(this).edit().putBoolean("connected", false).putString("lastRelayError", "Association absente : associez de nouveau cet appareil.").apply();
+      shutdown(); return START_NOT_STICKY;
+    }
 
     Notification n = notification(I18n.t(this, "notif_waiting"));
-    if (Build.VERSION.SDK_INT >= 29) startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
-    else startForeground(NOTIFICATION_ID, n);
+    try {
+      if (Build.VERSION.SDK_INT >= 29) startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+      else startForeground(NOTIFICATION_ID, n);
+    } catch (RuntimeException e) {
+      RelayClient.prefs(this).edit().putBoolean("connected", false)
+          .putString("lastRelayError", "Notification/service Android : " + e.getClass().getSimpleName() + ": " + firstLine(e.getMessage())).apply();
+      stopSelf(); return START_NOT_STICKY;
+    }
     RelayClient.prefs(this).edit().putBoolean("connected", true).putString("status", I18n.t(this, "waiting")).apply();
 
     pausedUntil = RelayClient.prefs(this).getLong("youtubePausedUntil", 0L);
@@ -74,6 +84,7 @@ public class RelayService extends Service {
   /** Android 15 limits dataSync foreground services; stop cleanly when the system asks. */
   @Override public void onTimeout(int startId, int fgsType) {
     status(I18n.t(this, "android_stopped"));
+    RelayClient.prefs(this).edit().putString("lastRelayError", "Android a atteint la limite de durée du service de synchronisation.").apply();
     RelayClient.prefs(this).edit().putBoolean("connected", false).apply();
     shutdown();
   }
@@ -81,7 +92,7 @@ public class RelayService extends Service {
   @Override public void onDestroy() {
     running = false;
     if (loop != null) loop.interrupt();
-    RelayClient.prefs(this).edit().putBoolean("connected", false).apply();
+    RelayClient.prefs(this).edit().putBoolean("connected", false).putLong("lastSync", 0L).apply();
     super.onDestroy();
   }
 
