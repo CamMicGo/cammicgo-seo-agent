@@ -273,6 +273,8 @@ public class RelayService extends Service {
       else if ("delete_preview".equals(operation)) result=client.deletionPreview(job.optString("notebookUrl"));
       else if ("delete".equals(operation)) result=client.deleteNotebook(job.optString("notebookUrl"),job.optString("expectedTitle"),job.optInt("expectedSourceCount",-1),job.optBoolean("confirm",false));
       else if ("rename".equals(operation)) result=client.renameNotebook(job.optString("notebookUrl"),job.optString("title"));
+      else if ("add_text_source".equals(operation)) result=client.addText(job.optString("notebookUrl"),job.optString("title"),job.optString("text"));
+      else if ("add_drive_source".equals(operation)) result=client.addDrive(job.optString("notebookUrl"),job.optString("documentId"),job.optString("title"),job.optString("mimeType"));
       else if ("add_url_source".equals(operation))
         result=client.addUrl(job.optString("notebookUrl"),job.optString("sourceUrl"));
       else throw new IOException("Opération NotebookLM non prise en charge : "+operation);
