@@ -246,8 +246,15 @@ public class MainActivity extends Activity {
     buildHelpPage(page(host, 3));
 
     setContentView(shell);
-    selectTab(state != null ? state.getInt("tab", 0) : 0);
+    int requestedTab=getIntent().getIntExtra("open_tab",state != null ? state.getInt("tab", 0) : 0);
+    selectTab(Math.max(0,Math.min(requestedTab,TABS.length-1)));
     handleShare(getIntent());
+  }
+
+  @Override protected void onNewIntent(Intent intent){
+    super.onNewIntent(intent);
+    setIntent(intent);
+    if(intent.hasExtra("open_tab"))selectTab(Math.max(0,Math.min(intent.getIntExtra("open_tab",0),TABS.length-1)));
   }
 
   @Override protected void onSaveInstanceState(Bundle out) { super.onSaveInstanceState(out); out.putInt("tab", currentTab); }
