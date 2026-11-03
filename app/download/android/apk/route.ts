@@ -6,40 +6,23 @@ export const runtime = 'nodejs';
 const releaseApi = 'https://api.github.com/repos/CamMicGo/cammicgo-seo-agent/releases/tags/android-test-latest';
 const assetName = 'CamMicGo-SEO-MCP-Android-test.apk';
 
+/** Redirect to the published release asset: avoid streaming APK binaries through Vercel. */
 export async function GET() {
   try {
     const release = await fetch(releaseApi, {
       headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'CamMicGo-SEO-MCP' },
       cache: 'no-store',
     });
-    if (!release.ok) {
-      return NextResponse.json({ error: 'APK not published yet', releaseStatus: release.status }, { status: 503 });
-    }
+    if (!release.ok) return NextResponse.json({error:'APK not published yet',releaseStatus:release.status},{status:503});
     const data = await release.json();
-    const asset = (data.assets as Array<{ name: string; url: string }> | undefined)?.find(a => a.name === assetName);
-    if (!asset) return NextResponse.json({ error: 'APK asset not found in release' }, { status: 503 });
-
-    const upstream = await fetch(asset.url, {
-      headers: {
-        Accept: 'application/octet-stream',
-        'User-Agent': 'CamMicGo-SEO-MCP',
-      },
-      cache: 'no-store',
-      redirect: 'follow',
-    });
-    if (!upstream.ok || !upstream.body) {
-      return NextResponse.json({ error: 'APK download temporarily unavailable', upstreamStatus: upstream.status }, { status: 502 });
-    }
-    const headers = new Headers({
-      'Content-Type': 'application/vnd.android.package-archive',
-      'Content-Disposition': 'attachment; filename="CamMicGo-SEO-MCP-Android-test.apk"',
-      'Cache-Control': 'no-store',
-      'X-Content-Type-Options': 'nosniff',
-    });
-    const size = upstream.headers.get('content-length');
-    if (size) headers.set('Content-Length', size);
-    return new Response(upstream.body, { status: 200, headers });
+    const asset = (data.assets as Array<{name:string;browser_download_url:string}>|undefined)
+      ?.find(a=>a.name===assetName);
+    if (!asset?.browser_download_url || !asset.browser_download_url.startsWith('https://github.com/CamMicGo/cammicgo-seo-agent/releases/download/'))
+      return NextResponse.json({error:'APK asset not found in release'},{status:503});
+    const response = NextResponse.redirect(asset.browser_download_url, 307);
+    response.headers.set('Cache-Control','no-store');
+    return response;
   } catch {
-    return NextResponse.json({ error: 'APK download temporarily unavailable' }, { status: 502 });
+    return NextResponse.json({error:'APK download temporarily unavailable'},{status:502});
   }
 }
