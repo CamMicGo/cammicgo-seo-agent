@@ -286,6 +286,7 @@ public class RelayService extends Service {
       else if ("studio_status".equals(operation)) result=client.studioStatus(job.optString("notebookUrl"));
       else if ("studio_get".equals(operation)) result=client.studioGet(job.optString("notebookUrl"),job.optString("artifactId"));
       else if ("artifact_download_link".equals(operation)) result=client.artifactDownloadLink(job.optString("notebookUrl"),job.optString("artifactId"));
+      else if ("artifact_download_binary".equals(operation)) result=client.artifactDownloadBinary(job.optString("notebookUrl"),job.optString("artifactId"),token,id);
       else if ("mindmap_create".equals(operation)) result=client.mindMapCreate(job.optString("notebookUrl"),job.optString("title","Mind Map"));
       else if ("notebook_share_status".equals(operation)) result=client.shareStatus(job.optString("notebookUrl"));
       else if ("notebook_share_public".equals(operation)) result=client.sharePublic(job.optString("notebookUrl"),job.optBoolean("makePublic",false),job.optBoolean("confirm",false));
