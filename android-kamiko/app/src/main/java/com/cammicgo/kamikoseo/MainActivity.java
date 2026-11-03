@@ -85,7 +85,7 @@ public class MainActivity extends Activity {
   private TextView chipText;
   // assistant tab
   private EditText codeInput;
-  private Button pairButton, connectButton;
+  private Button pairButton, connectButton, retryYoutubeButton;
   private LinearLayout unpairedBox, pairedBox, historyList, notebookRequests;
   private View statusDot;
   private TextView statusLine, relayDetail;
@@ -403,6 +403,20 @@ public class MainActivity extends Activity {
     buttons.addView(unpair);
     pairedBox.addView(buttons, gapTop(6));
     c.addView(pairedBox);
+    retryYoutubeButton = secondary("↻  Réessayer l'extraction YouTube (HTTP 429)");
+    retryYoutubeButton.setVisibility(View.GONE);
+    pairedBox.addView(retryYoutubeButton, gapTop(8));
+    retryYoutubeButton.setOnClickListener(v -> new AlertDialog.Builder(this)
+        .setTitle("Relancer les transcriptions ?")
+        .setMessage("YouTube a renvoyé HTTP 429. Réessayer maintenant peut échouer à nouveau. Les demandes restent en attente tant que vous ne relancez pas.")
+        .setPositiveButton("Réessayer", (dialog, which) -> {
+          RelayClient.prefs(this).edit().putBoolean("youtube429ManualPause", false)
+              .putLong("youtubePausedUntil", 0L).putLong("nextTranscriptAt", 0L)
+              .putInt("youtube429Strikes", 0)
+              .putString("status", "Nouvelle tentative YouTube demandée par l'utilisateur…").apply();
+          refreshRelay();
+          Toast.makeText(this, "Reprise demandée : vérifiez le statut de l'extraction.", Toast.LENGTH_LONG).show();
+        }).setNegativeButton(t("cancel"), null).show());
 
     pairButton.setOnClickListener(v -> pair());
     connectButton.setOnClickListener(v -> {
@@ -797,6 +811,7 @@ public class MainActivity extends Activity {
     chipDot.setBackground(dot(chipColor));
     chipText.setText(!paired ? t("chip_unpaired") : connected ? t("chip_connected") : starting ? "Démarrage…" : t("chip_stopped"));
 
+    if (retryYoutubeButton != null) retryYoutubeButton.setVisibility(paired && p.getBoolean("youtube429ManualPause", false) ? View.VISIBLE : View.GONE);
     if (paired) {
       statusDot.setBackground(dot(connected ? GREEN : GREY));
       statusLine.setText(connected ? t("status_on") : starting ? "Connexion au serveur en cours…" : t("status_off"));
