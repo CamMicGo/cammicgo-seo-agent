@@ -88,7 +88,6 @@ public class RelayService extends Service {
   }
 
   private void shutdown() {
-    heartbeatHandler.removeCallbacks(heartbeat);
     running = false;
     if (loop != null) loop.interrupt();
     if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE); else stopForeground(true);
