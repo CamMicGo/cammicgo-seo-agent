@@ -269,6 +269,8 @@ public class RelayService extends Service {
       JSONObject result;
       if ("create".equals(operation)) result=client.create(job.optString("title"));
       else if ("list".equals(operation)) result=client.list();
+      else if ("get".equals(operation)) result=client.getNotebook(job.optString("notebookUrl"));
+      else if ("rename".equals(operation)) result=client.renameNotebook(job.optString("notebookUrl"),job.optString("title"));
       else if ("add_url_source".equals(operation))
         result=client.addUrl(job.optString("notebookUrl"),job.optString("sourceUrl"));
       else throw new IOException("Opération NotebookLM non prise en charge : "+operation);
