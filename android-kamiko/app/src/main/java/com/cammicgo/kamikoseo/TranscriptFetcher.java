@@ -76,6 +76,7 @@ public final class TranscriptFetcher {
       html = http("https://www.youtube.com/watch?v=" + videoId + "&hl=en", null, WEB_UA, null);
       apiKey = firstGroup(html, "\"INNERTUBE_API_KEY\"\\s*:\\s*\"([A-Za-z0-9_-]+)\"");
     } catch (IOException e) {
+      if (e.getMessage() != null && e.getMessage().contains("HTTP 429")) throw e;
       diagnostics.append("watch-page : ").append(e.getMessage()).append('\n');
       if (isNetwork(e)) networkError = e; else otherFailure = true;
     }
@@ -89,6 +90,7 @@ public final class TranscriptFetcher {
       diagnostics.append("innertube-android : ").append(statusOf(player)).append('\n');
       otherFailure = true;
     } catch (IOException e) {
+      if (e.getMessage() != null && e.getMessage().contains("HTTP 429")) throw e;
       diagnostics.append("innertube-android : ").append(e.getMessage()).append('\n');
       if (isNetwork(e)) networkError = e; else otherFailure = true;
     }
