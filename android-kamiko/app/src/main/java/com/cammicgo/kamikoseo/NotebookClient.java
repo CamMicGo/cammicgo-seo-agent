@@ -789,4 +789,61 @@ final class NotebookClient {
       .put("verifyWith","source_list");
   }
 
+  JSONArray noteListInternal(String id) throws Exception {
+    Object raw=rpc("cFji9",new JSONArray().put(id),"/notebook/"+id);
+    if(!(raw instanceof JSONArray))throw new IOException("NotebookLM notes unavailable");
+    JSONArray items=((JSONArray)raw).optJSONArray(0),output=new JSONArray();
+    if(items==null)return output;
+    for(int j=0;j<items.length();j++){
+      JSONArray item=items.optJSONArray(j);
+      if(item==null||item.optInt(2,-1)==2)continue;
+      JSONArray note=item.optJSONArray(1);
+      if(note==null||note.length()<5)continue;
+      String content=note.optString(1,"");
+      if(content.trim().startsWith("{")&&content.contains("\"nodes\""))continue;
+      output.put(new JSONObject().put("id",item.optString(0))
+        .put("title",note.optString(4)).put("content",content));
+    }
+    return output;
+  }
+  JSONObject noteManage(String notebookUrl,String action,String noteId,String title,String content,boolean confirm) throws Exception {
+    String id=ownedNotebookId(notebookUrl);
+    if("list".equals(action))return new JSONObject().put("notebookId",id).put("notes",noteListInternal(id));
+    if("create".equals(action)){
+      if(title==null||title.isEmpty())title="New Note";
+      Object raw=rpc("CYK0Xb",new JSONArray().put(id).put("")
+        .put(new JSONArray().put(1)).put(JSONObject.NULL).put(title),"/notebook/"+id);
+      if(!(raw instanceof JSONArray))throw new IOException("Note creation not accepted");
+      JSONArray a=((JSONArray)raw).optJSONArray(0);
+      String newId=a==null?"":a.optString(0);
+      if(newId.isEmpty())throw new IOException("New note ID missing");
+      if(content!=null&&!content.isEmpty())
+        rpc("cYAfTb",new JSONArray().put(id).put(newId)
+          .put(new JSONArray().put(new JSONArray().put(new JSONArray()
+            .put(content).put(title).put(new JSONArray()).put(0)))),"/notebook/"+id);
+      return new JSONObject().put("id",newId).put("title",title).put("created",true);
+    }
+    if(noteId==null||noteId.isEmpty())throw new IOException("Note ID required");
+    JSONArray notes=noteListInternal(id);
+    JSONObject existing=null;
+    for(int j=0;j<notes.length();j++)if(noteId.equals(notes.getJSONObject(j).optString("id")))
+      existing=notes.getJSONObject(j);
+    if(existing==null)throw new IOException("Note not found");
+    if("update".equals(action)){
+      String newTitle=title==null||title.isEmpty()?existing.optString("title"):title;
+      String newContent=content==null?existing.optString("content"):content;
+      rpc("cYAfTb",new JSONArray().put(id).put(noteId)
+        .put(new JSONArray().put(new JSONArray().put(new JSONArray()
+          .put(newContent).put(newTitle).put(new JSONArray()).put(0)))),"/notebook/"+id);
+      return new JSONObject().put("id",noteId).put("updated",true);
+    }
+    if("delete".equals(action)){
+      if(!confirm)throw new IOException("Deleting a note requires confirmation");
+      rpc("AH0mwd",new JSONArray().put(id).put(JSONObject.NULL)
+        .put(new JSONArray().put(noteId)),"/notebook/"+id);
+      return new JSONObject().put("id",noteId).put("deleteRequested",true);
+    }
+    throw new IOException("Unsupported note action");
+  }
+
 }
