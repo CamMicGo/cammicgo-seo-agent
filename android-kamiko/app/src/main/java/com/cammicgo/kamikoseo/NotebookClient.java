@@ -385,4 +385,97 @@ final class NotebookClient {
     return result;
   }
 
+  private JSONArray studioSources(String notebookUrl,boolean nested) throws Exception {
+    JSONArray entries=getNotebook(notebookUrl).getJSONArray("sources");
+    JSONArray ids=new JSONArray();
+    for(int j=0;j<entries.length();j++){
+      JSONObject src=entries.getJSONObject(j);
+      if(!"ready".equals(src.optString("status")))continue;
+      String id=src.optString("id");
+      if(id.isEmpty())continue;
+      JSONArray single=new JSONArray().put(id);
+      ids.put(nested?new JSONArray().put(single):single);
+    }
+    if(ids.length()==0)throw new IOException("No ready NotebookLM sources; check pink source errors before generating");
+    return ids;
+  }
+  JSONObject studioCreate(String notebookUrl,String kind,String language,String focus) throws Exception {
+    String id=ownedNotebookId(notebookUrl);
+    JSONArray nested=studioSources(notebookUrl,true),simple=studioSources(notebookUrl,false);
+    JSONArray content=new JSONArray().put(JSONObject.NULL).put(JSONObject.NULL);
+    if("audio".equals(kind)){
+      content.put(1).put(nested).put(JSONObject.NULL).put(JSONObject.NULL);
+      content.put(new JSONArray().put(JSONObject.NULL).put(new JSONArray()
+        .put(focus==null?"":focus).put(2).put(JSONObject.NULL).put(simple)
+        .put(language==null?"fr":language).put(JSONObject.NULL).put(1)));
+    }else if("video".equals(kind)){
+      content.put(3).put(nested);
+      for(int j=0;j<4;j++)content.put(JSONObject.NULL);
+      content.put(new JSONArray().put(JSONObject.NULL).put(JSONObject.NULL)
+        .put(new JSONArray().put(simple).put(language==null?"fr":language)
+          .put(focus==null?"":focus).put(JSONObject.NULL).put(1).put(1)));
+    }else if("quiz".equals(kind)||"flashcards".equals(kind)){
+      content.put(4).put(nested);
+      for(int j=0;j<5;j++)content.put(JSONObject.NULL);
+      JSONArray opts=new JSONArray().put("quiz".equals(kind)?2:1)
+        .put(JSONObject.NULL).put(focus==null||focus.isEmpty()?JSONObject.NULL:focus);
+      for(int j=0;j<("quiz".equals(kind)?4:3);j++)opts.put(JSONObject.NULL);
+      opts.put(new JSONArray().put(2).put(2));
+      content.put(new JSONArray().put(JSONObject.NULL).put(opts));
+    }else throw new IOException("Unsupported studio kind");
+    JSONArray params=new JSONArray().put(new JSONArray().put(2)).put(id).put(content);
+    Object result=rpc("R7cb6c",params,"/notebook/"+id);
+    if(!(result instanceof JSONArray))throw new IOException("Studio creation not accepted");
+    JSONArray artifact=((JSONArray)result).optJSONArray(0);
+    if(artifact==null||artifact.optString(0).isEmpty())
+      throw new IOException("Studio RPC did not return an artifact ID");
+    return new JSONObject().put("artifactId",artifact.optString(0)).put("kind",kind)
+      .put("notebookId",id).put("status","submitted").put("verifiedComplete",false);
+  }
+  JSONObject studioStatus(String notebookUrl) throws Exception {
+    String id=ownedNotebookId(notebookUrl);
+    Object raw=rpc("gArtLc",new JSONArray().put(new JSONArray().put(2)).put(id)
+      .put("NOT artifact.status = \"ARTIFACT_STATUS_SUGGESTED\""),"/notebook/"+id);
+    if(!(raw instanceof JSONArray))throw new IOException("Studio status unavailable");
+    JSONArray outer=(JSONArray)raw,items=outer.optJSONArray(0);
+    if(items==null)items=outer;
+    JSONArray output=new JSONArray();
+    for(int j=0;j<items.length();j++){
+      JSONArray a=items.optJSONArray(j);if(a==null||a.length()<5)continue;
+      output.put(new JSONObject().put("id",a.optString(0)).put("title",a.optString(1))
+        .put("typeCode",a.optInt(2,-1)).put("statusRaw",a.opt(4)));
+    }
+    return new JSONObject().put("notebookId",id).put("artifacts",output).put("count",output.length());
+  }
+  JSONObject mindMapCreate(String notebookUrl,String title) throws Exception {
+    String id=ownedNotebookId(notebookUrl);
+    JSONArray nested=studioSources(notebookUrl,true),simple=studioSources(notebookUrl,false);
+    JSONArray params=new JSONArray().put(nested);
+    for(int j=0;j<4;j++)params.put(JSONObject.NULL);
+    params.put(new JSONArray().put("interactive_mindmap")
+      .put(new JSONArray().put(new JSONArray().put("[CONTEXT]").put(""))).put(""));
+    params.put(JSONObject.NULL).put(new JSONArray().put(2).put(JSONObject.NULL).put(new JSONArray().put(1)));
+    Object raw=rpc("yyryJe",params,"/notebook/"+id);
+    if(!(raw instanceof JSONArray))throw new IOException("Mind map generation failed");
+    JSONArray generated=((JSONArray)raw).optJSONArray(0);
+    if(generated==null||!(generated.opt(0) instanceof String))throw new IOException("No mind map JSON returned");
+    String json=generated.getString(0);
+    if(json.length()>1_000_000)throw new IOException("Mind map exceeds safety limit");
+    JSONArray metadata=new JSONArray().put(2).put(JSONObject.NULL).put(JSONObject.NULL).put(5).put(simple);
+    Object saved=rpc("CYK0Xb",new JSONArray().put(id).put(json).put(metadata)
+      .put(JSONObject.NULL).put(title==null||title.trim().isEmpty()?"Mind Map":title.trim()),"/notebook/"+id);
+    if(!(saved instanceof JSONArray))throw new IOException("Mind map save not confirmed");
+    JSONArray item=((JSONArray)saved).optJSONArray(0);
+    if(item==null||item.optString(0).isEmpty())throw new IOException("Mind map ID missing after save");
+    return new JSONObject().put("mindMapId",item.optString(0)).put("title",item.optString(4,title))
+      .put("notebookId",id).put("saved",true);
+  }
+  JSONObject shareStatus(String notebookUrl) throws Exception {
+    String id=ownedNotebookId(notebookUrl);
+    Object raw=rpc("JFMDGd",new JSONArray().put(id).put(new JSONArray().put(2)),"/");
+    if(!(raw instanceof JSONArray))throw new IOException("Sharing status unavailable");
+    // Preserve raw response; do not infer public access from a partial response.
+    return new JSONObject().put("notebookId",id).put("shareData",(JSONArray)raw);
+  }
+
 }
