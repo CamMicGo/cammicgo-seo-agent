@@ -44,33 +44,12 @@ final class NotebookClient {
     return request(url,method,body,0);
   }
   private String request(String url,String method,String body,int redirects) throws IOException {
-    CookieManager.getInstance().flush();
-    HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();
     try {
-      c.setConnectTimeout(15000);c.setReadTimeout(30000);
-      c.setRequestMethod(method);c.setInstanceFollowRedirects(false);
-      c.setRequestProperty("Cookie",cookie());
-      c.setRequestProperty("User-Agent","Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36");
-      c.setRequestProperty("Accept","*/*");
-      c.setRequestProperty("Referer",HOME);
-      c.setRequestProperty("Origin","https://notebook.google.com");
-      if(body!=null){
-        c.setDoOutput(true);c.setRequestProperty("Content-Type","application/x-www-form-urlencoded;charset=UTF-8");
-        try(OutputStream out=c.getOutputStream()){out.write(body.getBytes(StandardCharsets.UTF_8));}
-      }
-      int status=c.getResponseCode();
-      if(status==301||status==302||status==303||status==307||status==308){
-        String location=c.getHeaderField("Location");
-        URL next=location==null?null:new URL(new URL(url),location);
-        if(next!=null&&"https".equals(next.getProtocol())&&("notebook.google.com".equalsIgnoreCase(next.getHost())||"notebooklm.google.com".equalsIgnoreCase(next.getHost()))&&redirects<3){
-          return request(next.toString(),status==307||status==308?method:"GET",status==307||status==308?body:null,redirects+1);
-        }
-        throw new IOException("NotebookLM redirige vers "+(next==null?"une adresse inconnue":next.getHost())+" (HTTP "+status+"). Vérifiez la session WebView.");
-      }
-      if(status==401||status==403)throw new IOException("NotebookLM refuse la requête (HTTP "+status+").");
-      if(status<200||status>=300)throw new IOException("NotebookLM HTTP "+status);
-      return read(c.getInputStream());
-    } finally {c.disconnect();}
+      // Unlike HttpURLConnection, fetch runs in the exact authenticated WebView
+      // origin, sharing browser cookies, SameSite policy and Google session state.
+      return NotebookActivity.authenticatedRequest(url,method,body);
+    } catch(IOException e){throw e;}
+    catch(Exception e){throw new IOException("NotebookLM WebView RPC: "+e.getMessage(),e);}
   }
   private Object rpc(String id,JSONArray args,String sourcePath) throws Exception {
     String page=request(HOME,"GET",null);
