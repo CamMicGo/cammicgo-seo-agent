@@ -401,32 +401,66 @@ final class NotebookClient {
     return ids;
   }
   JSONObject studioCreate(String notebookUrl,String kind,String language,String focus) throws Exception {
+    return studioCreateAdvanced(notebookUrl,kind,language,focus,"",1,2);
+  }
+  JSONObject studioCreateAdvanced(String notebookUrl,String kind,String language,String focus,
+      String format,int optionA,int optionB) throws Exception {
     String id=ownedNotebookId(notebookUrl);
     JSONArray nested=studioSources(notebookUrl,true),simple=studioSources(notebookUrl,false);
+    String lang=language==null||language.isEmpty()?"fr":language;
+    String prompt=focus==null?"":focus;
     JSONArray content=new JSONArray().put(JSONObject.NULL).put(JSONObject.NULL);
     if("audio".equals(kind)){
-      content.put(1).put(nested).put(JSONObject.NULL).put(JSONObject.NULL);
-      content.put(new JSONArray().put(JSONObject.NULL).put(new JSONArray()
-        .put(focus==null?"":focus).put(2).put(JSONObject.NULL).put(simple)
-        .put(language==null?"fr":language).put(JSONObject.NULL).put(1)));
+      int fmt="brief".equals(format)?2:"critique".equals(format)?3:"debate".equals(format)?4:1;
+      int length=optionA>=1&&optionA<=3?optionA:2;
+      content.put(1).put(nested).put(JSONObject.NULL).put(JSONObject.NULL)
+        .put(new JSONArray().put(JSONObject.NULL).put(new JSONArray().put(prompt)
+          .put(length).put(JSONObject.NULL).put(simple).put(lang).put(JSONObject.NULL).put(fmt)));
     }else if("video".equals(kind)){
+      int fmt="brief".equals(format)?2:"cinematic".equals(format)?3:"short".equals(format)?4:1;
+      JSONArray opts=new JSONArray().put(simple).put(fmt==4?JSONObject.NULL:lang)
+        .put(prompt).put(JSONObject.NULL).put(fmt);
+      if(fmt==4)opts.put(JSONObject.NULL).put(JSONObject.NULL).put(1);
+      else if(fmt!=3)opts.put(optionA>=1?optionA:1);
       content.put(3).put(nested);
       for(int j=0;j<4;j++)content.put(JSONObject.NULL);
-      content.put(new JSONArray().put(JSONObject.NULL).put(JSONObject.NULL)
-        .put(new JSONArray().put(simple).put(language==null?"fr":language)
-          .put(focus==null?"":focus).put(JSONObject.NULL).put(1).put(1)));
+      content.put(new JSONArray().put(JSONObject.NULL).put(JSONObject.NULL).put(opts));
     }else if("quiz".equals(kind)||"flashcards".equals(kind)){
       content.put(4).put(nested);
       for(int j=0;j<5;j++)content.put(JSONObject.NULL);
-      JSONArray opts=new JSONArray().put("quiz".equals(kind)?2:1)
-        .put(JSONObject.NULL).put(focus==null||focus.isEmpty()?JSONObject.NULL:focus);
-      for(int j=0;j<("quiz".equals(kind)?4:3);j++)opts.put(JSONObject.NULL);
-      opts.put(new JSONArray().put(2).put(2));
+      boolean quiz="quiz".equals(kind);
+      JSONArray opts=new JSONArray().put(quiz?2:1).put(JSONObject.NULL)
+        .put(prompt.isEmpty()?JSONObject.NULL:prompt);
+      for(int j=0;j<(quiz?4:3);j++)opts.put(JSONObject.NULL);
+      opts.put(new JSONArray().put(optionA>=1?optionA:2).put(optionB>=1?optionB:2));
       content.put(new JSONArray().put(JSONObject.NULL).put(opts));
-    }else throw new IOException("Unsupported studio kind");
-    JSONArray params=new JSONArray().put(new JSONArray().put(2)).put(id).put(content);
-    Object result=rpc("R7cb6c",params,"/notebook/"+id);
-    if(!(result instanceof JSONArray))throw new IOException("Studio creation not accepted");
+    }else if("report".equals(kind)){
+      String title="Study Guide".equals(format)?"Study Guide":"Blog Post".equals(format)?"Blog Post":
+        "Create Your Own".equals(format)?"Custom Report":"Briefing Doc";
+      String instruction=prompt.isEmpty()?"Create a detailed "+title+" based on the provided sources.":prompt;
+      JSONArray options=new JSONArray().put(JSONObject.NULL).put(new JSONArray()
+        .put(title).put(title).put(JSONObject.NULL).put(simple).put(lang)
+        .put(instruction).put(JSONObject.NULL).put(true));
+      content.put(2).put(nested).put(JSONObject.NULL).put(JSONObject.NULL)
+        .put(JSONObject.NULL).put(options);
+    }else if("slide_deck".equals(kind)){
+      content.put(8).put(nested);
+      for(int j=0;j<12;j++)content.put(JSONObject.NULL);
+      content.put(new JSONArray().put(new JSONArray().put(prompt.isEmpty()?JSONObject.NULL:prompt)
+        .put(lang).put(optionA>=1?optionA:1).put(optionB>=1?optionB:3)));
+    }else if("infographic".equals(kind)){
+      content.put(7).put(nested);
+      for(int j=0;j<10;j++)content.put(JSONObject.NULL);
+      content.put(new JSONArray().put(new JSONArray().put(prompt.isEmpty()?JSONObject.NULL:prompt)
+        .put(lang).put(JSONObject.NULL).put(optionA>=1?optionA:1)
+        .put(optionB>=1?optionB:2).put(1)));
+    }else if("data_table".equals(kind)){
+      content.put(9).put(nested);
+      for(int j=0;j<14;j++)content.put(JSONObject.NULL);
+      content.put(new JSONArray().put(JSONObject.NULL).put(new JSONArray().put(prompt).put(lang)));
+    }else throw new IOException("Unsupported Studio artifact type: "+kind);
+    Object result=rpc("R7cb6c",new JSONArray().put(new JSONArray().put(2)).put(id).put(content),"/notebook/"+id);
+    if(!(result instanceof JSONArray))throw new IOException("Studio generation not accepted");
     JSONArray artifact=((JSONArray)result).optJSONArray(0);
     if(artifact==null||artifact.optString(0).isEmpty())
       throw new IOException("Studio RPC did not return an artifact ID");
