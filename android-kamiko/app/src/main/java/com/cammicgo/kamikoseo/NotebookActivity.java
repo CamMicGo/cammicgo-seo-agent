@@ -1,6 +1,12 @@
 package com.cammicgo.kamikoseo;
 
 import android.app.Activity;
+import android.os.Handler;
+import android.os.Looper;
+import java.lang.ref.WeakReference;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.net.Uri;
@@ -24,11 +30,14 @@ import android.widget.TextView;
  */
 public final class NotebookActivity extends Activity {
   private static final String HOME="https://notebook.google.com/";
+  private static volatile WeakReference<NotebookActivity> active=new WeakReference<>(null);
+  private volatile boolean notebookPageReady;
   private WebView browser;
   private TextView location;
   private String lastNotebookUrl;
   @Override public void onCreate(Bundle state) {
     super.onCreate(state);
+    active=new WeakReference<>(this);
     LinearLayout root=new LinearLayout(this);
     root.setOrientation(LinearLayout.VERTICAL);
     location=new TextView(this);
@@ -56,7 +65,8 @@ public final class NotebookActivity extends Activity {
     browser.setWebChromeClient(new WebChromeClient());
     browser.setWebViewClient(new WebViewClient(){
       @Override public void onPageFinished(WebView view,String url) {
-        if(url!=null&&url.startsWith(HOME)) {
+        notebookPageReady=url!=null&&(url.startsWith(HOME)||url.startsWith("https://notebooklm.google.com/"));
+        if(notebookPageReady) {
           location.setText(url);
           if(url.matches("https://(?:notebooklm|notebook)\\.google\\.com/notebook/[A-Za-z0-9_-]+.*"))lastNotebookUrl=url;
         }
@@ -124,5 +134,31 @@ public final class NotebookActivity extends Activity {
   }
   private Button button(String text){Button b=new Button(this);b.setText(text);b.setTextSize(12);b.setAllCaps(false);return b;}
   @Override public void onBackPressed(){if(browser.canGoBack())browser.goBack();else super.onBackPressed();}
-  @Override protected void onDestroy(){browser.destroy();super.onDestroy();}
+
+  /** Same-origin fetch from the signed-in WebView; no Google credentials leave Android. */
+  static String authenticatedRequest(String url,String method,String body) throws Exception {
+    NotebookActivity a=active.get();
+    if(a==null||a.browser==null||!a.notebookPageReady)
+      throw new java.io.IOException("Ouvrez NotebookLM dans l'APK et gardez cet écran ouvert pendant la requête.");
+    if(Looper.myLooper()==Looper.getMainLooper())throw new java.io.IOException("WebView RPC called on UI thread");
+    java.net.URL u=new java.net.URL(url);
+    if(!"https".equals(u.getProtocol())||!"notebook.google.com".equalsIgnoreCase(u.getHost()))
+      throw new java.io.IOException("NotebookLM origin not allowed");
+    CountDownLatch latch=new CountDownLatch(1);
+    AtomicReference<String> response=new AtomicReference<>();
+    String js="(async()=>{try{const r=await fetch("+JSONObject.quote(url)+",{method:"+JSONObject.quote(method)+",credentials:'include',headers:{'Accept':'*/*'"+(body==null?"":",'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'")+"}"+(body==null?"":",body:"+JSONObject.quote(body))+"});return JSON.stringify({status:r.status,text:(await r.text()).slice(0,4000000)});}catch(e){return JSON.stringify({error:String(e)});}})()";
+    new Handler(Looper.getMainLooper()).post(()->{
+      try{a.browser.evaluateJavascript(js,value->{response.set(value);latch.countDown();});}
+      catch(Exception e){response.set(null);latch.countDown();}
+    });
+    if(!latch.await(45,TimeUnit.SECONDS))throw new java.io.IOException("NotebookLM WebView timeout (45 s)");
+    String raw=response.get();
+    if(raw==null||"null".equals(raw))throw new java.io.IOException("NotebookLM WebView returned no response");
+    JSONObject o=new JSONObject(new org.json.JSONTokener(raw).nextValue().toString());
+    if(o.has("error"))throw new java.io.IOException("NotebookLM WebView: "+o.optString("error"));
+    int code=o.optInt("status");
+    if(code<200||code>=300)throw new java.io.IOException("NotebookLM WebView HTTP "+code);
+    return o.optString("text","");
+  }
+  @Override protected void onDestroy(){if(active.get()==this)active=new WeakReference<>(null);notebookPageReady=false;browser.destroy();super.onDestroy();}
 }
