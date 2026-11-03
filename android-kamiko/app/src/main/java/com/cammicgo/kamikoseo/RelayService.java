@@ -31,6 +31,7 @@ public class RelayService extends Service {
   private volatile boolean running;
   private volatile long pausedUntil;
   private int rateLimitStrikes;
+  private long nextTranscriptAt;
   private Thread loop;
   private final Handler heartbeatHandler = new Handler(Looper.getMainLooper());
   private final Runnable heartbeat = new Runnable() {
@@ -107,14 +108,16 @@ public class RelayService extends Service {
       try {
         long wait = pausedUntil - System.currentTimeMillis();
         if (wait > 0) { RelayClient.poll(this, token, false); sleep(Math.min(wait, 30_000)); continue; }
-        JSONObject res = RelayClient.poll(this, token, true);
+        // Poll for status without claiming another YouTube job during the cooldown.
+        boolean mayClaim = System.currentTimeMillis() >= nextTranscriptAt;
+        JSONObject res = RelayClient.poll(this, token, mayClaim);
         if (backoff > 5000) status(I18n.t(this, "reconnected"));
         backoff = 5000;
         RelayClient.prefs(this).edit().putLong("lastSync", System.currentTimeMillis()).apply();
         JSONObject job = res.optJSONObject("job");
         if (job != null) handle(token, job);
         else if (!isPausedStatus()) status(idleStatus());
-        sleep(job != null ? 300 : res.optLong("pollAfterMs", 4000));
+        sleep(job != null ? 1000 : res.optLong("pollAfterMs", 4000));
       } catch (RelayClient.UnpairedException e) {
         RelayClient.forget(this);
         status(I18n.t(this, "server_unpaired"));
@@ -172,8 +175,10 @@ public class RelayService extends Service {
         // YouTube rate-limits this phone: give the job back and pause instead of failing the whole queue.
         RelayClient.release(token, id);
         rateLimitStrikes++;
-        long pause = Math.min(30, 5L << Math.min(rateLimitStrikes - 1, 3)) * 60_000L;
+        // Conservative backoff: 15, 30, 60, then 120 minutes.
+        long pause = Math.min(120, 15L << Math.min(rateLimitStrikes - 1, 3)) * 60_000L;
         pausedUntil = System.currentTimeMillis() + pause;
+        nextTranscriptAt = pausedUntil;
         status(I18n.t(this, "rate_limited", java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(new java.util.Date(pausedUntil))));
         current(null);
         return;
@@ -217,7 +222,9 @@ public class RelayService extends Service {
     p.edit().putInt("jobsDone", p.getInt("jobsDone", 0) + 1).apply();
     history(videoId, r.title, "done", r.segments.size(), null);
     status(I18n.t(this, "sent", r.title != null ? r.title : videoId, r.segments.size()));
-    rateLimitStrikes = 0;
+    // Avoid bursts: at most one transcript every 30-45 seconds on this device.
+    nextTranscriptAt = System.currentTimeMillis() + 30_000L + (long)(Math.random() * 15_000L);
+    // Do not erase the rate-limit history immediately after one successful fetch.
   }
 
   /** Notebook tasks are tracked separately; never pass them to the YouTube transcript parser. */
