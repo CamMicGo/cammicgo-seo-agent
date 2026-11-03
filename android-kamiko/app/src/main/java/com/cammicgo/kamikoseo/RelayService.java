@@ -71,7 +71,7 @@ public class RelayService extends Service {
     RelayClient.prefs(this).edit().putBoolean("connected", true).putString("status", I18n.t(this, "waiting")).putString("lastRelayError", null).apply();
 
     pausedUntil = RelayClient.prefs(this).getLong("youtubePausedUntil", 0L);
-    nextTranscriptAt = Math.max(pausedUntil, RelayClient.prefs(this).getLong("nextTranscriptAt", 0L));
+    nextTranscriptAt = RelayClient.prefs(this).getLong("nextTranscriptAt", 0L);
     rateLimitStrikes = RelayClient.prefs(this).getInt("youtube429Strikes", 0);
     running = true;
     if (loop == null || !loop.isAlive()) {
@@ -119,6 +119,8 @@ public class RelayService extends Service {
           continue;
         }
         pausedUntil = 0L;
+        // Read persisted retry state on every poll: the UI can clear it while this service is running.
+        nextTranscriptAt = RelayClient.prefs(this).getLong("nextTranscriptAt", 0L);
         long wait = pausedUntil - System.currentTimeMillis();
         // A YouTube HTTP 429 pauses only transcript claims, never the server heartbeat.
         // Keep polling through the normal error handler so network failures cannot kill the worker.
