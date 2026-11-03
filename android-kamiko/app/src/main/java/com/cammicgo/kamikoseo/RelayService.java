@@ -227,6 +227,7 @@ public class RelayService extends Service {
       } catch (Exception reportFailure) {
         android.util.Log.e("CamMicGoNotebook","Unable to report notebook job failure "+id,reportFailure);
       }
+    }
   }
 
   private void notebookHistory(String jobId,String label,String state,String error) {
