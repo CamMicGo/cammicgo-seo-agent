@@ -32,7 +32,7 @@ public class RelayService extends Service {
   private volatile long pausedUntil;
   private int rateLimitStrikes;
   private long nextTranscriptAt;
-  private static final int DAILY_TRANSCRIPT_LIMIT = 10;
+  private static final int DEFAULT_DAILY_TRANSCRIPT_LIMIT = 10;
   private static final long DAY_MS = 86_400_000L;
   private Thread loop;
   private final Handler heartbeatHandler = new Handler(Looper.getMainLooper());
@@ -121,8 +121,12 @@ public class RelayService extends Service {
           safety.edit().putLong("youtubeDailyWindowStart", now).putInt("youtubeDailyCount", 0).apply();
           windowStart = now;
         }
-        boolean dailyLimitReached = safety.getInt("youtubeDailyCount", 0) >= DAILY_TRANSCRIPT_LIMIT;
-        if (dailyLimitReached) nextTranscriptAt = Math.max(nextTranscriptAt, windowStart + DAY_MS);
+        int dailyLimit = Math.max(1, Math.min(50, safety.getInt("youtubeDailyLimit", DEFAULT_DAILY_TRANSCRIPT_LIMIT)));
+        boolean dailyLimitReached = safety.getInt("youtubeDailyCount", 0) >= dailyLimit;
+        if (dailyLimitReached) {
+          nextTranscriptAt = Math.max(nextTranscriptAt, windowStart + DAY_MS);
+          status("Quota YouTube quotidien atteint (" + dailyLimit + "). Reprise après la fenêtre de 24 h.");
+        }
         boolean mayClaim = now >= nextTranscriptAt && !dailyLimitReached;
         JSONObject res = RelayClient.poll(this, token, mayClaim);
         if (backoff > 5000) status(I18n.t(this, "reconnected"));
@@ -239,7 +243,8 @@ public class RelayService extends Service {
     history(videoId, r.title, "done", r.segments.size(), null);
     status(I18n.t(this, "sent", r.title != null ? r.title : videoId, r.segments.size()));
     // Avoid bursts: at most one transcript every 30-45 seconds on this device.
-    nextTranscriptAt = System.currentTimeMillis() + 30_000L + (long)(Math.random() * 15_000L);
+    int delaySeconds = Math.max(60, Math.min(600, RelayClient.prefs(this).getInt("youtubeDelaySeconds", 180)));
+    nextTranscriptAt = System.currentTimeMillis() + delaySeconds * 1000L + (long)(Math.random() * 30_000L);
     SharedPreferences limits = RelayClient.prefs(this);
     limits.edit().putLong("nextTranscriptAt", nextTranscriptAt)
         .putInt("youtubeDailyCount", limits.getInt("youtubeDailyCount", 0) + 1).apply();
