@@ -791,7 +791,12 @@ public class MainActivity extends Activity {
         long sync = p.getLong("lastSync", 0);
         if (sync > 0) b.append(t("server_contact", DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(sync))));
         String status = p.getString("status", null);
-        if (status != null) b.append('\n').append(status);
+        if (p.getLong("youtubePausedUntil", 0L) > System.currentTimeMillis()) {
+          // Rebuild the message in the currently selected language instead of
+          // displaying the previous-language string cached by RelayService.
+          b.append('\n').append(t("rate_limited", DateFormat.getTimeInstance(DateFormat.SHORT)
+              .format(new Date(p.getLong("youtubePausedUntil", 0L)))));
+        } else if (status != null) b.append('\n').append(status);
       } else b.append('\n').append(t("activate_hint"));
       relayDetail.setText(b.toString());
     }
