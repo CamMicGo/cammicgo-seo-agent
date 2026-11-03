@@ -494,9 +494,20 @@ public class MainActivity extends Activity {
       if (!RelayClient.isPaired(this)) return;
       refreshButton.setEnabled(false);
       worker.execute(() -> {
-        try { RelayClient.poll(this, RelayClient.token(this), false); }
-        catch (Exception ex) { RelayClient.prefs(this).edit().putString("syncError", ex.getMessage()).apply(); }
-        ui.post(() -> { refreshButton.setEnabled(true); refreshRelay(); });
+        boolean ok = false;
+        try {
+          RelayClient.poll(this, RelayClient.token(this), false);
+          RelayClient.prefs(this).edit().remove("syncError").apply();
+          ok = true;
+        } catch (Exception ex) {
+          RelayClient.prefs(this).edit().putString("syncError", ex.getMessage() == null ? "" : ex.getMessage()).apply();
+        }
+        final boolean succeeded = ok;
+        ui.post(() -> {
+          refreshButton.setEnabled(true);
+          refreshRelay();
+          Toast.makeText(this, t(succeeded ? "refresh_success" : "refresh_failed"), Toast.LENGTH_LONG).show();
+        });
       });
     });
 
@@ -815,7 +826,7 @@ public class MainActivity extends Activity {
       String error = p.getString("syncError", null);
       progressFreshness.setText(!paired ? "" : !fresh ? t("sync_stale") : t("sync_updated", DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(p.getLong("progressAt", 0)))));
       progressFreshness.setTextColor(fresh ? MUTED : AMBER);
-      if (!fresh && error != null) progressFreshness.append(" · " + t("sync_error"));
+      if (error != null) progressFreshness.append(" · " + t("sync_error"));
     }
     refreshNotebookRequests(p);
     refreshHistory(p);
