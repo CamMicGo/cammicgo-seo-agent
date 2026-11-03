@@ -32,8 +32,6 @@ public class RelayService extends Service {
   private volatile long pausedUntil;
   private int rateLimitStrikes;
   private long nextTranscriptAt;
-  private static final int DEFAULT_DAILY_TRANSCRIPT_LIMIT = 10;
-  private static final long DAY_MS = 86_400_000L;
   private Thread loop;
 
 
@@ -104,26 +102,13 @@ public class RelayService extends Service {
         if (wait > 0) { RelayClient.poll(this, token, false); sleep(Math.min(wait, 30_000)); continue; }
         // Poll for status without claiming another YouTube job during the cooldown.
         long now = System.currentTimeMillis();
-        SharedPreferences safety = RelayClient.prefs(this);
-        long windowStart = safety.getLong("youtubeDailyWindowStart", 0L);
-        if (windowStart == 0 || now - windowStart >= DAY_MS) {
-          safety.edit().putLong("youtubeDailyWindowStart", now).putInt("youtubeDailyCount", 0).apply();
-          windowStart = now;
-        }
-        int dailyLimit = Math.max(1, Math.min(50, safety.getInt("youtubeDailyLimit", DEFAULT_DAILY_TRANSCRIPT_LIMIT)));
-        boolean dailyLimitReached = safety.getInt("youtubeDailyCount", 0) >= dailyLimit;
-        if (dailyLimitReached) {
-          nextTranscriptAt = Math.max(nextTranscriptAt, windowStart + DAY_MS);
-          status("Quota YouTube quotidien atteint (" + dailyLimit + "). Reprise après la fenêtre de 24 h.");
-        }
-        boolean mayClaim = now >= nextTranscriptAt && !dailyLimitReached;
+        boolean mayClaim = now >= nextTranscriptAt;
         JSONObject res = RelayClient.poll(this, token, mayClaim);
         if (backoff > 5000) status(I18n.t(this, "reconnected"));
         backoff = 5000;
         RelayClient.prefs(this).edit().putLong("lastSync", System.currentTimeMillis()).apply();
         JSONObject job = res.optJSONObject("job");
         if (job != null) handle(token, job);
-        else if (dailyLimitReached) status("Quota YouTube quotidien atteint (" + dailyLimit + "). Reprise après la fenêtre de 24 h.");
         else if (now < nextTranscriptAt) status("Prochaine transcription autorisée à " + java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(new java.util.Date(nextTranscriptAt)));
         else if (!isPausedStatus()) status(idleStatus());
         sleep(job != null ? 1000 : res.optLong("pollAfterMs", 4000));
@@ -234,12 +219,9 @@ public class RelayService extends Service {
     p.edit().putInt("jobsDone", p.getInt("jobsDone", 0) + 1).apply();
     history(videoId, r.title, "done", r.segments.size(), null);
     status(I18n.t(this, "sent", r.title != null ? r.title : videoId, r.segments.size()));
-    // Avoid bursts: at most one transcript every 30-45 seconds on this device.
-    int delaySeconds = Math.max(60, Math.min(600, RelayClient.prefs(this).getInt("youtubeDelaySeconds", 180)));
-    nextTranscriptAt = System.currentTimeMillis() + delaySeconds * 1000L + (long)(Math.random() * 30_000L);
-    SharedPreferences limits = RelayClient.prefs(this);
-    limits.edit().putLong("nextTranscriptAt", nextTranscriptAt)
-        .putInt("youtubeDailyCount", limits.getInt("youtubeDailyCount", 0) + 1).apply();
+    // Random 1–2 minute delay between successful automatic transcripts; no daily cap.
+    nextTranscriptAt = System.currentTimeMillis() + 60_000L + (long)(Math.random() * 60_000L);
+    RelayClient.prefs(this).edit().putLong("nextTranscriptAt", nextTranscriptAt).apply();
     // Do not erase the rate-limit history immediately after one successful fetch.
   }
 
