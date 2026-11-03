@@ -35,21 +35,57 @@ final class NotebookClient {
       return out.toString("UTF-8");
     }
   }
+  /**
+   * Background HTTP transport. Google session cookies remain on this Android device.
+   * CookieManager is read on the main thread, while network I/O stays on the relay worker.
+   * This transport does not require an open NotebookActivity.
+   */
   private String cookie() throws IOException {
-    String c=CookieManager.getInstance().getCookie(new URL(HOME).toString());
-    if(c==null||c.trim().isEmpty())throw new IOException("Connectez votre compte Google dans l'onglet NotebookLM de l'APK (la session Chrome est distincte).");
+    final java.util.concurrent.atomic.AtomicReference<String> value=new java.util.concurrent.atomic.AtomicReference<>();
+    final java.util.concurrent.CountDownLatch done=new java.util.concurrent.CountDownLatch(1);
+    new android.os.Handler(android.os.Looper.getMainLooper()).post(()->{
+      try { value.set(CookieManager.getInstance().getCookie(HOME)); }
+      finally { done.countDown(); }
+    });
+    try {
+      if(!done.await(5,java.util.concurrent.TimeUnit.SECONDS))
+        throw new IOException("NotebookLM : délai de lecture de la session Google");
+    } catch(InterruptedException e){Thread.currentThread().interrupt();throw new IOException("NotebookLM : lecture de session interrompue",e);}
+    String c=value.get();
+    if(c==null||c.trim().isEmpty())
+      throw new IOException("NotebookLM : aucune session Google persistante. Connectez-vous une fois dans l'APK.");
     return c;
   }
   private String request(String url,String method,String body) throws IOException {
-    return request(url,method,body,0);
-  }
-  private String request(String url,String method,String body,int redirects) throws IOException {
+    URL u=new URL(url);
+    if(!"https".equalsIgnoreCase(u.getProtocol())||!"notebook.google.com".equalsIgnoreCase(u.getHost()))
+      throw new IOException("NotebookLM : origine HTTP interdite");
+    HttpURLConnection connection=null;
     try {
-      // Unlike HttpURLConnection, fetch runs in the exact authenticated WebView
-      // origin, sharing browser cookies, SameSite policy and Google session state.
-      return NotebookActivity.authenticatedRequest(url,method,body);
+      connection=(HttpURLConnection)u.openConnection();
+      connection.setInstanceFollowRedirects(false);
+      connection.setConnectTimeout(12000);
+      connection.setReadTimeout(25000);
+      connection.setRequestMethod(method);
+      connection.setRequestProperty("Cookie",cookie());
+      connection.setRequestProperty("Accept","*/*");
+      connection.setRequestProperty("Origin",HOME.substring(0,HOME.length()-1));
+      connection.setRequestProperty("Referer",HOME);
+      connection.setRequestProperty("User-Agent","Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36");
+      if(body!=null){
+        connection.setDoOutput(true);
+        connection.setRequestProperty("Content-Type","application/x-www-form-urlencoded;charset=UTF-8");
+        byte[] bytes=body.getBytes(StandardCharsets.UTF_8);
+        try(OutputStream out=connection.getOutputStream()){out.write(bytes);}
+      }
+      int status=connection.getResponseCode();
+      if(status==401||status==403||status==302||status==303)
+        throw new IOException("NotebookLM : session Google expirée ou refusée (HTTP "+status+"). Rouvrez NotebookLM pour vous reconnecter.");
+      if(status<200||status>=300)
+        throw new IOException("NotebookLM : requête RPC HTTP "+status);
+      return read(connection.getInputStream());
     } catch(IOException e){throw e;}
-    catch(Exception e){throw new IOException("NotebookLM WebView RPC: "+e.getMessage(),e);}
+    finally {if(connection!=null)connection.disconnect();}
   }
   private Object rpc(String id,JSONArray args,String sourcePath) throws Exception {
     String page=request(HOME,"GET",null);
@@ -94,7 +130,7 @@ final class NotebookClient {
       String id=nb.optString(2),title=nb.optString(0,"Sans titre");
       items.put(new JSONObject().put("id",id).put("title",title).put("url",HOME+"notebook/"+id));
     }
-    return new JSONObject().put("notebooks",items).put("count",items.length()).put("method","android-java-rpc");
+    return new JSONObject().put("notebooks",items).put("count",items.length()).put("method","android-background-http-rpc");
   }
   JSONObject create(String title) throws Exception {
     if(title==null||title.trim().isEmpty()||title.length()>160)throw new IOException("Titre invalide");
