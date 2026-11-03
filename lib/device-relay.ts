@@ -84,13 +84,11 @@ export async function pruneRelayPayloads(){
  const now=Date.now();
  if(now-lastPrune<60*60_000)return;
  lastPrune=now;
- const cutoff=new Date(now-60*60_000).toISOString();
  const expired=new Date(now).toISOString();
- const filter='?or='+encodeURIComponent('(and(status.in.(done,error),completed_at.lt.'+cutoff+'),expires_at.lt.'+expired+') ;
  try{
   await Promise.all([
-   sb('/rest/v1/cmg_notebook_jobs'+filter,{method:'DELETE'}),
-   sb('/rest/v1/cmg_transcript_jobs'+filter,{method:'DELETE'})
+   sb('/rest/v1/cmg_notebook_jobs?expires_at=lt.'+encodeURIComponent(expired),{method:'DELETE'}),
+   sb('/rest/v1/cmg_transcript_jobs?expires_at=lt.'+encodeURIComponent(expired),{method:'DELETE'})
   ]);
  }catch(e){lastPrune=0;throw e;}
 }
