@@ -412,75 +412,8 @@ public class MainActivity extends Activity {
       Toast.makeText(this, t("unpaired_toast"), Toast.LENGTH_SHORT).show();
     });
 
-    section(root, t("sec_requests"));
-    LinearLayout p = card(root);
-    LinearLayout head = new LinearLayout(this);
-    head.setGravity(Gravity.BOTTOM);
-    progressCount = text(null, "—", 30, INK, true);
-    head.addView(progressCount);
-    progressLabel = text(null, "", 13, MUTED, false);
-    progressLabel.setPadding(dp(8), 0, 0, dp(6));
-    head.addView(progressLabel, new LinearLayout.LayoutParams(0, -2, 1));
-    p.addView(head);
-    progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-    GradientDrawable track = shape(Color.rgb(229, 236, 249), 6, 0);
-    GradientDrawable fill = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{CYAN, BLUE, VIOLET});
-    fill.setCornerRadius(dp(6));
-    LayerDrawable layers = new LayerDrawable(new Drawable[]{track, new ClipDrawable(fill, Gravity.START, ClipDrawable.HORIZONTAL)});
-    layers.setId(0, android.R.id.background);
-    layers.setId(1, android.R.id.progress);
-    progressBar.setProgressDrawable(layers);
-    progressBar.setMax(100);
-    p.addView(progressBar, new LinearLayout.LayoutParams(-1, dp(12)));
-    progressStats = new LinearLayout(this);
-    statDone = stat(progressStats, GREEN, t("stat_sent"));
-    statWaiting = stat(progressStats, BLUE, t("stat_waiting"));
-    statFailed = stat(progressStats, RED, t("stat_failed"));
-    p.addView(progressStats, gapTop(12));
-    LinearLayout activityRow = new LinearLayout(this);
-    activityRow.setOrientation(LinearLayout.HORIZONTAL);
-    activityRow.setGravity(Gravity.CENTER_VERTICAL);
-    activityRow.setPadding(0, dp(12), 0, 0);
-    progressSpinner = new ProgressBar(this, null, android.R.attr.progressBarStyleSmall);
-    LinearLayout.LayoutParams spinnerParams = new LinearLayout.LayoutParams(dp(22), dp(22));
-    spinnerParams.setMargins(0, 0, dp(10), 0);
-    activityRow.addView(progressSpinner, spinnerParams);
-    progressSpinner.setVisibility(View.GONE);
-    TextView activityLabel = text(null, t("processing"), 12, BLUE, true);
-    activityRow.addView(activityLabel);
-    p.addView(activityRow);
-    progressSpinner.setTag(activityRow);
-    activityRow.setVisibility(View.GONE);
-    progressCurrent = text(p, "", 13, INK, true);
-    progressCurrent.setPadding(0, dp(12), 0, 0);
-    progressCurrent.setMaxLines(2);
-    progressCurrent.setEllipsize(TextUtils.TruncateAt.END);
-    progressNote = text(p, "", 12, MUTED, false);
-    progressNote.setPadding(0, dp(6), 0, 0);
-    progressFreshness = text(p, "", 12, MUTED, false);
-    progressFreshness.setPadding(0, dp(8), 0, 0);
-    Button refreshButton = secondary(t("refresh_now"));
-    p.addView(refreshButton, gapTop(8));
-    refreshButton.setOnClickListener(v -> {
-      if (!RelayClient.isPaired(this)) return;
-      refreshButton.setEnabled(false);
-      worker.execute(() -> {
-        boolean ok = false;
-        try {
-          RelayClient.poll(this, RelayClient.token(this), false);
-          RelayClient.prefs(this).edit().remove("syncError").apply();
-          ok = true;
-        } catch (Exception ex) {
-          RelayClient.prefs(this).edit().putString("syncError", ex.getMessage() == null ? "" : ex.getMessage()).apply();
-        }
-        final boolean succeeded = ok;
-        ui.post(() -> {
-          refreshButton.setEnabled(true);
-          refreshRelay();
-          Toast.makeText(this, t(succeeded ? "refresh_success" : "refresh_failed"), Toast.LENGTH_LONG).show();
-        });
-      });
-    });
+    // The old aggregate server-side 4/25 queue is intentionally not shown.
+    // Agent requests remain visible through current activity and local history.
 
     section(root, t("notebook_section"));
     notebookRequests=card(root);
@@ -827,7 +760,7 @@ public class MainActivity extends Activity {
       }
       relayDetail.setText(b.toString());
     }
-    refreshProgress(p, paired, connected);
+    // Legacy aggregate progress intentionally removed from the Assistant tab.
     long age = System.currentTimeMillis() - p.getLong("progressAt", 0);
     boolean fresh = p.getLong("progressAt", 0) > 0 && age >= 0 && age < 30000L;
     if (progressFreshness != null) {
