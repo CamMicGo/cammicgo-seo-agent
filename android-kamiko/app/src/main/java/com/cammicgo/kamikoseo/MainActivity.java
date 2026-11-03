@@ -411,36 +411,6 @@ public class MainActivity extends Activity {
       Toast.makeText(this, t("unpaired_toast"), Toast.LENGTH_SHORT).show();
     });
 
-    // Per-device safety settings; the queue size is discovered from each channel, not user-capped.
-    section(root, t("youtube_pacing"));
-    LinearLayout safetyCard = card(root);
-    text(safetyCard, t("youtube_daily"), 14, INK, true);
-    Spinner dailyPicker = new Spinner(this);
-    final Integer[] dailyValues = {10, 20, 30, 40, 50};
-    String[] dailyLabels = {t("daily_test",10), t("daily_videos",20), t("daily_videos",30), t("daily_videos",40), t("daily_videos",50)};
-    dailyPicker.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, dailyLabels));
-    SharedPreferences safetyPrefs = RelayClient.prefs(this);
-    int currentDaily = safetyPrefs.getInt("youtubeDailyLimit", 10);
-    for (int i = 0; i < dailyValues.length; i++) if (dailyValues[i] == currentDaily) dailyPicker.setSelection(i);
-    safetyCard.addView(dailyPicker, gapTop(6));
-    text(safetyCard, t("youtube_delay"), 14, INK, true).setPadding(0, dp(12), 0, 0);
-    Spinner delayPicker = new Spinner(this);
-    final Integer[] delayValues = {60, 120, 180, 300, 600};
-    String[] delayLabels = {t("minutes",1), t("minutes",2), t("minutes_recommended",3), t("minutes",5), t("minutes",10)};
-    delayPicker.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, delayLabels));
-    int currentDelay = safetyPrefs.getInt("youtubeDelaySeconds", 180);
-    for (int i = 0; i < delayValues.length; i++) if (delayValues[i] == currentDelay) delayPicker.setSelection(i);
-    safetyCard.addView(delayPicker, gapTop(6));
-    Button saveSafety = secondary(t("save_settings"));
-    safetyCard.addView(saveSafety, gapTop(12));
-    saveSafety.setOnClickListener(v -> {
-      int daily = dailyValues[dailyPicker.getSelectedItemPosition()];
-      int delay = delayValues[delayPicker.getSelectedItemPosition()];
-      safetyPrefs.edit().putInt("youtubeDailyLimit", daily).putInt("youtubeDelaySeconds", delay).apply();
-      Toast.makeText(this, t("pacing_saved", daily, delay), Toast.LENGTH_LONG).show();
-    });
-    text(safetyCard, t("pacing_note"), 12, MUTED, false).setPadding(0, dp(10), 0, 0);
-
     section(root, t("sec_requests"));
     LinearLayout p = card(root);
     LinearLayout head = new LinearLayout(this);
