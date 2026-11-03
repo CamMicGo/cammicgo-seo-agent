@@ -44,37 +44,23 @@ public final class NotebookActivity extends Activity {
     root.setOrientation(LinearLayout.VERTICAL);
     root.setBackgroundColor(android.graphics.Color.rgb(244,247,253));
     location=new TextView(this);
-    location.setText("Gemini Notebook · "+(I18n.code(this).equals("fr")?"Session Google locale":"Local Google session"));
+    location.setText("NotebookLM · "+(I18n.code(this).equals("fr")?"Session Google locale":"Local Google session"));
     location.setTextSize(17);
     location.setTypeface(null,android.graphics.Typeface.BOLD);
     location.setTextColor(android.graphics.Color.rgb(25,43,83));
     location.setPadding(dp(18),dp(18),dp(18),dp(14));
     root.addView(location);
     LinearLayout navigation=new LinearLayout(this);
-    navigation.setPadding(dp(12),dp(4),dp(12),dp(4));
-    Button back=button(I18n.code(this).equals("fr")?"← Retour à CamMicGo":"← Back to CamMicGo");
-    Button refresh=button(I18n.code(this).equals("fr")?"↻ Actualiser la page":"↻ Refresh page");
-    navigation.addView(back,new LinearLayout.LayoutParams(0,dp(52),1));
-    navigation.addView(refresh,new LinearLayout.LayoutParams(0,dp(52),1));
+    navigation.setGravity(Gravity.CENTER_VERTICAL);
+    navigation.setPadding(dp(12),dp(2),dp(12),dp(6));
+    Button back=button(I18n.code(this).equals("fr")?"← CamMicGo":"← CamMicGo");
+    Button refresh=button("↻");
+    navigation.addView(back,new LinearLayout.LayoutParams(0,dp(44),1));
+    navigation.addView(refresh,new LinearLayout.LayoutParams(dp(52),dp(44)));
     root.addView(navigation);
     back.setOnClickListener(v->finish());
+    refresh.setContentDescription(I18n.code(this).equals("fr")?"Actualiser NotebookLM":"Refresh NotebookLM");
     refresh.setOnClickListener(v->{notebookPageReady=false;browser.reload();});
-    LinearLayout actions=new LinearLayout(this);
-    actions.setPadding(dp(12),dp(4),dp(12),dp(12));
-    Button home=button(I18n.code(this).equals("fr")?"Mes notebooks":"My notebooks");
-    Button create=button(I18n.code(this).equals("fr")?"Nouveau notebook":"New notebook");
-    Button source=button(I18n.code(this).equals("fr")?"Ajouter une source":"Add source");
-    Button chrome=button(I18n.code(this).equals("fr")?"Ouvrir dans Chrome":"Open in Chrome");
-    LinearLayout actionRow1=new LinearLayout(this);
-    actionRow1.addView(home,new LinearLayout.LayoutParams(0,dp(56),1));
-    actionRow1.addView(create,new LinearLayout.LayoutParams(0,dp(56),1));
-    LinearLayout actionRow2=new LinearLayout(this);
-    actionRow2.addView(source,new LinearLayout.LayoutParams(0,dp(56),1));
-    actionRow2.addView(chrome,new LinearLayout.LayoutParams(0,dp(56),1));
-    actions.setOrientation(LinearLayout.VERTICAL);
-    actions.addView(actionRow1);
-    actions.addView(actionRow2);
-    root.addView(actions);
     browser=new WebView(this);
     browser.getSettings().setJavaScriptEnabled(true);
     browser.getSettings().setDomStorageEnabled(true);
@@ -114,50 +100,6 @@ public final class NotebookActivity extends Activity {
     });
     root.addView(browser,new LinearLayout.LayoutParams(-1,0,1));
     setContentView(root);
-    home.setOnClickListener(v->{
-      browser.loadUrl(HOME);
-      browser.postDelayed(()->browser.evaluateJavascript("(function(){const items=[...document.querySelectorAll('a[href*=\\\"/notebook/\\\"]')].map(a=>({title:(a.getAttribute('aria-label')||a.innerText||'').trim(),url:a.href})).filter(x=>x.title&&/^https:\\\\/\\\\/(?:notebook|notebooklm)\\\\.google\\\\.com\\\\/notebook\\\\//.test(x.url));return JSON.stringify(items)})()",value->{
-        try{
-          String json=new JSONArray(value).getString(0);
-          JSONArray items=new JSONArray(json);
-          if(items.length()==0){notice("Aucun notebook trouvé dans cette session, ou connexion Google nécessaire.");return;}
-          String[] names=new String[items.length()];
-          for(int i=0;i<items.length();i++)names[i]=items.getJSONObject(i).getString("title");
-          new AlertDialog.Builder(this).setTitle("Notebooks ("+items.length()+")").setItems(names,(dialog,which)->{
-            try{String url=items.getJSONObject(which).getString("url");lastNotebookUrl=url;browser.loadUrl(url);}catch(Exception e){notice("Impossible d'ouvrir ce notebook.");}
-          }).setNegativeButton("Fermer",null).show();
-        }catch(Exception e){notice("Impossible de lire la liste. Vérifiez votre connexion à NotebookLM.");}
-      }),2500);
-    });
-    create.setOnClickListener(v->{
-      EditText title=new EditText(this);
-      title.setSingleLine(true);
-      title.setHint("Titre du nouveau notebook");
-      new AlertDialog.Builder(this).setTitle("Créer un notebook").setView(title)
-        .setNegativeButton("Annuler",null)
-        .setPositiveButton("Créer",(dialog,which)->{
-          String name=title.getText().toString().trim();
-          if(name.isEmpty()||name.length()>160){notice("Saisissez un titre de 1 à 160 caractères.");return;}
-          // Click only the real NotebookLM UI. No undocumented Google API or session export.
-          String js="(function(){const x=[...document.querySelectorAll('button,[role=button]')].find(e=>/create new|new notebook|créer|nouveau notebook/i.test(e.innerText||e.getAttribute('aria-label')||''));if(!x)return 'missing';x.click();return 'clicked'})()";
-          browser.evaluateJavascript(js,result->{
-            if(!"\\\"clicked\\\"".equals(result)){notice("Ouvrez NotebookLM et connectez-vous dans cette fenêtre avant de créer un notebook.");return;}
-            // NotebookLM often opens a source dialog first. Only attempt title editing on its notebook page.
-            browser.postDelayed(()->setNotebookTitle(name),2500);
-          });
-        }).show();
-    });
-    source.setOnClickListener(v->{
-      if(lastNotebookUrl==null){notice("Sélectionnez d'abord un notebook dans la liste.");browser.loadUrl(HOME);return;}
-      browser.evaluateJavascript("(function(){const x=[...document.querySelectorAll('button,[role=button]')].find(e=>/add sources?|ajouter (des |une )?sources?/i.test(e.innerText||e.getAttribute('aria-label')||''));if(!x)return 'missing';x.click();return 'clicked'})()",result->{
-        if(!"\\\"clicked\\\"".equals(result))notice("Ouvrez le notebook et sélectionnez Ajouter des sources dans NotebookLM.");
-        else notice("Sélectionnez la source dans la fenêtre NotebookLM. L'ajout n'est confirmé qu'une fois visible dans le notebook.");
-      });
-    });
-    chrome.setOnClickListener(v->{
-      notice("Chrome utilise une session Google différente de celle de la WebView. La connexion Chrome ne permet pas encore au relais MCP de créer un notebook.");
-      startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(lastNotebookUrl==null?HOME:lastNotebookUrl)));
-    });
     browser.loadUrl(HOME);
   }
   @Override protected void onResume(){
