@@ -894,4 +894,49 @@ final class NotebookClient {
       .put("truncated",false);
   }
 
+  JSONObject artifactDownloadBinary(String notebookUrl,String artifactId,String token,String jobId) throws Exception {
+    JSONObject artifact=artifactDownloadLink(notebookUrl,artifactId);
+    String mediaUrl=artifact.getString("downloadUrl");
+    URL current=new URL(mediaUrl);
+    HttpURLConnection c=null;
+    byte[] bytes;
+    String mime=artifact.optInt("typeCode")==1?"audio/mp4":"video/mp4";
+    try{
+      for(int redirects=0;redirects<4;redirects++){
+        String host=current.getHost().toLowerCase(java.util.Locale.ROOT);
+        boolean trusted=host.equals("notebook.google.com")||host.endsWith(".googleusercontent.com")||
+          host.equals("googleusercontent.com")||host.endsWith(".googlevideo.com")||
+          host.equals("googlevideo.com")||host.endsWith(".ggpht.com");
+        if(!"https".equals(current.getProtocol())||!trusted)
+          throw new IOException("Refusing untrusted media download host");
+        c=(HttpURLConnection)current.openConnection();
+        c.setInstanceFollowRedirects(false);
+        c.setConnectTimeout(15000);c.setReadTimeout(60000);
+        c.setRequestProperty("Accept","*/*");
+        if(host.equals("notebook.google.com"))c.setRequestProperty("Cookie",cookie());
+        int status=c.getResponseCode();
+        if(status==301||status==302||status==303||status==307||status==308){
+          String location=c.getHeaderField("Location");c.disconnect();c=null;
+          if(location==null)throw new IOException("Media redirect without location");
+          current=new URL(current,location);continue;
+        }
+        if(status!=200)throw new IOException("Media download HTTP "+status);
+        try(InputStream in=c.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){
+          byte[] buf=new byte[16384];int n;
+          while((n=in.read(buf))!=-1){
+            if(out.size()+n>15_000_000)throw new IOException("Artifact exceeds 15 MB private relay limit");
+            out.write(buf,0,n);
+          }
+          bytes=out.toByteArray();
+        }
+        JSONObject uploaded=RelayClient.uploadArtifact(token,jobId,bytes,mime);
+        if(!uploaded.optBoolean("ok",false)||uploaded.optString("storagePath").isEmpty())
+          throw new IOException("Binary upload not confirmed");
+        return new JSONObject().put("artifactId",artifactId).put("storagePath",uploaded.getString("storagePath"))
+          .put("mime",mime).put("bytes",bytes.length).put("private",true).put("uploaded",true);
+      }
+      throw new IOException("Too many media redirects");
+    }finally{if(c!=null)c.disconnect();}
+  }
+
 }
