@@ -101,7 +101,7 @@ public class MainActivity extends Activity {
   private String pendingExport;
 
   private final Runnable refresher = new Runnable() {
-    @Override public void run() { refreshRelay(); ui.postDelayed(this, 1500); }
+    @Override public void run() { recoverRelayIfNeeded(); refreshRelay(); ui.postDelayed(this, 1500); }
   };
 
   private String t(String key, Object... args) { return I18n.t(this, key, args); }
@@ -767,14 +767,28 @@ public class MainActivity extends Activity {
       requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 7);
     try {
       RelayClient.prefs(this).edit().putString("status", "Démarrage du relais…").putString("lastRelayError", null).apply();
-      RelayClient.prefs(this).edit().putLong("startRequestedAt", System.currentTimeMillis()).apply();
+      RelayClient.prefs(this).edit().putBoolean("relayDesired", true).putLong("startRequestedAt", System.currentTimeMillis()).apply();
       RelayService.start(this);
       Toast.makeText(this, "Démarrage du mode connecté demandé", Toast.LENGTH_SHORT).show();
     } catch (RuntimeException e) {
       String detail = e.getClass().getSimpleName() + ": " + String.valueOf(e.getMessage());
-      RelayClient.prefs(this).edit().putBoolean("connected", false).putString("lastRelayError", detail).putString("status", detail).apply();
+      RelayClient.prefs(this).edit().putBoolean("relayDesired", false).putBoolean("connected", false).putString("lastRelayError", detail).putString("status", detail).apply();
       Toast.makeText(this, "Démarrage impossible : " + detail, Toast.LENGTH_LONG).show();
     }
+  }
+
+  private void recoverRelayIfNeeded() {
+    SharedPreferences p = RelayClient.prefs(this);
+    if (!RelayClient.isPaired(this) || !p.getBoolean("relayDesired", false)) return;
+    long now = System.currentTimeMillis();
+    long lastSync = p.getLong("lastSync", 0L);
+    if (p.getBoolean("connected", false) && lastSync > 0 && now - lastSync < 30000L) return;
+    long lastAttempt = p.getLong("startRequestedAt", 0L);
+    if (lastAttempt > 0 && now - lastAttempt < 30000L) return;
+    // Throttle restart attempts: never launch a service repeatedly every UI refresh.
+    p.edit().putLong("startRequestedAt", now).apply();
+    try { RelayService.start(this); }
+    catch (RuntimeException e) { p.edit().putString("lastRelayError", e.toString()).apply(); }
   }
 
   private void refreshRelay() {
@@ -993,10 +1007,7 @@ public class MainActivity extends Activity {
     historyShown = null;
     // A persisted connected=true flag does not mean Android kept the service alive.
     SharedPreferences p=RelayClient.prefs(this);
-    if(RelayClient.isPaired(this) && p.getBoolean("connected",false)
-        && System.currentTimeMillis()-p.getLong("lastSync",0)>25000L) {
-      startConnected(); // idempotent foreground service restart
-    }
+    recoverRelayIfNeeded();
     ui.post(refresher);
   }
   @Override protected void onPause() { ui.removeCallbacks(refresher); super.onPause(); }
