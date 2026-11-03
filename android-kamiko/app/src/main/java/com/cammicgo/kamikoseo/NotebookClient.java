@@ -169,6 +169,11 @@ final class NotebookClient {
     if(!m.find())throw new IOException("Invalid NotebookLM notebook URL");
     URL source=new URL(sourceUrl);
     if(!"https".equals(source.getProtocol())||source.getHost().isEmpty())throw new IOException("Source must be HTTPS");
+    // Google Drive documents must be imported using their native Drive IDs and MIME types.
+    // Passing a Sheets URL as a generic web page produces an unusable NotebookLM source.
+    String host=source.getHost().toLowerCase(java.util.Locale.ROOT);
+    if(host.equals("docs.google.com")||host.equals("drive.google.com"))
+      throw new IOException("Google Drive/Sheets : import natif requis (source_type=drive, document_id, doc_type=sheets). L’import URL est désactivé pour éviter les sources invalides.");
     String id=m.group(1);
     boolean youtube=source.getHost().equals("youtube.com")||source.getHost().endsWith(".youtube.com")||source.getHost().equals("youtu.be");
     JSONArray data=new JSONArray();
