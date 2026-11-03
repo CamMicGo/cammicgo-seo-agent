@@ -35,14 +35,7 @@ public class RelayService extends Service {
   private static final int DEFAULT_DAILY_TRANSCRIPT_LIMIT = 10;
   private static final long DAY_MS = 86_400_000L;
   private Thread loop;
-  private final Handler heartbeatHandler = new Handler(Looper.getMainLooper());
-  private final Runnable heartbeat = new Runnable() {
-    @Override public void run() {
-      if (!running) return;
-      RelayClient.prefs(RelayService.this).edit().putLong("lastSync", System.currentTimeMillis()).apply();
-      heartbeatHandler.postDelayed(this, 5000);
-    }
-  };
+
 
   public static void start(Context c) {
     Intent i = new Intent(c, RelayService.class);
@@ -76,8 +69,6 @@ public class RelayService extends Service {
       running = true;
       loop = new Thread(this::run, "cammicgo-relay");
       loop.start();
-      heartbeatHandler.removeCallbacks(heartbeat);
-      heartbeatHandler.post(heartbeat);
     }
     return START_STICKY;
   }
@@ -90,7 +81,6 @@ public class RelayService extends Service {
   }
 
   @Override public void onDestroy() {
-    heartbeatHandler.removeCallbacks(heartbeat);
     running = false;
     if (loop != null) loop.interrupt();
     RelayClient.prefs(this).edit().putBoolean("connected", false).apply();
@@ -134,6 +124,8 @@ public class RelayService extends Service {
         RelayClient.prefs(this).edit().putLong("lastSync", System.currentTimeMillis()).apply();
         JSONObject job = res.optJSONObject("job");
         if (job != null) handle(token, job);
+        else if (dailyLimitReached) status("Quota YouTube quotidien atteint (" + dailyLimit + "). Reprise après la fenêtre de 24 h.");
+        else if (now < nextTranscriptAt) status("Prochaine transcription autorisée à " + java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(new java.util.Date(nextTranscriptAt)));
         else if (!isPausedStatus()) status(idleStatus());
         sleep(job != null ? 1000 : res.optLong("pollAfterMs", 4000));
       } catch (RelayClient.UnpairedException e) {
@@ -141,6 +133,7 @@ public class RelayService extends Service {
         status(I18n.t(this, "server_unpaired"));
         break;
       } catch (IOException e) {
+        RelayClient.prefs(this).edit().putLong("lastSync", 0L).putString("lastRelayError", firstLine(e.getMessage())).apply();
         status(I18n.t(this, "lost", backoff / 1000));
         sleep(backoff);
         backoff = Math.min(backoff * 2, 60_000);
