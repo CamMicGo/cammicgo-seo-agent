@@ -534,4 +534,32 @@ final class NotebookClient {
       .put("citationsVerified",false).put("followUpHistorySupported",false);
   }
 
+  JSONObject sharePublic(String notebookUrl,boolean makePublic,boolean confirmed) throws Exception {
+    if(!confirmed)throw new IOException("Sharing change requires explicit confirmation");
+    String id=ownedNotebookId(notebookUrl);
+    JSONArray item=new JSONArray().put(id).put(JSONObject.NULL)
+      .put(new JSONArray().put(makePublic?1:0)).put(new JSONArray().put(0).put(""));
+    Object raw=rpc("QDyure",new JSONArray().put(new JSONArray().put(item))
+      .put(1).put(JSONObject.NULL).put(new JSONArray().put(2)),"/");
+    if(raw==null)throw new IOException("NotebookLM did not confirm sharing request");
+    return new JSONObject().put("notebookId",id).put("requestedPublic",makePublic)
+      .put("shareUrl",makePublic?HOME+"notebook/"+id:JSONObject.NULL)
+      .put("operationAccepted",true).put("shareStatusRecheckRequired",true);
+  }
+  JSONObject shareInvite(String notebookUrl,String email,String role,boolean confirmed) throws Exception {
+    if(!confirmed)throw new IOException("Invitation requires explicit user confirmation");
+    if(email==null||!email.matches("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"))
+      throw new IOException("Invalid collaborator email");
+    if(!"viewer".equals(role)&&!"editor".equals(role))throw new IOException("Invalid role");
+    String id=ownedNotebookId(notebookUrl);
+    JSONArray invite=new JSONArray().put(email).put(JSONObject.NULL).put("editor".equals(role)?2:3);
+    JSONArray item=new JSONArray().put(id).put(new JSONArray().put(invite))
+      .put(JSONObject.NULL).put(new JSONArray().put(0).put(""));
+    Object raw=rpc("QDyure",new JSONArray().put(new JSONArray().put(item))
+      .put(1).put(JSONObject.NULL).put(new JSONArray().put(2)),"/");
+    if(raw==null)throw new IOException("NotebookLM did not confirm invitation");
+    return new JSONObject().put("notebookId",id).put("email",email).put("role",role)
+      .put("operationAccepted",true).put("shareStatusRecheckRequired",true);
+  }
+
 }
