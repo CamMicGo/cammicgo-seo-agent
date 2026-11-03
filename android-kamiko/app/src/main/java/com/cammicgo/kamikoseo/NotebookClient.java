@@ -607,4 +607,47 @@ final class NotebookClient {
     throw new IOException("Artifact not found in notebook Studio");
   }
 
+  private JSONObject requireSource(String notebookUrl,String sourceId) throws Exception {
+    if(sourceId==null||!sourceId.matches("[A-Za-z0-9_-]{8,128}"))
+      throw new IOException("Invalid source ID");
+    JSONArray sources=sourceList(notebookUrl).getJSONArray("sources");
+    for(int i=0;i<sources.length();i++){
+      JSONObject src=sources.getJSONObject(i);
+      if(sourceId.equals(src.optString("id")))return src;
+    }
+    throw new IOException("Source not found in this notebook");
+  }
+  JSONObject sourceRename(String notebookUrl,String sourceId,String title) throws Exception {
+    String id=ownedNotebookId(notebookUrl);
+    requireSource(notebookUrl,sourceId);
+    if(title==null||title.trim().isEmpty()||title.length()>200)
+      throw new IOException("Invalid source title");
+    rpc("b7Wfje",new JSONArray().put(JSONObject.NULL).put(new JSONArray().put(sourceId))
+      .put(new JSONArray().put(new JSONArray().put(new JSONArray().put(title.trim())))),"/notebook/"+id);
+    JSONObject updated=requireSource(notebookUrl,sourceId);
+    if(!title.trim().equals(updated.optString("title")))
+      throw new IOException("Source rename not yet verified");
+    return new JSONObject().put("sourceId",sourceId).put("title",title.trim()).put("verified",true);
+  }
+  JSONObject sourceSyncDrive(String notebookUrl,String sourceId) throws Exception {
+    requireSource(notebookUrl,sourceId);
+    Object raw=rpc("FLmJqe",new JSONArray().put(JSONObject.NULL)
+      .put(new JSONArray().put(sourceId)).put(new JSONArray().put(2)),"/");
+    if(!(raw instanceof JSONArray))throw new IOException("Drive source sync not accepted");
+    return new JSONObject().put("sourceId",sourceId).put("syncRequested",true)
+      .put("status","pending_verification").put("checkWith","source_list");
+  }
+  JSONObject sourceDelete(String notebookUrl,String sourceId,String expectedTitle,boolean confirm) throws Exception {
+    if(!confirm)throw new IOException("Source deletion requires explicit user confirmation");
+    JSONObject src=requireSource(notebookUrl,sourceId);
+    if(expectedTitle==null||!expectedTitle.equals(src.optString("title")))
+      throw new IOException("Source title changed; re-confirm deletion");
+    rpc("tGMBJ",new JSONArray().put(new JSONArray().put(new JSONArray().put(sourceId)))
+      .put(new JSONArray().put(2)),"/");
+    JSONArray after=sourceList(notebookUrl).getJSONArray("sources");
+    for(int i=0;i<after.length();i++)if(sourceId.equals(after.getJSONObject(i).optString("id")))
+      throw new IOException("Source deletion not verified");
+    return new JSONObject().put("sourceId",sourceId).put("deleted",true).put("verified",true);
+  }
+
 }
