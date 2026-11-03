@@ -67,12 +67,12 @@ public class MainActivity extends Activity {
       LINE = Color.rgb(223, 232, 247), FIELD = Color.rgb(244, 248, 255), GREEN = Color.rgb(22, 163, 74),
       AMBER = Color.rgb(217, 119, 6), RED = Color.rgb(200, 50, 50), GREY = Color.rgb(170, 180, 200);
   static final int EXPORT_REQUEST = 41;
-  static final String[] TABS = {"tab_assistant", "tab_extract", "tab_help"};
+  static final String[] TABS = {"tab_assistant", "tab_extract", "tab_notebook", "tab_help"};
 
   private final ExecutorService worker = Executors.newSingleThreadExecutor();
   private final Handler ui = new Handler(Looper.getMainLooper());
-  private final View[] pages = new View[3];
-  private final TextView[] tabViews = new TextView[3];
+  private final View[] pages = new View[4];
+  private final TextView[] tabViews = new TextView[4];
   private int currentTab = 0;
 
   // header
@@ -242,11 +242,19 @@ public class MainActivity extends Activity {
     shell.addView(host, new LinearLayout.LayoutParams(-1, 0, 1));
     buildAssistantPage(page(host, 0));
     buildExtractPage(page(host, 1));
-    buildHelpPage(page(host, 2));
+    buildNotebookPage(page(host, 2));
+    buildHelpPage(page(host, 3));
 
     setContentView(shell);
-    selectTab(state != null ? state.getInt("tab", 0) : 0);
+    int requestedTab=getIntent().getIntExtra("open_tab",state != null ? state.getInt("tab", 0) : 0);
+    selectTab(Math.max(0,Math.min(requestedTab,TABS.length-1)));
     handleShare(getIntent());
+  }
+
+  @Override protected void onNewIntent(Intent intent){
+    super.onNewIntent(intent);
+    setIntent(intent);
+    if(intent.hasExtra("open_tab"))selectTab(Math.max(0,Math.min(intent.getIntExtra("open_tab",0),TABS.length-1)));
   }
 
   @Override protected void onSaveInstanceState(Bundle out) { super.onSaveInstanceState(out); out.putInt("tab", currentTab); }
@@ -412,34 +420,34 @@ public class MainActivity extends Activity {
     });
 
     // Per-device safety settings; the queue size is discovered from each channel, not user-capped.
-    section(root, "Cadence YouTube");
+    section(root, t("youtube_pacing"));
     LinearLayout safetyCard = card(root);
-    text(safetyCard, "Nombre maximal de transcriptions par 24 h", 14, INK, true);
+    text(safetyCard, t("youtube_daily_limit"), 14, INK, true);
     Spinner dailyPicker = new Spinner(this);
     final Integer[] dailyValues = {10, 20, 30, 40, 50};
-    String[] dailyLabels = {"10 vidéos (test)", "20 vidéos", "30 vidéos", "40 vidéos", "50 vidéos"};
+    String[] dailyLabels = {t("youtube_test_count",10),t("youtube_count",20),t("youtube_count",30),t("youtube_count",40),t("youtube_count",50)};
     dailyPicker.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, dailyLabels));
     SharedPreferences safetyPrefs = RelayClient.prefs(this);
     int currentDaily = safetyPrefs.getInt("youtubeDailyLimit", 10);
     for (int i = 0; i < dailyValues.length; i++) if (dailyValues[i] == currentDaily) dailyPicker.setSelection(i);
     safetyCard.addView(dailyPicker, gapTop(6));
-    text(safetyCard, "Délai minimum entre deux vidéos", 14, INK, true).setPadding(0, dp(12), 0, 0);
+    text(safetyCard, t("youtube_min_delay"), 14, INK, true).setPadding(0, dp(12), 0, 0);
     Spinner delayPicker = new Spinner(this);
     final Integer[] delayValues = {60, 120, 180, 300, 600};
-    String[] delayLabels = {"1 minute", "2 minutes", "3 minutes (recommandé)", "5 minutes", "10 minutes"};
+    String[] delayLabels = {t("youtube_minutes",1),t("youtube_minutes",2),t("youtube_recommended",3),t("youtube_minutes",5),t("youtube_minutes",10)};
     delayPicker.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, delayLabels));
     int currentDelay = safetyPrefs.getInt("youtubeDelaySeconds", 180);
     for (int i = 0; i < delayValues.length; i++) if (delayValues[i] == currentDelay) delayPicker.setSelection(i);
     safetyCard.addView(delayPicker, gapTop(6));
-    Button saveSafety = secondary("Enregistrer les réglages");
+    Button saveSafety = secondary(t("youtube_save"));
     safetyCard.addView(saveSafety, gapTop(12));
     saveSafety.setOnClickListener(v -> {
       int daily = dailyValues[dailyPicker.getSelectedItemPosition()];
       int delay = delayValues[delayPicker.getSelectedItemPosition()];
       safetyPrefs.edit().putInt("youtubeDailyLimit", daily).putInt("youtubeDelaySeconds", delay).apply();
-      Toast.makeText(this, "Cadence enregistrée : " + daily + " vidéos/24 h, " + delay + " s minimum", Toast.LENGTH_LONG).show();
+      Toast.makeText(this, t("youtube_saved",daily,delay), Toast.LENGTH_LONG).show();
     });
-    text(safetyCard, "Les vidéos sont découvertes automatiquement par chaîne. Un quota quotidien n'est pas une garantie contre les restrictions YouTube.", 12, MUTED, false).setPadding(0, dp(10), 0, 0);
+    text(safetyCard, t("youtube_pacing_note"), 12, MUTED, false).setPadding(0, dp(10), 0, 0);
 
     section(root, t("sec_requests"));
     LinearLayout p = card(root);
@@ -466,6 +474,7 @@ public class MainActivity extends Activity {
     statWaiting = stat(progressStats, BLUE, t("stat_waiting"));
     statFailed = stat(progressStats, RED, t("stat_failed"));
     p.addView(progressStats, gapTop(12));
+    text(p, t("queue_scope"), 12, MUTED, false).setPadding(0, dp(10), 0, 0);
     LinearLayout activityRow = new LinearLayout(this);
     activityRow.setOrientation(LinearLayout.HORIZONTAL);
     activityRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -628,51 +637,18 @@ public class MainActivity extends Activity {
 
   // ---------- tab 3: help ----------
 
-  private void buildHelpPage(LinearLayout root) {
-    section(root, "NotebookLM · CamMicGo");
+  private void buildNotebookPage(LinearLayout root) {
+    section(root, t("notebook_tab_title"));
     LinearLayout notebookCard = card(root);
-    text(notebookCard, "Ouvrir NotebookLM sur ce téléphone", 15, INK, true);
-    text(notebookCard, "Pour les commandes de l’assistant IA, connectez votre compte Google dans « Agent NotebookLM · ouvrir l’espace de travail ». La session Chrome externe ne peut pas être utilisée par l’APK. Les opérations sont exécutées localement et doivent être confirmées par NotebookLM.", 13, MUTED, false);
-    Button notebookButton = secondary("Ouvrir NotebookLM");
-    notebookButton.setOnClickListener(v -> {
-      try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://notebooklm.google.com/"))); }
-      catch (Exception e) { Toast.makeText(this, "Navigateur indisponible", Toast.LENGTH_LONG).show(); }
-    });
-    notebookCard.addView(notebookButton, gapTop(8));
-    Button workspace = primary("Agent NotebookLM · ouvrir l’espace de travail");
+    text(notebookCard, t("notebook_workspace_title"), 16, INK, true);
+    text(notebookCard, t("notebook_workspace_explain"), 13, MUTED, false);
+    Button workspace = primary(t("notebook_workspace_open"));
     workspace.setOnClickListener(v -> startActivity(new Intent(this, NotebookActivity.class)));
-    notebookCard.addView(workspace, gapTop(8));
-    Button copyNotebook = secondary("Copier le lien du notebook");
-    copyNotebook.setOnClickListener(v -> {
-      final EditText link = field("https://notebooklm.google.com/notebook/...");
-      new AlertDialog.Builder(this)
-          .setTitle("Associer un notebook existant")
-          .setMessage("Collez l'URL de votre notebook ouvert dans le navigateur. Le lien reste enregistré uniquement sur ce téléphone.")
-          .setView(link)
-          .setNegativeButton("Annuler", null)
-          .setPositiveButton("Enregistrer", (dialog, which) -> {
-            String value = link.getText().toString().trim();
-            if (!value.matches("https://notebooklm\\.google\\.com/notebook/[A-Za-z0-9_-]+/?")) {
-              Toast.makeText(this, "Lien NotebookLM invalide", Toast.LENGTH_LONG).show();
-              return;
-            }
-            getPreferences(MODE_PRIVATE).edit().putString("notebooklm_url", value).apply();
-            Toast.makeText(this, "Notebook enregistré sur cet appareil", Toast.LENGTH_LONG).show();
-          }).show();
-    });
-    notebookCard.addView(copyNotebook, gapTop(8));
-    Button openSavedNotebook = secondary("Ouvrir mon notebook enregistré");
-    openSavedNotebook.setOnClickListener(v -> {
-      String saved = getPreferences(MODE_PRIVATE).getString("notebooklm_url", "");
-      if (saved.isEmpty()) {
-        Toast.makeText(this, "Enregistrez d'abord l'URL du notebook", Toast.LENGTH_LONG).show();
-        return;
-      }
-      startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(saved)));
-    });
-    notebookCard.addView(openSavedNotebook, gapTop(8));
+    notebookCard.addView(workspace, gapTop(12));
+  }
 
-
+  // ---------- tab 4: help only ----------
+  private void buildHelpPage(LinearLayout root) {
     section(root, t("sec_prompts"));
     LinearLayout c = card(root);
     TextView sub = text(c, t("prompts_sub"), 13, MUTED, false);
@@ -715,9 +691,9 @@ public class MainActivity extends Activity {
     tip(tips, "🔄", t("tip_resume_t"), t("tip_resume"));
     tip(tips, "⏱️", t("tip_a15_t"), t("tip_a15"));
 
-    TextView versionBanner = text(root, "CamMicGo SEO MCP — VERSION INSTALLÉE : " + version(), 17, BLUE, true);
+    TextView versionBanner = text(root, t("installed_version",version()), 17, BLUE, true);
     versionBanner.setPadding(dp(12), dp(14), dp(12), dp(14));
-    versionBanner.setContentDescription("Version installée de CamMicGo SEO MCP : " + version());
+    versionBanner.setContentDescription(t("installed_version",version()));
     TextView v = text(root, "CamMicGo SEO MCP · " + t("version") + " " + version() + " · seo.cammicgo.com", 12, MUTED, false);
     v.setGravity(Gravity.CENTER);
     v.setPadding(0, dp(6), 0, 0);
@@ -791,7 +767,12 @@ public class MainActivity extends Activity {
         long sync = p.getLong("lastSync", 0);
         if (sync > 0) b.append(t("server_contact", DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(sync))));
         String status = p.getString("status", null);
-        if (status != null) b.append('\n').append(status);
+        if (p.getLong("youtubePausedUntil", 0L) > System.currentTimeMillis()) {
+          // Rebuild the message in the currently selected language instead of
+          // displaying the previous-language string cached by RelayService.
+          b.append('\n').append(t("rate_limited", DateFormat.getTimeInstance(DateFormat.SHORT)
+              .format(new Date(p.getLong("youtubePausedUntil", 0L)))));
+        } else if (status != null) b.append('\n').append(status);
       } else b.append('\n').append(t("activate_hint"));
       relayDetail.setText(b.toString());
     }
@@ -816,7 +797,7 @@ public class MainActivity extends Activity {
         // A worker killed by Android may never update its local history entry.
         if("working".equals(state) && System.currentTimeMillis()-e.optLong("at",0)>10*60*1000L) {
           state="failed";
-          e.put("error","Délai dépassé : aucune confirmation reçue. Vérifiez les notebooks avant toute nouvelle création.");
+          e.put("error",t("notebook_timeout"));
         }
         String label="done".equals(state)?t("notebook_done"):"working".equals(state)?t("notebook_working"):t("notebook_failed");
         text(notebookRequests,label+" · "+e.optString("label"),13,"failed".equals(state)?RED:INK,true);
