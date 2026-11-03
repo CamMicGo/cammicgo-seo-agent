@@ -9,7 +9,7 @@ export async function GET(req:NextRequest){
   if(!device)return NextResponse.json({error:'Appareil non appairé ou révoqué'},{status:401,headers:noStore});
   await touchDevice(device.id);
   // Transient relay payloads are purged; local APK history is unaffected.
-  void pruneRelayPayloads().catch(()=>{});
+  await pruneRelayPayloads().catch(()=>{});
   const claiming=req.nextUrl.searchParams.get('claim')!=='0';
   const notebook=claiming?await claimNotebookJob(device).catch(()=>null):null;
   const job=claiming&&!notebook?await claimJob(device):null;
