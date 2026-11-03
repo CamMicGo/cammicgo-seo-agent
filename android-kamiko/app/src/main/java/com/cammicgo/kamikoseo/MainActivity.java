@@ -67,12 +67,12 @@ public class MainActivity extends Activity {
       LINE = Color.rgb(223, 232, 247), FIELD = Color.rgb(244, 248, 255), GREEN = Color.rgb(22, 163, 74),
       AMBER = Color.rgb(217, 119, 6), RED = Color.rgb(200, 50, 50), GREY = Color.rgb(170, 180, 200);
   static final int EXPORT_REQUEST = 41;
-  static final String[] TABS = {"tab_assistant", "tab_extract", "tab_help"};
+  static final String[] TABS = {"tab_assistant", "tab_extract", "tab_notebook", "tab_help"};
 
   private final ExecutorService worker = Executors.newSingleThreadExecutor();
   private final Handler ui = new Handler(Looper.getMainLooper());
-  private final View[] pages = new View[3];
-  private final TextView[] tabViews = new TextView[3];
+  private final View[] pages = new View[4];
+  private final TextView[] tabViews = new TextView[4];
   private int currentTab = 0;
 
   // header
@@ -242,7 +242,8 @@ public class MainActivity extends Activity {
     shell.addView(host, new LinearLayout.LayoutParams(-1, 0, 1));
     buildAssistantPage(page(host, 0));
     buildExtractPage(page(host, 1));
-    buildHelpPage(page(host, 2));
+    buildNotebookPage(page(host, 2));
+    buildHelpPage(page(host, 3));
 
     setContentView(shell);
     selectTab(state != null ? state.getInt("tab", 0) : 0);
@@ -629,51 +630,18 @@ public class MainActivity extends Activity {
 
   // ---------- tab 3: help ----------
 
-  private void buildHelpPage(LinearLayout root) {
-    section(root, "NotebookLM · CamMicGo");
+  private void buildNotebookPage(LinearLayout root) {
+    section(root, t("notebook_tab_title"));
     LinearLayout notebookCard = card(root);
-    text(notebookCard, "Ouvrir NotebookLM sur ce téléphone", 15, INK, true);
-    text(notebookCard, "Pour les commandes de l’assistant IA, connectez votre compte Google dans « Agent NotebookLM · ouvrir l’espace de travail ». La session Chrome externe ne peut pas être utilisée par l’APK. Les opérations sont exécutées localement et doivent être confirmées par NotebookLM.", 13, MUTED, false);
-    Button notebookButton = secondary("Ouvrir NotebookLM");
-    notebookButton.setOnClickListener(v -> {
-      try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://notebooklm.google.com/"))); }
-      catch (Exception e) { Toast.makeText(this, "Navigateur indisponible", Toast.LENGTH_LONG).show(); }
-    });
-    notebookCard.addView(notebookButton, gapTop(8));
-    Button workspace = primary("Agent NotebookLM · ouvrir l’espace de travail");
+    text(notebookCard, t("notebook_workspace_title"), 16, INK, true);
+    text(notebookCard, t("notebook_workspace_explain"), 13, MUTED, false);
+    Button workspace = primary(t("notebook_workspace_open"));
     workspace.setOnClickListener(v -> startActivity(new Intent(this, NotebookActivity.class)));
-    notebookCard.addView(workspace, gapTop(8));
-    Button copyNotebook = secondary("Copier le lien du notebook");
-    copyNotebook.setOnClickListener(v -> {
-      final EditText link = field("https://notebooklm.google.com/notebook/...");
-      new AlertDialog.Builder(this)
-          .setTitle("Associer un notebook existant")
-          .setMessage("Collez l'URL de votre notebook ouvert dans le navigateur. Le lien reste enregistré uniquement sur ce téléphone.")
-          .setView(link)
-          .setNegativeButton("Annuler", null)
-          .setPositiveButton("Enregistrer", (dialog, which) -> {
-            String value = link.getText().toString().trim();
-            if (!value.matches("https://notebooklm\\.google\\.com/notebook/[A-Za-z0-9_-]+/?")) {
-              Toast.makeText(this, "Lien NotebookLM invalide", Toast.LENGTH_LONG).show();
-              return;
-            }
-            getPreferences(MODE_PRIVATE).edit().putString("notebooklm_url", value).apply();
-            Toast.makeText(this, "Notebook enregistré sur cet appareil", Toast.LENGTH_LONG).show();
-          }).show();
-    });
-    notebookCard.addView(copyNotebook, gapTop(8));
-    Button openSavedNotebook = secondary("Ouvrir mon notebook enregistré");
-    openSavedNotebook.setOnClickListener(v -> {
-      String saved = getPreferences(MODE_PRIVATE).getString("notebooklm_url", "");
-      if (saved.isEmpty()) {
-        Toast.makeText(this, "Enregistrez d'abord l'URL du notebook", Toast.LENGTH_LONG).show();
-        return;
-      }
-      startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(saved)));
-    });
-    notebookCard.addView(openSavedNotebook, gapTop(8));
+    notebookCard.addView(workspace, gapTop(12));
+  }
 
-
+  // ---------- tab 4: help only ----------
+  private void buildHelpPage(LinearLayout root) {
     section(root, t("sec_prompts"));
     LinearLayout c = card(root);
     TextView sub = text(c, t("prompts_sub"), 13, MUTED, false);
