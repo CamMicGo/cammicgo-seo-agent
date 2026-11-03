@@ -6,10 +6,10 @@ export const SHEETS_SCOPE='https://www.googleapis.com/auth/spreadsheets';
 export const TRANSCRIPT_HEADERS=['channel_name','channel_id','author','video_title','video_id','published_at','video_url','language','transcript','extracted_at'];
 export type TranscriptSheetRow={channel_name:string;channel_id:string;author:string;video_title:string;video_id:string;published_at:string;video_url:string;language:string;transcript:string;extracted_at:string};
 const API='https://sheets.googleapis.com/v4/spreadsheets';
-async function call(token:string,url:string,init:RequestInit={}):Promise<any>{
+async function call(token:string,url:string,init:RequestInit={}):Promise<Record<string, unknown>>{
  const res=await fetch(url,{...init,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json',...init.headers},cache:'no-store'});
- const data=await res.json().catch(()=>({}));
- if(!res.ok)throw new Error('Google Sheets HTTP '+res.status+': '+String(data.error?.message||'request failed'));
+ const data=await res.json().catch(()=>({})) as Record<string, unknown>;
+ if(!res.ok)throw new Error('Google Sheets HTTP '+res.status+': '+String((data.error as {message?:string}|undefined)?.message||'request failed'));
  return data;
 }
 const range=(id:string,a1:string)=>API+'/'+encodeURIComponent(id)+'/values/'+encodeURIComponent(a1);
@@ -23,7 +23,7 @@ export function sheetValues(row:TranscriptSheetRow){return TRANSCRIPT_HEADERS.ma
 export async function upsertChannelRows(token:string,spreadsheetId:string,rows:TranscriptSheetRow[]){
  if(!/^[a-zA-Z0-9_-]{10,200}$/.test(spreadsheetId))throw Error('Invalid spreadsheet ID');
  const existing=await call(token,range(spreadsheetId,'Transcriptions!A1:J')+'?majorDimension=ROWS');
- const values:string[][]=existing.values||[];
+ const values:string[][]=Array.isArray(existing.values)?existing.values as string[][]:[];
  if(values.length&&TRANSCRIPT_HEADERS.some((v,i)=>values[0]?.[i]!==v))throw Error('Unexpected sheet columns; refusing overwrite');
  const indexes=new Map<string,number>();
  for(let i=1;i<values.length;i++){const id=values[i]?.[4];if(id)indexes.set(id,i+1)}
