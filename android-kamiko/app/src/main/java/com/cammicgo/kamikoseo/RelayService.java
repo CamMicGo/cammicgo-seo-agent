@@ -215,7 +215,9 @@ public class RelayService extends Service {
       RelayClient.request("POST","/api/devices/jobs/"+id,token,body.toString());
       notebookHistory(id,label,"done",null);
       status("NotebookLM : opération exécutée");
-    } catch (Exception ex) {
+    } catch (Throwable ex) {
+      // Catch WebView/Android runtime failures too, so no claimed job stays stuck locally.
+      android.util.Log.e("CamMicGoNotebook","NotebookLM job failed "+id,ex);
       String error=ex.getMessage()==null?ex.getClass().getSimpleName():ex.getMessage();
       // Persist the failure locally before any network request. A failed error
       // acknowledgement must never leave the UI showing "working" indefinitely.
@@ -224,7 +226,7 @@ public class RelayService extends Service {
       try {
         JSONObject body=new JSONObject().put("type","notebooklm").put("error",error);
         RelayClient.request("POST","/api/devices/jobs/"+id,token,body.toString());
-      } catch (Exception reportFailure) {
+      } catch (Throwable reportFailure) {
         android.util.Log.e("CamMicGoNotebook","Unable to report notebook job failure "+id,reportFailure);
       }
     }
