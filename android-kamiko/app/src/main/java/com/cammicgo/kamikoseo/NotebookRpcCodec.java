@@ -22,7 +22,7 @@ final class NotebookRpcCodec {
   private NotebookRpcCodec() {}
 
   static String envelope(String rpcId, JSONArray params) throws JSONException {
-    if (rpcId == null || !rpcId.matches("[A-Za-z0-9]{6}"))
+    if (rpcId == null || !rpcId.matches("[A-Za-z0-9]{5,8}"))
       throw new JSONException("Invalid NotebookLM RPC identifier");
     JSONArray call = new JSONArray().put(rpcId).put(params.toString()).put(JSONObject.NULL).put("generic");
     return new JSONArray().put(new JSONArray().put(call)).toString();
