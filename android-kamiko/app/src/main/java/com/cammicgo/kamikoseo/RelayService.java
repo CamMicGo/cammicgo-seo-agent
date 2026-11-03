@@ -275,7 +275,10 @@ public class RelayService extends Service {
       else if ("source_sync_drive".equals(operation)) result=client.sourceSyncDrive(job.optString("notebookUrl"),job.optString("sourceId"));
       else if ("source_delete".equals(operation)) result=client.sourceDelete(job.optString("notebookUrl"),job.optString("sourceId"),job.optString("expectedTitle"),job.optBoolean("confirm",false));
       else if ("query".equals(operation)) result=client.queryNotebook(job.optString("notebookUrl"),job.optString("question"));
-      else if ("studio_create".equals(operation)) result=client.studioCreate(job.optString("notebookUrl"),job.optString("kind"),job.optString("language","fr"),job.optString("focus",""));
+      else if ("studio_create".equals(operation)) result=client.studioCreateAdvanced(job.optString("notebookUrl"),job.optString("kind"),job.optString("language","fr"),job.optString("focus",""),job.optString("format",""),job.optInt("optionA",1),job.optInt("optionB",2));
+      else if ("research_start".equals(operation)) result=client.researchStart(job.optString("notebookUrl"),job.optString("query"),job.optString("source","web"),job.optString("mode","fast"));
+      else if ("research_status".equals(operation)) result=client.researchStatus(job.optString("notebookUrl"),job.optString("taskId"));
+      else if ("research_import".equals(operation)) result=client.researchImport(job.optString("notebookUrl"),job.optString("taskId"),new JSONArray(job.optString("sources","[]")),job.optBoolean("confirm",false));
       else if ("studio_status".equals(operation)) result=client.studioStatus(job.optString("notebookUrl"));
       else if ("studio_get".equals(operation)) result=client.studioGet(job.optString("notebookUrl"),job.optString("artifactId"));
       else if ("artifact_download_link".equals(operation)) result=client.artifactDownloadLink(job.optString("notebookUrl"),job.optString("artifactId"));
