@@ -650,4 +650,26 @@ final class NotebookClient {
     return new JSONObject().put("sourceId",sourceId).put("deleted",true).put("verified",true);
   }
 
+  JSONObject studioGet(String notebookUrl,String artifactId) throws Exception {
+    String id=ownedNotebookId(notebookUrl);
+    if(artifactId==null||!artifactId.matches("[A-Za-z0-9_-]{8,128}"))
+      throw new IOException("Invalid artifact ID");
+    JSONArray allowed=new JSONArray();
+    int[] types={1,2,3,4,7,8,9,10,11};
+    for(int type:types)allowed.put(type);
+    JSONArray flags=new JSONArray().put(1);
+    for(int j=0;j<9;j++)flags.put(JSONObject.NULL);
+    flags.put(new JSONArray().put(1));
+    JSONArray config=new JSONArray().put(2).put(JSONObject.NULL).put(JSONObject.NULL)
+      .put(flags).put(new JSONArray().put(allowed));
+    Object raw=rpc("v9rmvd",new JSONArray().put(artifactId).put(config),"/notebook/"+id);
+    if(!(raw instanceof JSONArray))throw new IOException("Artifact details unavailable");
+    JSONArray a=((JSONArray)raw).optJSONArray(0);
+    if(a==null||!artifactId.equals(a.optString(0)))throw new IOException("Artifact ID mismatch");
+    if(a.toString().length()>350000)throw new IOException("Artifact too large for relay JSON response");
+    return new JSONObject().put("artifactId",artifactId).put("notebookId",id)
+      .put("typeCode",a.optInt(2,-1)).put("rawArtifact",a)
+      .put("format","notebooklm-native-artifact");
+  }
+
 }
