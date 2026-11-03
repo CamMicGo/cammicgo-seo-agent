@@ -272,6 +272,9 @@ public class RelayService extends Service {
       else if ("list".equals(operation)) result=client.list();
       else if ("usage".equals(operation)) result=client.usage();
       else if ("source_list".equals(operation)) result=client.sourceList(job.optString("notebookUrl"));
+      else if ("source_describe".equals(operation)) result=client.sourceDescribe(job.optString("notebookUrl"),job.optString("sourceId"));
+      else if ("source_get_content".equals(operation)) result=client.sourceContent(job.optString("notebookUrl"),job.optString("sourceId"));
+      else if ("note".equals(operation)) result=client.noteManage(job.optString("notebookUrl"),job.optString("action"),job.optString("noteId"),job.optString("title"),job.has("content")?job.optString("content"):null,job.optBoolean("confirm",false));
       else if ("source_rename".equals(operation)) result=client.sourceRename(job.optString("notebookUrl"),job.optString("sourceId"),job.optString("title"));
       else if ("source_sync_drive".equals(operation)) result=client.sourceSyncDrive(job.optString("notebookUrl"),job.optString("sourceId"));
       else if ("source_delete".equals(operation)) result=client.sourceDelete(job.optString("notebookUrl"),job.optString("sourceId"),job.optString("expectedTitle"),job.optBoolean("confirm",false));
