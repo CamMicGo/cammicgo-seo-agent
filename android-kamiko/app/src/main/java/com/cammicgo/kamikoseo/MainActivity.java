@@ -67,12 +67,12 @@ public class MainActivity extends Activity {
       LINE = Color.rgb(223, 232, 247), FIELD = Color.rgb(244, 248, 255), GREEN = Color.rgb(22, 163, 74),
       AMBER = Color.rgb(217, 119, 6), RED = Color.rgb(200, 50, 50), GREY = Color.rgb(170, 180, 200);
   static final int EXPORT_REQUEST = 41;
-  static final String[] TABS = {"tab_assistant", "tab_extract", "tab_help"};
+  static final String[] TABS = {"tab_assistant", "tab_extract", "NotebookLM", "tab_help"};
 
   private final ExecutorService worker = Executors.newSingleThreadExecutor();
   private final Handler ui = new Handler(Looper.getMainLooper());
-  private final View[] pages = new View[3];
-  private final TextView[] tabViews = new TextView[3];
+  private final View[] pages = new View[4];
+  private final TextView[] tabViews = new TextView[4];
   private int currentTab = 0;
 
   // header
@@ -242,7 +242,8 @@ public class MainActivity extends Activity {
     shell.addView(host, new LinearLayout.LayoutParams(-1, 0, 1));
     buildAssistantPage(page(host, 0));
     buildExtractPage(page(host, 1));
-    buildHelpPage(page(host, 2));
+    buildNotebookPage(page(host, 2));
+    buildHelpPage(page(host, 3));
 
     setContentView(shell);
     selectTab(state != null ? state.getInt("tab", 0) : 0);
@@ -620,9 +621,9 @@ public class MainActivity extends Activity {
     });
   }
 
-  // ---------- tab 3: help ----------
+  // ---------- tab 3: NotebookLM ----------
 
-  private void buildHelpPage(LinearLayout root) {
+  private void buildNotebookPage(LinearLayout root) {
     section(root, "NotebookLM · CamMicGo");
     LinearLayout notebookCard = card(root);
     text(notebookCard, "Ouvrir NotebookLM sur ce téléphone", 15, INK, true);
@@ -667,6 +668,10 @@ public class MainActivity extends Activity {
     notebookCard.addView(openSavedNotebook, gapTop(8));
 
 
+  }
+
+  // ---------- tab 4: help ----------
+  private void buildHelpPage(LinearLayout root) {
     section(root, t("sec_prompts"));
     LinearLayout c = card(root);
     TextView sub = text(c, t("prompts_sub"), 13, MUTED, false);
