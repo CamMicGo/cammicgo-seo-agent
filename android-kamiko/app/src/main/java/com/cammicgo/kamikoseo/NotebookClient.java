@@ -707,4 +707,86 @@ final class NotebookClient {
       .put("format","notebooklm-native-artifact");
   }
 
+  JSONObject researchStart(String notebookUrl,String query,String source,String mode) throws Exception {
+    String id=ownedNotebookId(notebookUrl);
+    if(query==null||query.trim().isEmpty()||query.length()>3000)
+      throw new IOException("Research query required, max 3000 characters");
+    if(!"web".equals(source)&&!"drive".equals(source))throw new IOException("Invalid research source");
+    if(!"fast".equals(mode)&&!"deep".equals(mode))throw new IOException("Invalid research mode");
+    if("deep".equals(mode)&&"drive".equals(source))throw new IOException("Deep Drive research unsupported");
+    int sourceCode="web".equals(source)?1:2;
+    JSONArray params;
+    String rpcId;
+    if("fast".equals(mode)){
+      rpcId="Ljjv0c";
+      params=new JSONArray().put(new JSONArray().put(query).put(sourceCode))
+        .put(JSONObject.NULL).put(1).put(id);
+    }else{
+      rpcId="QA9ei";
+      params=new JSONArray().put(JSONObject.NULL).put(new JSONArray().put(1))
+        .put(new JSONArray().put(query).put(sourceCode)).put(5).put(id);
+    }
+    Object raw=rpc(rpcId,params,"/notebook/"+id);
+    if(!(raw instanceof JSONArray))throw new IOException("Research start not accepted");
+    JSONArray result=(JSONArray)raw;
+    if(result.optString(0).isEmpty())throw new IOException("Research task ID missing");
+    return new JSONObject().put("taskId",result.optString(0))
+      .put("reportId",result.optString(1)).put("notebookId",id)
+      .put("source",source).put("mode",mode).put("status","started");
+  }
+  JSONObject researchStatus(String notebookUrl,String taskId) throws Exception {
+    String id=ownedNotebookId(notebookUrl);
+    Object raw=rpc("e3bVqc",new JSONArray().put(JSONObject.NULL).put(JSONObject.NULL).put(id),"/notebook/"+id);
+    if(!(raw instanceof JSONArray))throw new IOException("Research status unavailable");
+    JSONArray items=(JSONArray)raw;
+    if(items.optJSONArray(0)!=null&&items.optJSONArray(0).optJSONArray(0)!=null)
+      items=items.getJSONArray(0);
+    JSONArray tasks=new JSONArray();
+    for(int j=0;j<items.length();j++){
+      JSONArray item=items.optJSONArray(j);
+      if(item==null||!(item.opt(0) instanceof String))continue;
+      String foundId=item.optString(0);
+      if(taskId!=null&&!taskId.isEmpty()&&!taskId.equals(foundId))continue;
+      JSONArray info=item.optJSONArray(1);
+      if(info==null)continue;
+      JSONArray queryInfo=info.optJSONArray(1);
+      JSONObject t=new JSONObject().put("taskId",foundId)
+        .put("query",queryInfo==null?"":queryInfo.optString(0))
+        .put("modeCode",info.opt(2)).put("statusCode",info.opt(4));
+      JSONArray discovered=info.optJSONArray(3);
+      if(discovered!=null){
+        if(discovered.toString().length()>180000)throw new IOException("Research results exceed relay limit");
+        t.put("discoveredRaw",discovered);
+      }
+      tasks.put(t);
+    }
+    return new JSONObject().put("notebookId",id).put("tasks",tasks).put("count",tasks.length())
+      .put("note","Raw discovered results are untrusted; import only user-selected URLs");
+  }
+  JSONObject researchImport(String notebookUrl,String taskId,JSONArray sources,boolean confirm) throws Exception {
+    if(!confirm)throw new IOException("Research source import requires confirmation");
+    String id=ownedNotebookId(notebookUrl);
+    if(taskId==null||taskId.isEmpty()||sources==null||sources.length()==0||sources.length()>50)
+      throw new IOException("Invalid research import selection");
+    JSONArray payload=new JSONArray();
+    for(int i=0;i<sources.length();i++){
+      JSONObject source=sources.getJSONObject(i);
+      String url=source.optString("url"),title=source.optString("title","Untitled");
+      if(!url.startsWith("https://")||url.length()>3000)
+        throw new IOException("Research source URL must be HTTPS");
+      if(title.length()>250)throw new IOException("Research source title too long");
+      JSONArray row=new JSONArray().put(JSONObject.NULL).put(JSONObject.NULL)
+        .put(new JSONArray().put(url).put(title));
+      for(int j=0;j<7;j++)row.put(JSONObject.NULL);
+      row.put(2);
+      payload.put(row);
+    }
+    Object raw=rpc("LBwxtb",new JSONArray().put(JSONObject.NULL).put(new JSONArray().put(1))
+      .put(taskId).put(id).put(payload),"/notebook/"+id);
+    if(!(raw instanceof JSONArray))throw new IOException("Research import not confirmed");
+    return new JSONObject().put("notebookId",id).put("taskId",taskId)
+      .put("requestedSources",sources.length()).put("status","accepted")
+      .put("verifyWith","source_list");
+  }
+
 }
