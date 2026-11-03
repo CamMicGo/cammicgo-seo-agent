@@ -466,6 +466,7 @@ public class MainActivity extends Activity {
     statWaiting = stat(progressStats, BLUE, t("stat_waiting"));
     statFailed = stat(progressStats, RED, t("stat_failed"));
     p.addView(progressStats, gapTop(12));
+    text(p, t("queue_scope"), 12, MUTED, false).setPadding(0, dp(10), 0, 0);
     LinearLayout activityRow = new LinearLayout(this);
     activityRow.setOrientation(LinearLayout.HORIZONTAL);
     activityRow.setGravity(Gravity.CENTER_VERTICAL);
