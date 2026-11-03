@@ -123,7 +123,7 @@ final class NotebookClient {
     JSONArray existing=list().getJSONArray("notebooks");
     for(int i=0;i<existing.length();i++)if(title.equals(existing.getJSONObject(i).optString("title")))
       return new JSONObject().put("notebookCreated",false).put("verifiedInList",true)
-        .put("alreadyExists",true).put("title",title).put("url",existing.getJSONObject(i).optString("url"));
+        .put("alreadyExists",true).put("title",title).put("id",existing.getJSONObject(i).optString("id")).put("url",existing.getJSONObject(i).optString("url"));
     JSONArray flags=new JSONArray().put(1);
     JSONArray metadata=new JSONArray().put(1);
     for(int i=0;i<9;i++)metadata.put(JSONObject.NULL);
@@ -136,8 +136,14 @@ final class NotebookClient {
     String id=created.optString(2,"");
     if(id.isEmpty())throw new IOException("NotebookLM did not return notebook ID");
     boolean verified=false;
-    JSONArray after=list().getJSONArray("notebooks");
-    for(int i=0;i<after.length();i++)if(id.equals(after.getJSONObject(i).optString("id")))verified=true;
+    // NotebookLM's list index can lag behind a successful create RPC.
+    // Reconcile the returned ID before reporting failure; never issue create twice.
+    for(int attempt=0;attempt<4&&!verified;attempt++){
+      if(attempt>0)Thread.sleep(1200L*attempt);
+      JSONArray after=list().getJSONArray("notebooks");
+      for(int i=0;i<after.length();i++)
+        if(id.equals(after.getJSONObject(i).optString("id")))verified=true;
+    }
     if(!verified)throw new IOException("NotebookLM a renvoyé un identifiant, mais le notebook n’est pas visible dans Mes notebooks : "+id);
     return new JSONObject().put("notebookCreated",true).put("verifiedInList",verified)
       .put("title",title).put("id",id).put("url",HOME+"notebook/"+id);
