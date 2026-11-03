@@ -13,6 +13,7 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.regex.Matcher;
+import android.webkit.WebView;
 import java.util.regex.Pattern;
 
 /** Pure Java, on-device NotebookLM client. Session cookies never leave the device.
@@ -53,7 +54,7 @@ final class NotebookClient {
       c.setRequestProperty("User-Agent","Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36");
       c.setRequestProperty("Accept","*/*");
       c.setRequestProperty("Referer",HOME);
-      c.setRequestProperty("Origin","https://notebooklm.google.com");
+      c.setRequestProperty("Origin","https://notebook.google.com");
       if(body!=null){
         c.setDoOutput(true);c.setRequestProperty("Content-Type","application/x-www-form-urlencoded;charset=UTF-8");
         try(OutputStream out=c.getOutputStream()){out.write(body.getBytes(StandardCharsets.UTF_8));}
@@ -75,7 +76,7 @@ final class NotebookClient {
   private Object rpc(String id,JSONArray args,String sourcePath) throws Exception {
     String page=request(HOME,"GET",null);
     String csrf=field(page,"SNlM0e"),sid=field(page,"FdrFJe"),bl=field(page,"cfb2h");
-    if(csrf.isEmpty())throw new IOException("Session NotebookLM indisponible : ouvrez NotebookLM dans l'APK et connectez-vous.");
+    if(csrf.isEmpty())throw new IOException("Page NotebookLM accessible mais jeton RPC absent (SNlM0e). Vérifier le chargement de la session WebView et les paramètres de la page.");
     String url=HOME+"_/LabsTailwindUi/data/batchexecute?rpcids="+id+"&source-path="+
       URLEncoder.encode(sourcePath,"UTF-8")+"&hl=fr&rt=c";
     if(!bl.isEmpty())url+="&bl="+URLEncoder.encode(bl,"UTF-8");
@@ -135,6 +136,7 @@ final class NotebookClient {
     boolean verified=false;
     JSONArray after=list().getJSONArray("notebooks");
     for(int i=0;i<after.length();i++)if(id.equals(after.getJSONObject(i).optString("id")))verified=true;
+    if(!verified)throw new IOException("NotebookLM a renvoyé un identifiant, mais le notebook n’est pas visible dans Mes notebooks : "+id);
     return new JSONObject().put("notebookCreated",true).put("verifiedInList",verified)
       .put("title",title).put("id",id).put("url",HOME+"notebook/"+id);
   }
