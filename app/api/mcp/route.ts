@@ -164,7 +164,22 @@ async function handler(req:NextRequest){
     while(Date.now()<deadline){
      await new Promise(r=>setTimeout(r,1500));
      const state=await liRelay.getLinkedIn(user.id,job.id);
-     if(state?.status==='done')return asText({status:'done',data:state.result});
+     if(state?.status==='done'){
+      const data=state.result;
+      if(operation==='thread'&&data&&typeof data==='object'){
+       const thread=data as Record<string,unknown>;
+       const attachments=Array.isArray(thread.attachments)?thread.attachments:[];
+       const images=await Promise.all(attachments.map(async(a:unknown)=>{
+        if(!a||typeof a!=='object')return a;
+        const item=a as Record<string,unknown>;
+        if(typeof item.storagePath!=='string')return item;
+        try{return {...item,downloadUrl:await liRelay.signedLinkedInImage(user.id,job.id,item.storagePath),expiresInSeconds:300};}
+        catch(e){return {...item,linkError:e instanceof Error?e.message:'Signing failed'};}
+       }));
+       return asText({status:'done',data:{...thread,attachments:images},note:'Image links are temporary; open them for visual analysis. Text and media URLs alone do not constitute image understanding.'});
+      }
+      return asText({status:'done',data});
+     }
      if(state?.status==='error')return asText({status:'error',error:state.error});
     }
     return asText({status:'pending',jobId:job.id,message:'Ouvrez CamMicGo Android avec le contrôle LinkedIn activé; vérifiez avec linkedin_job_status.'});
