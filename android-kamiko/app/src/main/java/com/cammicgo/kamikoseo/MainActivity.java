@@ -71,13 +71,14 @@ public class MainActivity extends Activity {
       LINE = Color.rgb(223, 232, 247), FIELD = Color.rgb(244, 248, 255), GREEN = Color.rgb(22, 163, 74),
       AMBER = Color.rgb(217, 119, 6), RED = Color.rgb(200, 50, 50), GREY = Color.rgb(170, 180, 200);
   static final int EXPORT_REQUEST = 41;
-  static final String[] TABS = {"tab_assistant", "tab_extract", "NotebookLM", "tab_help"};
+  static final String[] TABS = {"tab_assistant", "tab_extract", "NotebookLM", "LinkedIn", "tab_help"};
 
   private final ExecutorService worker = Executors.newSingleThreadExecutor();
   private final Handler ui = new Handler(Looper.getMainLooper());
-  private final View[] pages = new View[4];
+  private final View[] pages = new View[5];
   private WebView notebookWeb;
-  private final TextView[] tabViews = new TextView[4];
+  private WebView linkedinWeb;
+  private final TextView[] tabViews = new TextView[5];
   private int currentTab = 0;
 
   // header
@@ -248,7 +249,8 @@ public class MainActivity extends Activity {
     buildAssistantPage(page(host, 0));
     buildExtractPage(page(host, 1));
     buildNotebookTab(host);
-    buildHelpPage(page(host, 3));
+    buildLinkedInTab(host);
+    buildHelpPage(page(host, 4));
 
     setContentView(shell);
     selectTab(state != null ? state.getInt("tab", 0) : 0);
@@ -318,7 +320,7 @@ public class MainActivity extends Activity {
     seg.setBackground(shape(Color.rgb(230, 237, 250), 14, 0));
     for (int i = 0; i < TABS.length; i++) {
       final int index = i;
-      TextView t = text(null, i == 2 ? "NotebookLM" : t(TABS[i]), 12, MUTED, true);
+      TextView t = text(null, (i == 2 || i == 3) ? TABS[i] : t(TABS[i]), 12, MUTED, true);
       t.setGravity(Gravity.CENTER);
       t.setSingleLine(true);
       t.setPadding(dp(2), dp(10), dp(2), dp(10));
@@ -639,6 +641,38 @@ public class MainActivity extends Activity {
       send.putExtra(Intent.EXTRA_TEXT, TranscriptFetcher.toText(last));
       startActivity(Intent.createChooser(send, t("share_title")));
     });
+  }
+
+  // ---------- LinkedIn: personal account, on-device session ----------
+  private void buildLinkedInTab(FrameLayout host) {
+    LinearLayout root = new LinearLayout(this);
+    root.setOrientation(LinearLayout.VERTICAL);
+    root.setBackgroundColor(BG);
+    host.addView(root, new FrameLayout.LayoutParams(-1, -1));
+    pages[3] = root;
+
+    LinearLayout actions = new LinearLayout(this);
+    actions.setPadding(dp(8), dp(6), dp(8), dp(6));
+    Button messages = secondary(t("linkedin_messages"));
+    Button network = secondary(t("linkedin_network"));
+    Button search = secondary(t("linkedin_search"));
+    actions.addView(messages, new LinearLayout.LayoutParams(0, -2, 1));
+    actions.addView(network, new LinearLayout.LayoutParams(0, -2, 1));
+    actions.addView(search, new LinearLayout.LayoutParams(0, -2, 1));
+    root.addView(actions);
+
+    linkedinWeb = new WebView(this);
+    linkedinWeb.getSettings().setJavaScriptEnabled(true);
+    linkedinWeb.getSettings().setDomStorageEnabled(true);
+    CookieManager.getInstance().setAcceptCookie(true);
+    CookieManager.getInstance().setAcceptThirdPartyCookies(linkedinWeb, true);
+    linkedinWeb.setWebChromeClient(new WebChromeClient());
+    linkedinWeb.setWebViewClient(new WebViewClient());
+    root.addView(linkedinWeb, new LinearLayout.LayoutParams(-1, 0, 1));
+    messages.setOnClickListener(v -> linkedinWeb.loadUrl("https://www.linkedin.com/messaging/"));
+    network.setOnClickListener(v -> linkedinWeb.loadUrl("https://www.linkedin.com/mynetwork/"));
+    search.setOnClickListener(v -> linkedinWeb.loadUrl("https://www.linkedin.com/search/results/people/"));
+    linkedinWeb.loadUrl("https://www.linkedin.com/messaging/");
   }
 
   // ---------- tab 3: NotebookLM ----------
