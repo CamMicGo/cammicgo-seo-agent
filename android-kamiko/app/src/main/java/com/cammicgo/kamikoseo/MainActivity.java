@@ -702,7 +702,7 @@ public class MainActivity extends Activity {
     root.addView(shareThread, new LinearLayout.LayoutParams(-1, -2));
     shareThread.setOnClickListener(v -> {
       String current = linkedinWeb.getUrl();
-      if (current == null || !current.startsWith("https://www.linkedin.com/messaging/")) {
+      if (!isLinkedInMessagingPage()) {
         Toast.makeText(this, I18n.code(this).equals("fr") ? "Ouvrez d'abord une conversation LinkedIn." : "Open a LinkedIn conversation first.", Toast.LENGTH_LONG).show();
         return;
       }
@@ -722,19 +722,19 @@ public class MainActivity extends Activity {
     tests.addView(inspectThread, new LinearLayout.LayoutParams(0, -2, 1));
     root.addView(tests);
     inspectChats.setOnClickListener(v -> {
-      if (linkedinWeb.getUrl() == null || !linkedinWeb.getUrl().startsWith("https://www.linkedin.com/messaging/")) {
+      if (!isLinkedInMessagingPage()) {
         Toast.makeText(this, "Ouvrez la messagerie LinkedIn.", Toast.LENGTH_LONG).show();
         return;
       }
-      String js = "(function(){const nodes=[...document.querySelectorAll('[data-control-name*=conversation],li[class*=msg-conversation],li[class*=conversation-list],a[href*=\\\"/messaging/thread/\\\"]')];const rows=nodes.map(n=>({name:(n.querySelector('h3,h4,[class*=participant],[class*=name]')?.innerText||n.innerText||'').trim().slice(0,160),preview:(n.innerText||'').trim().slice(0,400)})).filter(x=>x.name).slice(0,5);return JSON.stringify({url:location.pathname,count:rows.length,rows});})()";
+      String js = "(function(){const els=[...document.querySelectorAll('a[href*=messaging],li[class*=conversation], [data-control-name*=conversation]')];const seen=new Set();const rows=[];for(const n of els){const text=(n.innerText||'').trim();if(!text)continue;const name=(n.querySelector('h3,h4,[class*=participant],[class*=name]')?.innerText||text.split('\\n')[0]||'').trim();const key=name.toLocaleLowerCase();if(!name||seen.has(key))continue;seen.add(key);rows.push({name,preview:text.slice(0,400)});if(rows.length===5)break;}return JSON.stringify({url:location.pathname,count:rows.length,rows});})()";
       linkedinWeb.evaluateJavascript(js, result -> showLinkedInInspection(result, false));
     });
     inspectThread.setOnClickListener(v -> {
-      if (linkedinWeb.getUrl() == null || !linkedinWeb.getUrl().startsWith("https://www.linkedin.com/messaging/")) {
+      if (!isLinkedInMessagingPage()) {
         Toast.makeText(this, "Ouvrez une conversation LinkedIn.", Toast.LENGTH_LONG).show();
         return;
       }
-      String js = "(function(){const nodes=[...document.querySelectorAll('[class*=msg-s-event-listitem],[class*=message-event],li[class*=message]')];const messages=nodes.map(n=>({text:(n.innerText||'').trim().slice(0,4000)})).filter(x=>x.text).slice(-30);return JSON.stringify({url:location.pathname,count:messages.length,messages});})()";
+      String js = "(function(){const selectors=['[class*=msg-s-event-listitem]','[class*=message-event]','li[class*=message]','[class*=msg-s-message-list] [class*=bubble]','[class*=message-bubble]','[class*=msg-thread] [class*=message]'];let nodes=[];for(const sel of selectors){const found=[...document.querySelectorAll(sel)].filter(n=>(n.innerText||'').trim());if(found.length>nodes.length)nodes=found;}const seen=new Set();const messages=[];for(const n of nodes){const text=(n.innerText||'').trim();if(!text||seen.has(text))continue;seen.add(text);messages.push({text:text.slice(0,4000)});}return JSON.stringify({url:location.pathname,count:messages.length,messages:messages.slice(-30),diagnostic:{title:document.title,matchedSelectors:selectors.map(s=>({selector:s,count:document.querySelectorAll(s).length}))}});})()";
       linkedinWeb.evaluateJavascript(js, result -> showLinkedInInspection(result, true));
     });
     linkedinWeb.setWebChromeClient(new WebChromeClient());
@@ -744,6 +744,18 @@ public class MainActivity extends Activity {
     network.setOnClickListener(v -> linkedinWeb.loadUrl("https://www.linkedin.com/mynetwork/"));
     search.setOnClickListener(v -> linkedinWeb.loadUrl("https://www.linkedin.com/search/results/people/"));
     linkedinWeb.loadUrl("https://www.linkedin.com/messaging/");
+  }
+
+  private boolean isLinkedInMessagingPage() {
+    if (linkedinWeb == null || linkedinWeb.getUrl() == null) return false;
+    try {
+      Uri uri = Uri.parse(linkedinWeb.getUrl());
+      String host = uri.getHost();
+      if (host == null || !(host.equals("linkedin.com") || host.endsWith(".linkedin.com"))) return false;
+      String path = uri.getPath();
+      // Mobile LinkedIn can use /messaging, /messaging/thread/... or /comm/messaging/...
+      return path != null && (path.contains("messaging") || path.contains("message"));
+    } catch (Exception ignored) { return false; }
   }
 
   private void showLinkedInInspection(String raw, boolean thread) {
