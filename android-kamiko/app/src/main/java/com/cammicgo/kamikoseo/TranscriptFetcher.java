@@ -578,6 +578,19 @@ public final class TranscriptFetcher {
     return null;
   }
 
+  /** Retry-After may be seconds or an RFC 1123 HTTP date; bound to 24 hours. */
+  static long retryAfterMillis(String header, long now) {
+    if (header == null || header.trim().isEmpty()) return 3_600_000L;
+    try {
+      long seconds = Long.parseLong(header.trim());
+      return Math.min(86_400_000L, Math.max(1000L, seconds > 86400L ? 86_400_000L : seconds * 1000L));
+    } catch (NumberFormatException ignored) { }
+    try {
+      long at = java.time.ZonedDateTime.parse(header.trim(), java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli();
+      return Math.min(86_400_000L, Math.max(1000L, at - now));
+    } catch (java.time.format.DateTimeParseException ignored) { return 3_600_000L; }
+  }
+
   static String http(String url, String postBody, String userAgent, String contentType) throws IOException {
     HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
     try {
@@ -599,7 +612,11 @@ public final class TranscriptFetcher {
         try (OutputStream os = c.getOutputStream()) { os.write(bytes); }
       }
       int status = c.getResponseCode();
-      if (status == 429) throw new IOException("HTTP 429 : trop de requêtes, YouTube limite temporairement cet appareil.");
+      if (status == 429) {
+        long retryMs = retryAfterMillis(c.getHeaderField("Retry-After"), System.currentTimeMillis());
+        throw new IOException("HTTP 429 retryAfterMs=" + retryMs + " : YouTube limite temporairement cet appareil.");
+      }
+      if (status == 400) throw new IOException("HTTP 400 : requête refusée, aucune nouvelle tentative automatique.");
       if (status != 200) throw new IOException("HTTP " + status);
       try (InputStream in = c.getInputStream()) {
         ByteArrayOutputStream b = new ByteArrayOutputStream();
