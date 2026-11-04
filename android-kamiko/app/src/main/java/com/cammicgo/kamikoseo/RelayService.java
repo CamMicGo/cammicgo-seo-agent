@@ -262,7 +262,8 @@ public class RelayService extends Service {
     String id=job.optString("id");
     String operation=job.optString("type").replace("notebooklm_", "");
     String title=job.optString("title", job.optString("notebookUrl", "NotebookLM"));
-    String label=("create".equals(operation)?"Créer un notebook": "list".equals(operation)?"Lister les notebooks":"Ajouter une source")+" · "+title;
+    String actionLabel="create".equals(operation)?"Créer un notebook": "list".equals(operation)?"Lister les notebooks": "delete".equals(operation)?"Supprimer un notebook": "delete_preview".equals(operation)?"Vérifier la suppression": "rename".equals(operation)?"Renommer un notebook": "add_url_source".equals(operation)||"add_text_source".equals(operation)||"add_drive_source".equals(operation)?"Ajouter une source": "source_list".equals(operation)?"Lister les sources": "get".equals(operation)?"Consulter un notebook": "Opération "+operation;
+    String label=actionLabel+" · "+title;
     notebookHistory(id,label, "working", null);
     status("NotebookLM : "+label);
     try {
@@ -294,7 +295,7 @@ public class RelayService extends Service {
       else if ("notebook_share_invite".equals(operation)) result=client.shareInvite(job.optString("notebookUrl"),job.optString("email"),job.optString("role","viewer"),job.optBoolean("confirm",false));
       else if ("get".equals(operation)) result=client.getNotebook(job.optString("notebookUrl"));
       else if ("delete_preview".equals(operation)) result=client.deletionPreview(job.optString("notebookUrl"));
-      else if ("delete".equals(operation)) result=client.deleteNotebook(job.optString("notebookUrl"),job.optString("expectedTitle"),job.optInt("expectedSourceCount",-1),job.optBoolean("confirm",false));
+      else if ("delete".equals(operation)) result=client.deleteNotebook(job.optString("notebookUrl"),job.optString("expectedTitle"),job.optBoolean("confirm",false));
       else if ("rename".equals(operation)) result=client.renameNotebook(job.optString("notebookUrl"),job.optString("title"));
       else if ("add_text_source".equals(operation)) result=client.addText(job.optString("notebookUrl"),job.optString("title"),job.optString("text"));
       else if ("add_drive_source".equals(operation)) result=client.addDrive(job.optString("notebookUrl"),job.optString("documentId"),job.optString("title"),job.optString("mimeType"));
