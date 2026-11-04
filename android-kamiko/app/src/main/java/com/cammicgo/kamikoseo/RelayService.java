@@ -271,6 +271,9 @@ public class RelayService extends Service {
     String title=job.optString("title", job.optString("notebookUrl", "NotebookLM"));
     String actionLabel="create".equals(operation)?"Créer un notebook": "list".equals(operation)?"Lister les notebooks": "delete".equals(operation)?"Supprimer un notebook": "delete_preview".equals(operation)?"Vérifier la suppression": "rename".equals(operation)?"Renommer un notebook": "add_url_source".equals(operation)||"add_text_source".equals(operation)||"add_drive_source".equals(operation)?"Ajouter une source": "source_list".equals(operation)?"Lister les sources": "get".equals(operation)?"Consulter un notebook": "Opération "+operation;
     String label=actionLabel+" · "+title;
+    // Show the authenticated MCP client when provided by the server; never infer it.
+    String agent=job.optString("agentName", job.optString("agentSource", "")).trim();
+    if (!agent.isEmpty()) label=agent+" · "+label;
     notebookHistory(id,label, "working", null);
     status("NotebookLM : "+label);
     try {
