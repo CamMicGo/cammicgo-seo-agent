@@ -77,6 +77,11 @@ public class MainActivity extends Activity {
   private final Handler ui = new Handler(Looper.getMainLooper());
   private final View[] pages = new View[5];
   private WebView notebookWeb;
+  private LinearLayout notebookActions;
+  private boolean notebookExpanded = false;
+  private Button notebookExpand;
+  private LinearLayout appShell;
+  private View appHeader, appTabs;
   private WebView linkedinWeb;
   private final TextView[] tabViews = new TextView[5];
   private int currentTab = 0;
@@ -241,8 +246,13 @@ public class MainActivity extends Activity {
     shell.setBackgroundColor(BG);
     shell.setLayoutDirection(I18n.rtl(this) ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
 
+    appShell = shell;
+    int beforeHeader = shell.getChildCount();
     buildAppBar(shell);
+    appHeader = shell.getChildCount() > beforeHeader ? shell.getChildAt(beforeHeader) : null;
+    int beforeTabs = shell.getChildCount();
     buildTabs(shell);
+    appTabs = shell.getChildCount() > beforeTabs ? shell.getChildAt(beforeTabs) : null;
 
     FrameLayout host = new FrameLayout(this);
     shell.addView(host, new LinearLayout.LayoutParams(-1, 0, 1));
@@ -653,9 +663,9 @@ public class MainActivity extends Activity {
 
     LinearLayout actions = new LinearLayout(this);
     actions.setPadding(dp(8), dp(6), dp(8), dp(6));
-    Button messages = secondary(t("linkedin_messages"));
-    Button network = secondary(t("linkedin_network"));
-    Button search = secondary(t("linkedin_search"));
+    Button messages = secondary("✉  " + t("linkedin_messages"));
+    Button network = secondary("♧  " + t("linkedin_network"));
+    Button search = secondary("⌕  " + t("linkedin_search"));
     actions.addView(messages, new LinearLayout.LayoutParams(0, -2, 1));
     actions.addView(network, new LinearLayout.LayoutParams(0, -2, 1));
     actions.addView(search, new LinearLayout.LayoutParams(0, -2, 1));
@@ -693,7 +703,21 @@ public class MainActivity extends Activity {
     actions.addView(notebooks,new LinearLayout.LayoutParams(0,-2,1));
     actions.addView(sources,new LinearLayout.LayoutParams(0,-2,1));
     actions.addView(reload,new LinearLayout.LayoutParams(dp(60),-2));
+    notebookActions = actions;
+    Button expand = secondary("⛶");
+    notebookExpand = expand;
+    Button chrome = secondary("Chrome ↗");
+    actions.addView(expand,new LinearLayout.LayoutParams(dp(54),-2));
+    actions.addView(chrome,new LinearLayout.LayoutParams(dp(100),-2));
     root.addView(actions);
+    expand.setOnClickListener(v -> setNotebookExpanded(!notebookExpanded));
+    chrome.setOnClickListener(v -> {
+      String url = notebookWeb == null ? null : notebookWeb.getUrl();
+      if (url == null || !(url.startsWith("https://notebooklm.google.com/") || url.startsWith("https://notebook.google.com/"))) url = "https://notebooklm.google.com/";
+      Intent intent = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url));
+      intent.addCategory(Intent.CATEGORY_BROWSABLE);
+      startActivity(intent);
+    });
     notebookWeb=new WebView(this);
     notebookWeb.getSettings().setJavaScriptEnabled(true);
     notebookWeb.getSettings().setDomStorageEnabled(true);
@@ -706,6 +730,22 @@ public class MainActivity extends Activity {
     sources.setOnClickListener(v->notebookWeb.evaluateJavascript("(function(){const b=[...document.querySelectorAll('button,[role=button]')].find(x=>/add sources?|ajouter (des |une )?sources?/i.test(x.innerText||x.getAttribute('aria-label')||''));if(b){b.click();return 'ok'}return 'missing'})()",result->{if(!"\\\"ok\\\"".equals(result))Toast.makeText(this,"Ouvrez un notebook pour ajouter une source.",Toast.LENGTH_LONG).show();}));
     reload.setOnClickListener(v->notebookWeb.reload());
     notebookWeb.loadUrl("https://notebooklm.google.com/");
+  }
+
+  private void setNotebookExpanded(boolean expanded) {
+    notebookExpanded = expanded;
+    if (appHeader != null) appHeader.setVisibility(expanded ? View.GONE : View.VISIBLE);
+    if (appTabs != null) appTabs.setVisibility(expanded ? View.GONE : View.VISIBLE);
+    if (notebookActions != null) {
+      for (int i = 0; i < notebookActions.getChildCount(); i++) {
+        View child = notebookActions.getChildAt(i);
+        child.setVisibility(expanded && child != notebookExpand ? View.GONE : View.VISIBLE);
+      }
+    }
+    if (notebookExpand != null) notebookExpand.setText(expanded ? "↙ Réduire" : "⛶");
+    getWindow().getDecorView().setSystemUiVisibility(expanded
+      ? View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+      : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
   }
 
   private void buildHelpPage(LinearLayout root) {
