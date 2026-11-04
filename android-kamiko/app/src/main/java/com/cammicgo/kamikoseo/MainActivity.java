@@ -653,6 +653,17 @@ public class MainActivity extends Activity {
     });
   }
 
+  private void setLinkedInButtonIcon(Button button, int drawableId) {
+    Drawable icon = getDrawable(drawableId);
+    if (icon == null) return;
+    icon = icon.mutate();
+    icon.setTint(BLUE);
+    icon.setBounds(0, 0, dp(19), dp(19));
+    button.setCompoundDrawables(icon, null, null, null);
+    button.setCompoundDrawablePadding(dp(5));
+    button.setGravity(Gravity.CENTER);
+  }
+
   // ---------- LinkedIn: personal account, on-device session ----------
   private void buildLinkedInTab(FrameLayout host) {
     LinearLayout root = new LinearLayout(this);
@@ -663,9 +674,13 @@ public class MainActivity extends Activity {
 
     LinearLayout actions = new LinearLayout(this);
     actions.setPadding(dp(8), dp(6), dp(8), dp(6));
-    Button messages = secondary("✉  " + t("linkedin_messages"));
-    Button network = secondary("♧  " + t("linkedin_network"));
-    Button search = secondary("⌕  " + t("linkedin_search"));
+    Button messages = secondary(t("linkedin_messages"));
+    Button network = secondary(t("linkedin_network"));
+    Button search = secondary(t("linkedin_search"));
+    // Android platform icons are stable across locales; no font-dependent emoji glyphs.
+    setLinkedInButtonIcon(messages, android.R.drawable.ic_dialog_email);
+    setLinkedInButtonIcon(network, android.R.drawable.ic_menu_myplaces);
+    setLinkedInButtonIcon(search, android.R.drawable.ic_menu_search);
     actions.addView(messages, new LinearLayout.LayoutParams(0, -2, 1));
     actions.addView(network, new LinearLayout.LayoutParams(0, -2, 1));
     actions.addView(search, new LinearLayout.LayoutParams(0, -2, 1));
