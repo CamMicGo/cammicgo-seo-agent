@@ -695,6 +695,25 @@ public class MainActivity extends Activity {
     linkedinWeb.getSettings().setDomStorageEnabled(true);
     CookieManager.getInstance().setAcceptCookie(true);
     CookieManager.getInstance().setAcceptThirdPartyCookies(linkedinWeb, true);
+    // Explicit, user-controlled sharing of a conversation to an AI assistant.
+    // Never extract LinkedIn cookies, intercept private APIs, or silently read DOM content.
+    Button shareThread = secondary(I18n.code(this).equals("fr") ? "Partager un fil" : "Share thread");
+    shareThread.setContentDescription(I18n.code(this).equals("fr") ? "Partager une conversation LinkedIn choisie" : "Share a selected LinkedIn conversation");
+    root.addView(shareThread, new LinearLayout.LayoutParams(-1, -2));
+    shareThread.setOnClickListener(v -> {
+      String current = linkedinWeb.getUrl();
+      if (current == null || !current.startsWith("https://www.linkedin.com/messaging/")) {
+        Toast.makeText(this, I18n.code(this).equals("fr") ? "Ouvrez d'abord une conversation LinkedIn." : "Open a LinkedIn conversation first.", Toast.LENGTH_LONG).show();
+        return;
+      }
+      // Android Sharesheet allows the user to choose an assistant. The URL alone
+      // does not grant access to private messages; the user may paste the text.
+      Intent share = new Intent(Intent.ACTION_SEND);
+      share.setType("text/plain");
+      share.putExtra(Intent.EXTRA_SUBJECT, "LinkedIn conversation");
+      share.putExtra(Intent.EXTRA_TEXT, current + "\\n" + (I18n.code(this).equals("fr") ? "Collez ici les messages que vous souhaitez résumer ou auxquels répondre." : "Paste the messages you want summarized or answered here."));
+      startActivity(Intent.createChooser(share, I18n.code(this).equals("fr") ? "Partager avec un assistant" : "Share with an assistant"));
+    });
     linkedinWeb.setWebChromeClient(new WebChromeClient());
     linkedinWeb.setWebViewClient(new WebViewClient());
     root.addView(linkedinWeb, new LinearLayout.LayoutParams(-1, 0, 1));
