@@ -18,3 +18,13 @@ export async function finishLinkedIn(deviceId:string,id:string,result:unknown,er
  const rows=await sb<Array<{id:string}>>('/rest/v1/cmg_linkedin_jobs?id=eq.'+id+'&device_id=eq.'+deviceId+'&status=eq.claimed',{method:'PATCH',body:JSON.stringify(error?{status:'error',error:error.slice(0,1500),completed_at:new Date().toISOString()}:{status:'done',result,completed_at:new Date().toISOString()}),prefer:'return=representation'});
  return rows.length>0;
 }
+
+/** Five-minute, owner-scoped image link; only storage paths returned by claimed jobs are accepted. */
+export async function signedLinkedInImage(userId:string,jobId:string,storagePath:string){
+ if(!/^[0-9a-f-]{36}$/i.test(jobId)||!storagePath.startsWith(userId+'/'+jobId+'/linkedin-')||!/^[-a-z0-9/]+\/linkedin-(?:[0-9]|1[01])\.(?:jpg|png|webp|gif)$/i.test(storagePath))throw Error('Invalid media path');
+ const base=process.env.SUPABASE_URL||'https://vfngxjsryklqldarkxhy.supabase.co';
+ const data=await sb<{signedURL?:string;signedUrl?:string}>('/storage/v1/object/sign/cmg-notebook-artifacts/'+storagePath,{method:'POST',body:JSON.stringify({expiresIn:300})});
+ const signed=data.signedURL||data.signedUrl;
+ if(!signed||!signed.startsWith('/'))throw Error('Unable to sign image');
+ return base+(signed.startsWith('/storage/v1/')?'':'/storage/v1')+signed;
+}
