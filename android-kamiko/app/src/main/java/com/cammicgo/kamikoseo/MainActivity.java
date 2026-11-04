@@ -815,7 +815,7 @@ public class MainActivity extends Activity {
         finishLinkedInJob(id, null, "Ouvrez une conversation LinkedIn"); return;
       }
       String js = "(function(){const n=[...document.querySelectorAll('li[class*=message]')];const a=n.map(e=>({text:(e.innerText||'').trim().slice(0,4000),media:[...e.querySelectorAll('img')].map(i=>i.currentSrc||i.src).filter(u=>u&&u.includes('messaging-image')).slice(0,8)})).filter(x=>x.text||x.media.length);return JSON.stringify({url:location.pathname,messages:a.slice(-60)});})()";
-      linkedinWeb.evaluateJavascript(js, raw -> finishLinkedInJs(id, raw));
+      linkedinWeb.evaluateJavascript(js, raw -> finishLinkedInThread(id, raw));
     } else finishLinkedInJob(id, null, "Operation inconnue");
   }
 
@@ -839,6 +839,71 @@ public class MainActivity extends Activity {
         else finishLinkedInJob(id, outcome, outcome.optString("error", "Navigation impossible"));
       } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
     });
+  }
+
+  /** Fetch only attachment URLs from the signed-in phone; never transmit LinkedIn cookies. */
+  private void finishLinkedInThread(String id, String raw) {
+    try {
+      JSONObject thread = new JSONObject(new JSONArray("[" + raw + "]").getString(0));
+      JSONArray messages = thread.optJSONArray("messages");
+      java.util.LinkedHashSet<String> urls = new java.util.LinkedHashSet<>();
+      if (messages != null) for (int i=0;i<messages.length();i++) {
+        JSONArray media=messages.optJSONObject(i).optJSONArray("media");
+        if(media!=null)for(int j=0;j<media.length();j++){
+          String url=media.optString(j);
+          if(url.contains("messaging-image"))urls.add(url);
+        }
+      }
+      final String cookie=CookieManager.getInstance().getCookie("https://www.linkedin.com/");
+      final String agent=linkedinWeb.getSettings().getUserAgentString();
+      worker.execute(() -> {
+        JSONArray attachments=new JSONArray();
+        int index=0;
+        for(String url:urls){
+          if(index>=8)break;
+          int current=index++;
+          JSONObject item=new JSONObject();
+          java.net.HttpURLConnection conn=null;
+          try {
+            android.net.Uri uri=android.net.Uri.parse(url);
+            String host=uri.getHost();
+            if(!"https".equalsIgnoreCase(uri.getScheme())||host==null||!(host.equals("linkedin.com")||host.endsWith(".linkedin.com")||host.equals("licdn.com")||host.endsWith(".licdn.com")))throw new java.io.IOException("Invalid LinkedIn media host");
+            conn=(java.net.HttpURLConnection)new java.net.URL(url).openConnection();
+            conn.setConnectTimeout(12000);conn.setReadTimeout(20000);
+            conn.setRequestProperty("User-Agent",agent);
+            conn.setRequestProperty("Referer","https://www.linkedin.com/");
+            if(cookie!=null)conn.setRequestProperty("Cookie",cookie);
+            if(conn.getResponseCode()!=200)throw new java.io.IOException("LinkedIn HTTP "+conn.getResponseCode());
+            String mime=(conn.getContentType()==null?"":conn.getContentType().split(";")[0].toLowerCase(java.util.Locale.ROOT));
+            if(!mime.equals("image/png")&&!mime.equals("image/jpeg")&&!mime.equals("image/webp")&&!mime.equals("image/gif"))throw new java.io.IOException("Not an image");
+            java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();
+            try(java.io.InputStream input=conn.getInputStream()){
+              byte[] buffer=new byte[8192];int n;
+              while((n=input.read(buffer))!=-1){bytes.write(buffer,0,n);if(bytes.size()>5_000_000)throw new java.io.IOException("Image exceeds 5 MB");}
+            }
+            java.net.HttpURLConnection upload=(java.net.HttpURLConnection)new java.net.URL(RelayClient.BASE+"/api/devices/linkedin/media").openConnection();
+            try{
+              upload.setRequestMethod("POST");upload.setConnectTimeout(15000);upload.setReadTimeout(45000);upload.setDoOutput(true);
+              upload.setRequestProperty("Authorization","Bearer "+RelayClient.token(this));
+              upload.setRequestProperty("Content-Type",mime);
+              upload.setRequestProperty("X-LinkedIn-Job",id);
+              upload.setRequestProperty("X-Image-Index",String.valueOf(current));
+              upload.setFixedLengthStreamingMode(bytes.size());
+              try(java.io.OutputStream out=upload.getOutputStream()){bytes.writeTo(out);}
+              if(upload.getResponseCode()!=200)throw new java.io.IOException("Upload HTTP "+upload.getResponseCode());
+              java.io.ByteArrayOutputStream response=new java.io.ByteArrayOutputStream();
+              try(java.io.InputStream input=upload.getInputStream()){byte[] buffer=new byte[4096];int n;while((n=input.read(buffer))!=-1){response.write(buffer,0,n);if(response.size()>12000)throw new java.io.IOException("Response too large");}}
+              JSONObject saved=new JSONObject(response.toString("UTF-8"));
+              item.put("storagePath",saved.optString("storagePath"));item.put("mime",mime);item.put("bytes",bytes.size());
+            }finally{upload.disconnect();}
+          }catch(Exception e){try{item.put("error",e.getMessage());}catch(Exception ignored){}}
+          finally{if(conn!=null)conn.disconnect();}
+          attachments.put(item);
+        }
+        try{thread.put("attachments",attachments);}catch(Exception ignored){}
+        finishLinkedInJob(id,thread,null);
+      });
+    }catch(Exception e){finishLinkedInJob(id,null,e.getMessage());}
   }
 
   private void finishLinkedInJs(String id, String raw) {
