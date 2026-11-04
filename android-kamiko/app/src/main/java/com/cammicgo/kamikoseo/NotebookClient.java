@@ -266,21 +266,26 @@ final class NotebookClient {
       .put("requiresConfirmation",true)
       .put("warning","NotebookLM deletes notebook sources, notes and generated artifacts. Original Drive files are preserved.");
   }
-  JSONObject deleteNotebook(String notebookUrl,String expectedTitle,int expectedSourceCount,boolean confirm) throws Exception {
-    JSONObject before=deletionPreview(notebookUrl);
-    if(!confirm)throw new IOException("Deletion requires explicit confirmation in a separate user message");
-    if(expectedTitle==null||!expectedTitle.equals(before.optString("title"))||
-       expectedSourceCount<0||expectedSourceCount!=before.optInt("sourceCount"))
-      throw new IOException("Notebook title/source count changed; request a new deletion preview");
-    String id=before.getString("id");
-    rpc(NotebookRpcCodec.DELETE,new JSONArray().put(new JSONArray().put(id)).put(new JSONArray().put(2)),"/");
-    JSONArray after=notebooks();
-    for(int i=0;i<after.length();i++){
-      JSONArray nb=after.optJSONArray(i);
-      if(nb!=null&&id.equals(nb.optString(2)))throw new IOException("Notebook deletion not verified");
+  JSONObject deleteNotebook(String notebookUrl,String expectedTitle,boolean confirm) throws Exception {
+    if(!confirm)throw new IOException("Deletion requires explicit confirmation");
+    String id=ownedNotebookId(notebookUrl);
+    JSONArray before=list().getJSONArray("notebooks");
+    String actualTitle=null;
+    for(int i=0;i<before.length();i++){
+      JSONObject notebook=before.getJSONObject(i);
+      if(id.equals(notebook.optString("id"))){actualTitle=notebook.optString("title");break;}
     }
-    return new JSONObject().put("deleted",true).put("id",id).put("title",expectedTitle)
-      .put("deletedNotebookSourceCount",expectedSourceCount).put("verified",true);
+    if(actualTitle==null||expectedTitle==null||!expectedTitle.trim().equals(actualTitle.trim()))
+      throw new IOException("Notebook title changed; deletion refused");
+    // Verify notebook identity against the authenticated account, not the source list.
+    rpc(NotebookRpcCodec.DELETE,new JSONArray().put(new JSONArray().put(id)).put(new JSONArray().put(2)),"/");
+    JSONArray after=list().getJSONArray("notebooks");
+    for(int i=0;i<after.length();i++){
+      if(id.equals(after.getJSONObject(i).optString("id")))
+        throw new IOException("Notebook deletion not verified");
+    }
+    return new JSONObject().put("deleted",true).put("id",id)
+      .put("title",actualTitle).put("verified",true);
   }
 
   private JSONArray sourceMetadata(){
