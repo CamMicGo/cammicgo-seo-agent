@@ -111,7 +111,7 @@ public class RelayService extends Service {
       String token = RelayClient.token(this);
       if (token == null) break;
       try {
-        // A 429 is an explicit user-controlled pause: keep heartbeat but never auto-reclaim jobs.
+        // Legacy manual pause remains user-controlled; new 429s use a timed cooldown.
         if (RelayClient.prefs(this).getBoolean("youtube429ManualPause", false)) {
           RelayClient.poll(this, token, false);
           RelayClient.prefs(this).edit().putLong("lastSync", System.currentTimeMillis()).apply();
@@ -119,7 +119,7 @@ public class RelayService extends Service {
           sleep(4000);
           continue;
         }
-        pausedUntil = 0L;
+        pausedUntil = RelayClient.prefs(this).getLong("youtubePausedUntil", 0L);
         // Read persisted retry state on every poll: the UI can clear it while this service is running.
         nextTranscriptAt = RelayClient.prefs(this).getLong("nextTranscriptAt", 0L);
         long wait = pausedUntil - System.currentTimeMillis();
@@ -199,16 +199,16 @@ public class RelayService extends Service {
       String msg = e.getMessage() == null ? "" : e.getMessage();
       if (msg.contains("HTTP 429")) {
         // This HTTP 429 applies to the failed extraction request, not necessarily the whole phone.
-        // Release the job and pause transcript claims until the user explicitly retries.
+        // Release the job and honor the cooldown without retrying in a tight loop.
         RelayClient.release(token, id);
         rateLimitStrikes++;
-        // Retry with bounded jitter (60-120 seconds) rather than freezing the agent queue for hours.
-        pausedUntil = 0L;
-        nextTranscriptAt = 0L;
+        // Default to one hour when the upstream response has no usable Retry-After.
+        pausedUntil = System.currentTimeMillis() + 3_600_000L;
+        nextTranscriptAt = pausedUntil;
         RelayClient.prefs(this).edit().putLong("youtubePausedUntil", pausedUntil)
             .putLong("nextTranscriptAt", nextTranscriptAt).putInt("youtube429Strikes", rateLimitStrikes)
-            .putBoolean("youtube429ManualPause", true).apply();
-        status("YouTube HTTP 429 : demandes en pause. Relance manuelle depuis Assistant IA, connexion serveur maintenue.");
+            .putBoolean("youtube429ManualPause", false).apply();
+        status("YouTube HTTP 429 : reprise automatique après temporisation, connexion serveur maintenue.");
         current(null);
         return;
       }
