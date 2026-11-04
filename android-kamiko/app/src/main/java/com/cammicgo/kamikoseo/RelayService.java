@@ -203,7 +203,14 @@ public class RelayService extends Service {
         RelayClient.release(token, id);
         rateLimitStrikes++;
         // Default to one hour when the upstream response has no usable Retry-After.
-        pausedUntil = System.currentTimeMillis() + 3_600_000L;
+        long delay = 3_600_000L;
+        int marker = msg.indexOf("retryAfterMs=");
+        if (marker >= 0) {
+          String value = msg.substring(marker + 13).split(" ")[0];
+          try { delay = Math.min(86_400_000L, Math.max(1000L, Long.parseLong(value))); }
+          catch (NumberFormatException ignored) { }
+        }
+        pausedUntil = System.currentTimeMillis() + delay;
         nextTranscriptAt = pausedUntil;
         RelayClient.prefs(this).edit().putLong("youtubePausedUntil", pausedUntil)
             .putLong("nextTranscriptAt", nextTranscriptAt).putInt("youtube429Strikes", rateLimitStrikes)
