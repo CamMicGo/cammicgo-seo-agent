@@ -1070,12 +1070,23 @@ public class MainActivity extends Activity {
       String title = e.isNull("title") ? null : e.optString("title", null);
       TextView tv = text(texts, title != null && !title.isEmpty() ? title : t("video", e.optString("videoId")), 14, INK, true);
       tv.setMaxLines(1); tv.setEllipsize(TextUtils.TruncateAt.END);
-      String agent = e.optString("agentName", "Assistant inconnu");
-      if (agent.isEmpty()) agent = "Assistant inconnu";
-      int agentIcon = android.R.drawable.ic_menu_help;
-      if ("Assistant inconnu".equals(agent)) agentIcon = android.R.drawable.ic_menu_myplaces;
-      TextView origin = text(texts, agent, 11, MUTED, false);
-      origin.setCompoundDrawablesWithIntrinsicBounds(agentIcon, 0, 0, 0);
+      // Preserve the caller identity supplied by the relay; never guess a provider.
+      String agent = e.optString("agentName", "").trim();
+      String source = e.optString("agentSource", e.optString("source", "")).trim();
+      String identity = (agent + " " + source).toLowerCase(java.util.Locale.ROOT);
+      String provider = "Assistant inconnu";
+      if (identity.contains("chatgpt") || identity.contains("openai")) provider = "ChatGPT";
+      else if (identity.contains("claude") || identity.contains("anthropic")) provider = "Claude";
+      else if (identity.contains("antigravity")) provider = "Antigravity";
+      else if (identity.contains("gemini cli")) provider = "Gemini CLI";
+      else if (identity.contains("gemini")) provider = "Gemini";
+      else if (identity.contains("cursor")) provider = "Cursor";
+      else if (identity.contains("codex")) provider = "Codex";
+      else if (!agent.isEmpty()) provider = agent;
+      TextView origin = text(texts, provider + (source.isEmpty() || provider.equals(source) ? "" : " · " + source), 11, MUTED, false);
+      origin.setCompoundDrawablesWithIntrinsicBounds(
+          "Assistant inconnu".equals(provider) ? android.R.drawable.ic_menu_myplaces : android.R.drawable.ic_menu_info_details,
+          0, 0, 0);
       origin.setCompoundDrawablePadding(dp(5));
       String when = DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(e.optLong("at")));
       String detail = ok ? t("segments", e.optInt("segments")) + " · " + when : when + " · " + e.optString("error", t("failed"));
