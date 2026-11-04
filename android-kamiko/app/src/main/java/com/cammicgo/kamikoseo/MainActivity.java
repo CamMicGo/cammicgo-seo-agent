@@ -737,6 +737,9 @@ public class MainActivity extends Activity {
       String js = "(function(){const selectors=['[class*=msg-s-event-listitem]','[class*=message-event]','li[class*=message]','[class*=msg-s-message-list] [class*=bubble]','[class*=message-bubble]','[class*=msg-thread] [class*=message]'];let nodes=[];for(const sel of selectors){const found=[...document.querySelectorAll(sel)].filter(n=>(n.innerText||'').trim()||n.querySelector('img,video,a[download]'));if(found.length>nodes.length)nodes=found;}const seen=new Set();const messages=[];const mediaFor=n=>[...n.querySelectorAll('img,video,source,a[download],a[href]')].map(e=>{const tag=e.tagName.toLowerCase();const url=e.currentSrc||e.getAttribute('src')||e.getAttribute('href')||'';const srcset=e.getAttribute('srcset')||'';const alt=e.getAttribute('alt')||'';if(!url&&!srcset)return null;if(tag==='a'&&!e.hasAttribute('download')&&!/\\\\.(png|jpe?g|gif|webp|pdf)(\\\\?|$)/i.test(url))return null;return {type:tag,url:url.slice(0,1800),srcset:srcset.slice(0,1800),alt:alt.slice(0,300),download:e.hasAttribute('download')};}).filter(Boolean).slice(0,10);for(const n of nodes){const text=(n.innerText||'').trim();const media=mediaFor(n);if(!text&&!media.length)continue;const key=text+'|'+media.map(x=>x.url).join('|');if(seen.has(key))continue;seen.add(key);messages.push({text:text.slice(0,4000),media});}return JSON.stringify({url:location.pathname,count:messages.length,messages:messages.slice(-30),diagnostic:{title:document.title,matchedSelectors:selectors.map(s=>({selector:s,count:document.querySelectorAll(s).length}))}});})()";
       linkedinWeb.evaluateJavascript(js, result -> showLinkedInInspection(result, true));
     });
+    Button exportMedia = secondary("Exporter les images du fil");
+    root.addView(exportMedia, new LinearLayout.LayoutParams(-1, -2));
+    exportMedia.setOnClickListener(v -> exportLinkedInImages());
     linkedinWeb.setWebChromeClient(new WebChromeClient());
     linkedinWeb.setWebViewClient(new WebViewClient());
     root.addView(linkedinWeb, new LinearLayout.LayoutParams(-1, 0, 1));
@@ -744,6 +747,93 @@ public class MainActivity extends Activity {
     network.setOnClickListener(v -> linkedinWeb.loadUrl("https://www.linkedin.com/mynetwork/"));
     search.setOnClickListener(v -> linkedinWeb.loadUrl("https://www.linkedin.com/search/results/people/"));
     linkedinWeb.loadUrl("https://www.linkedin.com/messaging/");
+  }
+
+  private void exportLinkedInImages() {
+    if (!isLinkedInMessagingPage() || linkedinWeb.getUrl() == null || !linkedinWeb.getUrl().contains("/thread/")) {
+      Toast.makeText(this, "Ouvrez d'abord un fil LinkedIn.", Toast.LENGTH_LONG).show();
+      return;
+    }
+    String js = "(function(){const all=[...document.querySelectorAll('li[class*=message] img')];const urls=[...new Set(all.map(i=>i.currentSrc||i.src).filter(u=>u&&/messaging-image/i.test(u)))].slice(0,12);return JSON.stringify(urls);})()";
+    linkedinWeb.evaluateJavascript(js, raw -> {
+      try {
+        String decoded = new JSONArray("[" + raw + "]").getString(0);
+        JSONArray urls = new JSONArray(decoded);
+        if (urls.length() == 0) {
+          Toast.makeText(this, "Aucune image jointe détectée dans le fil chargé.", Toast.LENGTH_LONG).show();
+          return;
+        }
+        new AlertDialog.Builder(this).setTitle("Images LinkedIn")
+          .setMessage("Exporter " + urls.length() + " image(s) de cette conversation vers une application choisie ?")
+          .setNegativeButton("Annuler", (d, w) -> {})
+          .setPositiveButton("Exporter", (d, w) -> downloadAndShareLinkedInImages(urls)).show();
+      } catch (Exception e) {
+        Toast.makeText(this, "Extraction des images impossible : " + e.getMessage(), Toast.LENGTH_LONG).show();
+      }
+    });
+  }
+
+  private void downloadAndShareLinkedInImages(JSONArray urls) {
+    final String cookie = CookieManager.getInstance().getCookie("https://www.linkedin.com/");
+    final String agent = linkedinWeb.getSettings().getUserAgentString();
+    worker.execute(() -> {
+      java.util.ArrayList<Uri> files = new java.util.ArrayList<>();
+      try {
+        java.io.File dir = new java.io.File(getCacheDir(), "linkedin-shared");
+        if (!dir.exists() && !dir.mkdirs()) throw new java.io.IOException("Cache unavailable");
+        for (int i = 0; i < urls.length(); i++) {
+          String address = urls.optString(i);
+          Uri parsed = Uri.parse(address);
+          String host = parsed.getHost();
+          if (!"https".equalsIgnoreCase(parsed.getScheme()) || host == null ||
+              !(host.equals("linkedin.com") || host.endsWith(".linkedin.com") || host.equals("licdn.com") || host.endsWith(".licdn.com"))) continue;
+          java.net.HttpURLConnection connection = null;
+          try {
+            connection = (java.net.HttpURLConnection) new java.net.URL(address).openConnection();
+            connection.setConnectTimeout(12000); connection.setReadTimeout(18000);
+            connection.setRequestProperty("User-Agent", agent);
+            connection.setRequestProperty("Referer", "https://www.linkedin.com/");
+            if (cookie != null) connection.setRequestProperty("Cookie", cookie);
+            if (connection.getResponseCode() != 200) continue;
+            String type = connection.getContentType();
+            if (type == null || !type.toLowerCase(java.util.Locale.ROOT).startsWith("image/")) continue;
+            String ext = type.toLowerCase(java.util.Locale.ROOT).contains("png") ? ".png" :
+                type.toLowerCase(java.util.Locale.ROOT).contains("webp") ? ".webp" : ".jpg";
+            java.io.File file = new java.io.File(dir, "linkedin-image-" + System.currentTimeMillis() + "-" + i + ext);
+            try (java.io.InputStream in = connection.getInputStream(); java.io.FileOutputStream out = new java.io.FileOutputStream(file)) {
+              byte[] buffer = new byte[8192]; int n, total = 0;
+              while ((n = in.read(buffer)) != -1) {
+                total += n;
+                if (total > 12 * 1024 * 1024) throw new java.io.IOException("Image too large");
+                out.write(buffer, 0, n);
+              }
+            }
+            files.add(androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", file));
+          } catch (Exception ignored) {
+            // Some private LinkedIn images are only accessible to the WebView renderer.
+          } finally { if (connection != null) connection.disconnect(); }
+        }
+        ui.post(() -> {
+          if (files.isEmpty()) {
+            new AlertDialog.Builder(this).setTitle("Images LinkedIn")
+              .setMessage("Aucune image téléchargée. Les URL privées peuvent nécessiter un accès propre au navigateur LinkedIn.")
+              .setPositiveButton("OK", (d, w) -> {}).show();
+            return;
+          }
+          Intent share = new Intent(Intent.ACTION_SEND_MULTIPLE);
+          share.setType("image/*");
+          share.putParcelableArrayListExtra(Intent.EXTRA_STREAM, files);
+          share.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+          ClipData clip = ClipData.newUri(getContentResolver(), "LinkedIn image", files.get(0));
+          for (int j = 1; j < files.size(); j++) clip.addItem(new ClipData.Item(files.get(j)));
+          share.setClipData(clip);
+          startActivity(Intent.createChooser(share, "Partager les images LinkedIn"));
+          Toast.makeText(this, files.size() + " image(s) prête(s)", Toast.LENGTH_LONG).show();
+        });
+      } catch (Exception e) {
+        ui.post(() -> Toast.makeText(this, "Export impossible : " + e.getMessage(), Toast.LENGTH_LONG).show());
+      }
+    });
   }
 
   private boolean isLinkedInMessagingPage() {
