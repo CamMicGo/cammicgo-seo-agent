@@ -333,12 +333,16 @@ public class MainActivity extends Activity {
       TextView t = text(null, (i == 2 || i == 3) ? TABS[i] : t(TABS[i]), 12, MUTED, true);
       t.setGravity(Gravity.CENTER);
       t.setSingleLine(true);
-      t.setPadding(dp(2), dp(10), dp(2), dp(10));
+      t.setPadding(dp(12), dp(10), dp(12), dp(10));
       t.setOnClickListener(v -> selectTab(index));
-      seg.addView(t, new LinearLayout.LayoutParams(0, -2, 1));
+      seg.addView(t, new LinearLayout.LayoutParams(-2, -2));
       tabViews[i] = t;
     }
-    wrap.addView(seg, new LinearLayout.LayoutParams(-1, -2));
+    android.widget.HorizontalScrollView scroller = new android.widget.HorizontalScrollView(this);
+    scroller.setHorizontalScrollBarEnabled(false);
+    scroller.setFillViewport(false);
+    scroller.addView(seg, new android.widget.HorizontalScrollView.LayoutParams(-2, -2));
+    wrap.addView(scroller, new LinearLayout.LayoutParams(-1, -2));
     shell.addView(wrap);
   }
 
@@ -347,8 +351,8 @@ public class MainActivity extends Activity {
     for (int i = 0; i < pages.length; i++) {
       pages[i].setVisibility(i == index ? View.VISIBLE : View.GONE);
       boolean on = i == index;
-      tabViews[i].setTextColor(on ? BLUE : MUTED);
-      tabViews[i].setBackground(on ? shape(Color.WHITE, 11, 0) : null);
+      tabViews[i].setTextColor(on ? Color.WHITE : MUTED);
+      tabViews[i].setBackground(on ? shape(BLUE, 11, 0) : null);
       tabViews[i].setElevation(on ? dp(1) : 0);
     }
   }
@@ -679,7 +683,7 @@ public class MainActivity extends Activity {
     Button search = secondary(t("linkedin_search"));
     // Android platform icons are stable across locales; no font-dependent emoji glyphs.
     setLinkedInButtonIcon(messages, android.R.drawable.ic_dialog_email);
-    setLinkedInButtonIcon(network, android.R.drawable.ic_menu_myplaces);
+    setLinkedInButtonIcon(network, android.R.drawable.ic_menu_share);
     setLinkedInButtonIcon(search, android.R.drawable.ic_menu_search);
     actions.addView(messages, new LinearLayout.LayoutParams(0, -2, 1));
     actions.addView(network, new LinearLayout.LayoutParams(0, -2, 1));
@@ -712,19 +716,27 @@ public class MainActivity extends Activity {
     pages[2]=root;
     LinearLayout actions=new LinearLayout(this);
     actions.setPadding(dp(8),dp(6),dp(8),dp(6));
-    Button notebooks=secondary("Notebooks");
+    Button notebooks=secondary(I18n.code(this).equals("fr") ? "Carnets" : "Notebooks");
     Button sources=secondary("Sources");
-    Button reload=secondary("↻");
-    actions.addView(notebooks,new LinearLayout.LayoutParams(0,-2,1));
-    actions.addView(sources,new LinearLayout.LayoutParams(0,-2,1));
+    Button reload=secondary("⟳");
+    reload.setContentDescription(I18n.code(this).equals("fr") ? "Actualiser" : "Refresh");
+    notebooks.setSingleLine(true);
+    actions.addView(notebooks,new LinearLayout.LayoutParams(-2,-2));
+    sources.setSingleLine(true);
+    actions.addView(sources,new LinearLayout.LayoutParams(-2,-2));
     actions.addView(reload,new LinearLayout.LayoutParams(dp(60),-2));
     notebookActions = actions;
-    Button expand = secondary("⛶");
+    Button expand = secondary("⤢");
+    expand.setContentDescription(I18n.code(this).equals("fr") ? "Agrandir" : "Expand");
     notebookExpand = expand;
-    Button chrome = secondary("Chrome ↗");
+    Button chrome = secondary("◎ " + (I18n.code(this).equals("fr") ? "Navigateur" : "Browser"));
+    chrome.setSingleLine(true);
     actions.addView(expand,new LinearLayout.LayoutParams(dp(54),-2));
-    actions.addView(chrome,new LinearLayout.LayoutParams(dp(100),-2));
-    root.addView(actions);
+    actions.addView(chrome,new LinearLayout.LayoutParams(-2,-2));
+    android.widget.HorizontalScrollView actionScroll = new android.widget.HorizontalScrollView(this);
+    actionScroll.setHorizontalScrollBarEnabled(false);
+    actionScroll.addView(actions, new android.widget.HorizontalScrollView.LayoutParams(-2, -2));
+    root.addView(actionScroll);
     expand.setOnClickListener(v -> setNotebookExpanded(!notebookExpanded));
     chrome.setOnClickListener(v -> {
       String url = notebookWeb == null ? null : notebookWeb.getUrl();
@@ -757,7 +769,7 @@ public class MainActivity extends Activity {
         child.setVisibility(expanded && child != notebookExpand ? View.GONE : View.VISIBLE);
       }
     }
-    if (notebookExpand != null) notebookExpand.setText(expanded ? "↙ Réduire" : "⛶");
+    if (notebookExpand != null) notebookExpand.setText(expanded ? "⤡" : "⤢");
     getWindow().getDecorView().setSystemUiVisibility(expanded
       ? View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
       : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
