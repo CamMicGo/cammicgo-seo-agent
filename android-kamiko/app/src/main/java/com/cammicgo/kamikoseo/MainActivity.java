@@ -1051,13 +1051,35 @@ public class MainActivity extends Activity {
 
   private void refreshHistory(SharedPreferences p) {
     String raw = p.getString("history", "[]");
+    String notebookRaw = p.getString("notebookHistory", "[]");
     long minute = System.currentTimeMillis() / 60_000;
-    String key = raw.hashCode() + ":" + minute;
+    String key = raw.hashCode() + ":" + notebookRaw.hashCode() + ":" + minute;
     if (key.equals(historyShown)) return;
     historyShown = key;
     historyList.removeAllViews();
     JSONArray h;
     try { h = new JSONArray(raw); } catch (Exception e) { h = new JSONArray(); }
+    // Unified assistant activity: NotebookLM jobs (sources, Studio audio/video/quiz,
+    // notebook creation, etc.) share the first tab with YouTube requests.
+    try {
+      JSONArray notebookJobs = new JSONArray(notebookRaw);
+      for (int i = 0; i < notebookJobs.length(); i++) {
+        JSONObject n = notebookJobs.optJSONObject(i);
+        if (n == null) continue;
+        JSONObject entry = new JSONObject();
+        entry.put("type", "notebooklm");
+        entry.put("title", n.optString("label", "NotebookLM"));
+        entry.put("status", "done".equals(n.optString("status")) ? "done" : n.optString("status"));
+        entry.put("at", n.optLong("at"));
+        entry.put("error", n.optString("error", ""));
+        h.put(entry);
+      }
+      java.util.ArrayList<JSONObject> ordered = new java.util.ArrayList<>();
+      for (int i = 0; i < h.length(); i++) if (h.optJSONObject(i) != null) ordered.add(h.optJSONObject(i));
+      ordered.sort((a,b) -> Long.compare(b.optLong("at"), a.optLong("at")));
+      h = new JSONArray();
+      for (JSONObject item : ordered) h.put(item);
+    } catch (Exception ignored) {}
     clearHistory.setVisibility(h.length() == 0 ? View.GONE : View.VISIBLE);
     if (h.length() == 0) {
       TextView empty = text(historyList, t("history_empty"), 13, MUTED, false);
@@ -1069,6 +1091,7 @@ public class MainActivity extends Activity {
       JSONObject e = h.optJSONObject(i);
       if (e == null) continue;
       boolean ok = "done".equals(e.optString("status"));
+      boolean notebookEntry = "notebooklm".equals(e.optString("type"));
       LinearLayout row = new LinearLayout(this);
       row.setGravity(Gravity.CENTER_VERTICAL);
       row.setPadding(dp(10), dp(9), dp(10), dp(9));
@@ -1084,6 +1107,13 @@ public class MainActivity extends Activity {
       tv.setMaxLines(1); tv.setEllipsize(TextUtils.TruncateAt.END);
       // Preserve the caller identity supplied by the relay; never guess a provider.
       String agent = e.optString("agentName", "").trim();
+      if (notebookEntry && agent.isEmpty()) {
+        String label = e.optString("title", "");
+        if (label.startsWith("ChatGPT · ")) agent = "ChatGPT";
+        else if (label.startsWith("Claude · ")) agent = "Claude";
+        else if (label.startsWith("Gemini · ")) agent = "Gemini";
+        else if (label.startsWith("Antigravity · ")) agent = "Antigravity";
+      }
       String source = e.optString("agentSource", e.optString("source", "")).trim();
       String identity = (agent + " " + source).toLowerCase(java.util.Locale.ROOT);
       String provider = "Assistant inconnu";
@@ -1101,13 +1131,13 @@ public class MainActivity extends Activity {
           0, 0, 0);
       origin.setCompoundDrawablePadding(dp(5));
       String when = DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(e.optLong("at")));
-      String detail = ok ? t("segments", e.optInt("segments")) + " · " + when : when + " · " + e.optString("error", t("failed"));
+      String detail = notebookEntry ? ("NotebookLM · " + e.optString("status") + " · " + when) : ok ? t("segments", e.optInt("segments")) + " · " + when : when + " · " + e.optString("error", t("failed"));
       TextView d = text(texts, detail, 12, ok ? MUTED : RED, false);
       d.setMaxLines(1); d.setEllipsize(TextUtils.TruncateAt.END);
       row.addView(texts, new LinearLayout.LayoutParams(0, -2, 1));
       final String vid = e.optString("videoId");
       final long at = e.optLong("at");
-      row.setOnClickListener(v -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=" + vid))));
+      row.setOnClickListener(v -> { if (notebookEntry) selectTab(2); else startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=" + vid))); });
       row.setOnLongClickListener(v -> {
         new AlertDialog.Builder(this).setMessage(t("remove_q"))
             .setPositiveButton(t("remove"), (dlg, which) -> editHistory(vid, at))
