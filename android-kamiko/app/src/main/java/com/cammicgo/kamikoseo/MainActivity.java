@@ -714,6 +714,29 @@ public class MainActivity extends Activity {
       share.putExtra(Intent.EXTRA_TEXT, current + "\\n" + (I18n.code(this).equals("fr") ? "Collez ici les messages que vous souhaitez résumer ou auxquels répondre." : "Paste the messages you want summarized or answered here."));
       startActivity(Intent.createChooser(share, I18n.code(this).equals("fr") ? "Partager avec un assistant" : "Share with an assistant"));
     });
+    // Manual, read-only WebView smoke tests. No private API, cookie export or background scraping.
+    Button inspectChats = secondary(I18n.code(this).equals("fr") ? "Tester la liste" : "Test inbox list");
+    Button inspectThread = secondary(I18n.code(this).equals("fr") ? "Lire le fil ouvert" : "Read open thread");
+    LinearLayout tests = new LinearLayout(this);
+    tests.addView(inspectChats, new LinearLayout.LayoutParams(0, -2, 1));
+    tests.addView(inspectThread, new LinearLayout.LayoutParams(0, -2, 1));
+    root.addView(tests);
+    inspectChats.setOnClickListener(v -> {
+      if (linkedinWeb.getUrl() == null || !linkedinWeb.getUrl().startsWith("https://www.linkedin.com/messaging/")) {
+        Toast.makeText(this, "Ouvrez la messagerie LinkedIn.", Toast.LENGTH_LONG).show();
+        return;
+      }
+      String js = "(function(){const nodes=[...document.querySelectorAll('[data-control-name*=conversation],li[class*=msg-conversation],li[class*=conversation-list],a[href*=\\\"/messaging/thread/\\\"]')];const rows=nodes.map(n=>({name:(n.querySelector('h3,h4,[class*=participant],[class*=name]')?.innerText||n.innerText||'').trim().slice(0,160),preview:(n.innerText||'').trim().slice(0,400)})).filter(x=>x.name).slice(0,5);return JSON.stringify({url:location.pathname,count:rows.length,rows});})()";
+      linkedinWeb.evaluateJavascript(js, result -> showLinkedInInspection(result, false));
+    });
+    inspectThread.setOnClickListener(v -> {
+      if (linkedinWeb.getUrl() == null || !linkedinWeb.getUrl().startsWith("https://www.linkedin.com/messaging/")) {
+        Toast.makeText(this, "Ouvrez une conversation LinkedIn.", Toast.LENGTH_LONG).show();
+        return;
+      }
+      String js = "(function(){const nodes=[...document.querySelectorAll('[class*=msg-s-event-listitem],[class*=message-event],li[class*=message]')];const messages=nodes.map(n=>({text:(n.innerText||'').trim().slice(0,4000)})).filter(x=>x.text).slice(-30);return JSON.stringify({url:location.pathname,count:messages.length,messages});})()";
+      linkedinWeb.evaluateJavascript(js, result -> showLinkedInInspection(result, true));
+    });
     linkedinWeb.setWebChromeClient(new WebChromeClient());
     linkedinWeb.setWebViewClient(new WebViewClient());
     root.addView(linkedinWeb, new LinearLayout.LayoutParams(-1, 0, 1));
@@ -721,6 +744,32 @@ public class MainActivity extends Activity {
     network.setOnClickListener(v -> linkedinWeb.loadUrl("https://www.linkedin.com/mynetwork/"));
     search.setOnClickListener(v -> linkedinWeb.loadUrl("https://www.linkedin.com/search/results/people/"));
     linkedinWeb.loadUrl("https://www.linkedin.com/messaging/");
+  }
+
+  private void showLinkedInInspection(String raw, boolean thread) {
+    try {
+      // evaluateJavascript returns a JSON-encoded string containing our JSON payload.
+      String decoded = new JSONArray("[" + raw + "]").getString(0);
+      JSONObject payload = new JSONObject(decoded);
+      JSONArray entries = payload.optJSONArray(thread ? "messages" : "rows");
+      int count = entries == null ? 0 : entries.length();
+      String title = thread ? "LinkedIn · fil sélectionné" : "LinkedIn · conversations";
+      String body = count == 0
+          ? "Aucun élément reconnu sur cette page. Vérifiez la connexion, puis ouvrez la messagerie. Les sélecteurs devront peut-être être adaptés."
+          : payload.toString(2);
+      AlertDialog.Builder dialog = new AlertDialog.Builder(this).setTitle(title + " (" + count + ")").setMessage(body)
+          .setNegativeButton("Fermer", (d, w) -> {});
+      if (count > 0) dialog.setPositiveButton("Partager", (d, w) -> {
+        Intent share = new Intent(Intent.ACTION_SEND);
+        share.setType("text/plain");
+        share.putExtra(Intent.EXTRA_TEXT, title + "\\n" + body);
+        startActivity(Intent.createChooser(share, "Partager avec un assistant IA"));
+      });
+      dialog.show();
+    } catch (Exception e) {
+      new AlertDialog.Builder(this).setTitle("Test LinkedIn").setMessage("Lecture impossible : " + e.getMessage())
+          .setPositiveButton("OK", (d, w) -> {}).show();
+    }
   }
 
   // ---------- tab 3: NotebookLM ----------
