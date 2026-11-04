@@ -35,6 +35,9 @@ public final class I18n {
   }
 
   static {
+    m.put("linkedin_messages", new String[]{"Messages", "Messages", "Mensajes", "Nachrichten", "Mensagens", "Messaggi", "Сообщения", "消息", "メッセージ", "메시지", "الرسائل"});
+    m.put("linkedin_network", new String[]{"Network", "Réseau", "Red", "Netzwerk", "Rede", "Rete", "Сеть", "人脉", "ネットワーク", "네트워크", "الشبكة"});
+    m.put("linkedin_search", new String[]{"Search", "Recherche", "Buscar", "Suche", "Pesquisar", "Cerca", "Поиск", "搜索", "検索", "검색", "بحث"});
     m.put("refresh_failed", new String[]{"Refresh failed. Check your connection.", "Échec de l'actualisation. Vérifiez la connexion.", "Error al actualizar. Comprueba la conexión.", "Aktualisierung fehlgeschlagen. Verbindung prüfen.", "Falha ao atualizar. Verifique a ligação.", "Aggiornamento non riuscito. Controlla la connessione.", "Не удалось обновить. Проверьте соединение.", "刷新失败，请检查连接。", "更新できませんでした。接続を確認してください。", "새로고침 실패. 연결을 확인하세요.", "فشل التحديث. تحقق من الاتصال."});
     m.put("refresh_success", new String[]{"Server checked. No new changes may be available.", "Serveur interrogé. Il n'y a peut-être aucun changement.", "Servidor consultado. Puede que no haya cambios.", "Server geprüft. Möglicherweise keine Änderungen.", "Servidor consultado. Pode não haver alterações.", "Server verificato. Potrebbero non esserci novità.", "Сервер проверен. Изменений может не быть.", "已检查服务器，可能没有新变化。", "サーバーを確認しました。変更がない可能性があります。", "서버를 확인했습니다. 변경 사항이 없을 수 있습니다.", "تم فحص الخادم. قد لا توجد تغييرات."});
     m.put("sync_error", new String[]{"Connection error", "Erreur de connexion", "Error de conexión", "Verbindungsfehler", "Erro de ligação", "Errore di connessione", "Ошибка соединения", "连接错误", "接続エラー", "연결 오류", "خطأ في الاتصال"});
