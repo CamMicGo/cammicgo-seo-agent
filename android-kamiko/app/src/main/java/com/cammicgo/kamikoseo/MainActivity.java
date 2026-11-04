@@ -83,6 +83,26 @@ public class MainActivity extends Activity {
   private LinearLayout appShell;
   private View appHeader, appTabs;
   private WebView linkedinWeb;
+  private boolean linkedinMcpEnabled = false;
+  private boolean linkedinPollBusy = false;
+  private final Runnable linkedinPoll = new Runnable() {
+    @Override public void run() {
+      if (!linkedinMcpEnabled || linkedinWeb == null) return;
+      if (!linkedinPollBusy && RelayClient.token(MainActivity.this) != null) {
+        linkedinPollBusy = true;
+        worker.execute(() -> {
+          try {
+            JSONObject response = new JSONObject(RelayClient.request("GET", "/api/devices/linkedin", RelayClient.token(MainActivity.this), null));
+            JSONObject job = response.optJSONObject("job");
+            if (job != null) ui.post(() -> executeLinkedInJob(job));
+            else ui.post(() -> linkedinPollBusy = false);
+          } catch (Exception e) { ui.post(() -> linkedinPollBusy = false); }
+        });
+      }
+      ui.postDelayed(this, 4500);
+    }
+  };
+
   private final TextView[] tabViews = new TextView[5];
   private int currentTab = 0;
 
@@ -737,6 +757,25 @@ public class MainActivity extends Activity {
       String js = "(function(){const selectors=['[class*=msg-s-event-listitem]','[class*=message-event]','li[class*=message]','[class*=msg-s-message-list] [class*=bubble]','[class*=message-bubble]','[class*=msg-thread] [class*=message]'];let nodes=[];for(const sel of selectors){const found=[...document.querySelectorAll(sel)].filter(n=>(n.innerText||'').trim()||n.querySelector('img,video,a[download]'));if(found.length>nodes.length)nodes=found;}const seen=new Set();const messages=[];const mediaFor=n=>[...n.querySelectorAll('img,video,source,a[download],a[href]')].map(e=>{const tag=e.tagName.toLowerCase();const url=e.currentSrc||e.getAttribute('src')||e.getAttribute('href')||'';const srcset=e.getAttribute('srcset')||'';const alt=e.getAttribute('alt')||'';if(!url&&!srcset)return null;if(tag==='a'&&!e.hasAttribute('download')&&!/\\\\.(png|jpe?g|gif|webp|pdf)(\\\\?|$)/i.test(url))return null;return {type:tag,url:url.slice(0,1800),srcset:srcset.slice(0,1800),alt:alt.slice(0,300),download:e.hasAttribute('download')};}).filter(Boolean).slice(0,10);for(const n of nodes){const text=(n.innerText||'').trim();const media=mediaFor(n);if(!text&&!media.length)continue;const key=text+'|'+media.map(x=>x.url).join('|');if(seen.has(key))continue;seen.add(key);messages.push({text:text.slice(0,4000),media});}return JSON.stringify({url:location.pathname,count:messages.length,messages:messages.slice(-30),diagnostic:{title:document.title,matchedSelectors:selectors.map(s=>({selector:s,count:document.querySelectorAll(s).length}))}});})()";
       linkedinWeb.evaluateJavascript(js, result -> showLinkedInInspection(result, true));
     });
+    Button mcpControl = secondary("Activer navigation LinkedIn via MCP");
+    root.addView(mcpControl, new LinearLayout.LayoutParams(-1, -2));
+    mcpControl.setOnClickListener(v -> {
+      if (linkedinMcpEnabled) {
+        linkedinMcpEnabled = false;
+        ui.removeCallbacks(linkedinPoll);
+        mcpControl.setText("Activer navigation LinkedIn via MCP");
+        Toast.makeText(this, "Contrôle LinkedIn MCP désactivé", Toast.LENGTH_SHORT).show();
+      } else {
+        new AlertDialog.Builder(this).setTitle("Autoriser la navigation LinkedIn ?")
+          .setMessage("Les assistants MCP associés pourront parcourir votre messagerie LinkedIn et lire les conversations affichées tant que cet écran reste ouvert. Aucun message ne sera envoyé. Les cookies ne sont jamais transmis.")
+          .setNegativeButton("Annuler", (d, w) -> {})
+          .setPositiveButton("Autoriser", (d, w) -> {
+            linkedinMcpEnabled = true;
+            mcpControl.setText("Désactiver navigation LinkedIn MCP");
+            ui.post(linkedinPoll);
+          }).show();
+      }
+    });
     Button exportMedia = secondary("Exporter les images du fil");
     root.addView(exportMedia, new LinearLayout.LayoutParams(-1, -2));
     exportMedia.setOnClickListener(v -> exportLinkedInImages());
@@ -747,6 +786,78 @@ public class MainActivity extends Activity {
     network.setOnClickListener(v -> linkedinWeb.loadUrl("https://www.linkedin.com/mynetwork/"));
     search.setOnClickListener(v -> linkedinWeb.loadUrl("https://www.linkedin.com/search/results/people/"));
     linkedinWeb.loadUrl("https://www.linkedin.com/messaging/");
+  }
+
+  /** Run only on the foreground Activity's WebView, after explicit opt-in. */
+  private void executeLinkedInJob(JSONObject job) {
+    String id = job.optString("id");
+    String op = job.optString("operation");
+    if (!linkedinMcpEnabled || linkedinWeb == null || id.isEmpty()) {
+      linkedinPollBusy = false;
+      return;
+    }
+    if ("inbox".equals(op) || "back".equals(op)) {
+      linkedinWeb.loadUrl("https://www.linkedin.com/messaging/");
+      ui.postDelayed(() -> {
+        if ("back".equals(op)) finishLinkedInJob(id, new JSONObject(), null);
+        else extractLinkedInInbox(id);
+      }, 2600);
+    } else if ("open".equals(op)) {
+      String participant = job.optString("participant").trim();
+      if (participant.isEmpty()) { finishLinkedInJob(id, null, "Participant requis"); return; }
+      if (!isLinkedInMessagingPage()) {
+        linkedinWeb.loadUrl("https://www.linkedin.com/messaging/");
+        ui.postDelayed(() -> openLinkedInParticipant(id, participant), 2700);
+      } else openLinkedInParticipant(id, participant);
+    } else if ("thread".equals(op)) {
+      if (!isLinkedInMessagingPage() || !linkedinWeb.getUrl().contains("/thread/")) {
+        finishLinkedInJob(id, null, "Ouvrez une conversation LinkedIn"); return;
+      }
+      String js = "(function(){const n=[...document.querySelectorAll('li[class*=message]')];const a=n.map(e=>({text:(e.innerText||'').trim().slice(0,4000),media:[...e.querySelectorAll('img')].map(i=>i.currentSrc||i.src).filter(u=>u&&u.includes('messaging-image')).slice(0,8)})).filter(x=>x.text||x.media.length);return JSON.stringify({url:location.pathname,messages:a.slice(-60)});})()";
+      linkedinWeb.evaluateJavascript(js, raw -> finishLinkedInJs(id, raw));
+    } else finishLinkedInJob(id, null, "Operation inconnue");
+  }
+
+  private void extractLinkedInInbox(String id) {
+    if (!linkedinMcpEnabled) { finishLinkedInJob(id, null, "Contrôle désactivé"); return; }
+    String js = "(function(){const s=['li[class*=conversation]','[class*=conversation-list] li','[class*=messaging] [role=listitem]','a[href*=\\\"/messaging/thread/\\\"]'];let nodes=[];for(const x of s){let found=[...document.querySelectorAll(x)].filter(n=>(n.innerText||'').trim());if(found.length>nodes.length)nodes=found;}return JSON.stringify({url:location.pathname,conversations:nodes.filter(n=>!n.closest('nav,footer')).slice(0,30).map(n=>({name:(n.querySelector('h3,h4,[class*=participant],[class*=name]')?.innerText||n.innerText.split('\\n')[0]||'').trim().slice(0,150),preview:(n.innerText||'').trim().slice(0,350)}))});})()";
+    linkedinWeb.evaluateJavascript(js, raw -> finishLinkedInJs(id, raw));
+  }
+
+  private void openLinkedInParticipant(String id, String participant) {
+    if (!linkedinMcpEnabled) { finishLinkedInJob(id, null, "Contrôle désactivé"); return; }
+    String js = "(function(name){const sels='li[class*=conversation],[class*=conversation-list] li,[class*=messaging] [role=listitem]';const nodes=[...document.querySelectorAll(sels)];const found=nodes.filter(n=>(n.innerText||'').toLocaleLowerCase().includes(name.toLocaleLowerCase()));if(found.length!==1)return JSON.stringify({matched:found.length,error:found.length?'Nom ambigu':'Conversation non visible'});const target=found[0];(target.querySelector('a[href]')||target).click();return JSON.stringify({clicked:true,participant:name});})(" + JSONObject.quote(participant) + ")";
+    linkedinWeb.evaluateJavascript(js, raw -> {
+      try {
+        JSONObject outcome = new JSONObject(new JSONArray("[" + raw + "]").getString(0));
+        if (outcome.optBoolean("clicked")) ui.postDelayed(() -> {
+          JSONObject result = new JSONObject();
+          try { result.put("participant", participant); result.put("url", linkedinWeb.getUrl()); } catch(Exception ignored) {}
+          finishLinkedInJob(id, result, null);
+        }, 1800);
+        else finishLinkedInJob(id, outcome, outcome.optString("error", "Navigation impossible"));
+      } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
+    });
+  }
+
+  private void finishLinkedInJs(String id, String raw) {
+    try {
+      String decoded = new JSONArray("[" + raw + "]").getString(0);
+      finishLinkedInJob(id, new JSONObject(decoded), null);
+    } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
+  }
+
+  private void finishLinkedInJob(String id, JSONObject result, String error) {
+    linkedinPollBusy = false;
+    worker.execute(() -> {
+      try {
+        JSONObject body = new JSONObject();
+        body.put("id", id);
+        if (error != null) body.put("error", error);
+        else body.put("result", result);
+        RelayClient.request("POST", "/api/devices/linkedin", RelayClient.token(this), body.toString());
+      } catch (Exception e) { android.util.Log.w("CamMicGoLinkedIn", "Relay result failed", e); }
+    });
   }
 
   private void exportLinkedInImages() {
@@ -1333,7 +1444,7 @@ public class MainActivity extends Activity {
     recoverRelayIfNeeded();
     ui.post(refresher);
   }
-  @Override protected void onPause() { ui.removeCallbacks(refresher); super.onPause(); }
+  @Override protected void onPause() { ui.removeCallbacks(refresher); ui.removeCallbacks(linkedinPoll); linkedinMcpEnabled = false; super.onPause(); }
 
   // ---------- manual extraction ----------
 
