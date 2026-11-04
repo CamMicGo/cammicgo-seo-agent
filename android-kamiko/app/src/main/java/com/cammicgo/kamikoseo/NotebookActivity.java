@@ -37,6 +37,9 @@ public final class NotebookActivity extends Activity {
   private WebView browser;
   private TextView location;
   private String lastNotebookUrl;
+  private boolean fullScreen=false;
+  private LinearLayout navigation,actions;
+  private Button expandButton;
   @Override public void onCreate(Bundle state) {
     super.onCreate(state);
     active=new WeakReference<>(this);
@@ -46,10 +49,11 @@ public final class NotebookActivity extends Activity {
     location.setText("NotebookLM · session locale");
     location.setPadding(16,12,16,12);
     root.addView(location);
-    LinearLayout actions=new LinearLayout(this);
+    actions=new LinearLayout(this);
     Button back=button("← Retour"), refresh=button("↻ Actualiser");
     Button home=button("Notebooks"), create=button("Créer"), source=button("Sources"), chrome=button("Chrome");
-    LinearLayout navigation=new LinearLayout(this);
+    expandButton=button("⛶ Plein écran");
+    navigation=new LinearLayout(this);
     navigation.addView(back,new LinearLayout.LayoutParams(0,-2,1));
     navigation.addView(refresh,new LinearLayout.LayoutParams(0,-2,1));
     root.addView(navigation);
@@ -60,6 +64,8 @@ public final class NotebookActivity extends Activity {
     actions.addView(source,new LinearLayout.LayoutParams(0,-2,1));
     actions.addView(chrome,new LinearLayout.LayoutParams(0,-2,1));
     root.addView(actions);
+    root.addView(expandButton);
+    expandButton.setOnClickListener(v->setFullScreen(!fullScreen));
     browser=new WebView(this);
     browser.getSettings().setJavaScriptEnabled(true);
     browser.getSettings().setDomStorageEnabled(true);
@@ -155,13 +161,23 @@ public final class NotebookActivity extends Activity {
     // Do not force-reload Google's sign-in flow when returning from another app.
     // Reloading here can restart the login form and discard user input.
   }
+  private void setFullScreen(boolean enabled){
+    fullScreen=enabled;
+    location.setVisibility(enabled?View.GONE:View.VISIBLE);
+    navigation.setVisibility(enabled?View.GONE:View.VISIBLE);
+    actions.setVisibility(enabled?View.GONE:View.VISIBLE);
+    expandButton.setText(enabled?"↙ Réduire":"⛶ Plein écran");
+    getWindow().getDecorView().setSystemUiVisibility(enabled
+      ? View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+      : View.SYSTEM_UI_FLAG_VISIBLE);
+  }
   private void notice(String message){new AlertDialog.Builder(this).setMessage(message).setPositiveButton("OK",null).show();}
   private void setNotebookTitle(String name){
     String js="(function(){const e=[...document.querySelectorAll('input,[contenteditable=true]')].find(e=>/title|titre|notebook/i.test((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('placeholder')||'')));if(!e)return 'missing';e.focus();if(e.isContentEditable){e.textContent="+JSONObject.quote(name)+";e.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:"+JSONObject.quote(name)+"}));}else{const s=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;s.call(e,"+JSONObject.quote(name)+");e.dispatchEvent(new Event('input',{bubbles:true}));}e.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',bubbles:true}));return 'attempted'})()";
     browser.evaluateJavascript(js,result->{if(!"\\\"attempted\\\"".equals(result))notice("Notebook ouvert, mais le champ de titre n'a pas été trouvé. Renommez-le dans NotebookLM.");else notice("Renommage demandé. Vérifiez que le titre apparaît dans NotebookLM avant de considérer la création comme terminée.");});
   }
   private Button button(String text){Button b=new Button(this);b.setText(text);b.setTextSize(12);b.setAllCaps(false);return b;}
-  @Override public void onBackPressed(){if(browser.canGoBack())browser.goBack();else super.onBackPressed();}
+  @Override public void onBackPressed(){if(fullScreen){setFullScreen(false);return;}if(browser.canGoBack())browser.goBack();else super.onBackPressed();}
 
   /** Same-origin fetch from the signed-in WebView; no Google credentials leave Android. */
   static String authenticatedRequest(String url,String method,String body) throws Exception {
