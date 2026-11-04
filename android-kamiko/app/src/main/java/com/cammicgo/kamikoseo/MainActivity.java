@@ -710,6 +710,7 @@ public class MainActivity extends Activity {
     actions.addView(search, new LinearLayout.LayoutParams(0, -2, 1));
     root.addView(actions);
 
+    linkedinMcpEnabled = false;
     linkedinWeb = new WebView(this);
     linkedinWeb.getSettings().setJavaScriptEnabled(true);
     linkedinWeb.getSettings().setDomStorageEnabled(true);
