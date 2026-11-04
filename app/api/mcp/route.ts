@@ -63,8 +63,18 @@ async function handler(req:NextRequest){
   }
   const relay=await import('@/lib/device-relay');
   const quotaLimit=(_session:{credentials:{mode:string}})=>2000; // Google API safety cap; the user-facing allowance is counted per MCP call
+  // Identify MCP clients only from explicit client metadata or a recognizable user agent.
+  // Never infer the client from the requested tool or user prompt.
+  const declaredClient = (rpc as {params?:{clientInfo?:{name?:string}}}|null)?.params?.clientInfo?.name ?? '';
+  const clientHeader = req.headers.get('x-mcp-client-name') ?? req.headers.get('user-agent') ?? '';
+  const clientText = (declaredClient || clientHeader).toLowerCase();
+  const agentName = /antigravity/.test(clientText) ? 'Antigravity'
+   : /gemini.cli|gemini_cli|gemini-cli/.test(clientText) ? 'Gemini CLI'
+   : /cursor/.test(clientText) ? 'Cursor'
+   : /claude/.test(clientText) ? 'Claude'
+   : /chatgpt|openai/.test(clientText) ? 'ChatGPT' : 'Assistant inconnu';
   // Per-call timing (internal performance monitoring: tool name, duration, success; no content), written after the response.
-  const logCall=(tool:string,ms:number,ok:boolean)=>{try{after(async()=>{try{const {sb}=await import('@/lib/device-relay');await sb('/rest/v1/cmg_mcp_calls',{method:'POST',body:JSON.stringify({user_id:user.id,tool,ms:Math.round(ms),ok})});}catch{/* timing is best effort */}});}catch{/* outside a request scope */}};
+  const logCall=(tool:string,ms:number,ok:boolean)=>{try{after(async()=>{try{const {sb}=await import('@/lib/device-relay');await sb('/rest/v1/cmg_mcp_calls',{method:'POST',body:JSON.stringify({user_id:user.id,tool,ms:Math.round(ms),ok,agent_name:agentName})});}catch{/* timing is best effort */}});}catch{/* outside a request scope */}};
   const protectedMcp=createMcpHandler(server=>{
    // eslint-disable-next-line @typescript-eslint/no-explicit-any
    const register=server.registerTool.bind(server) as any;
