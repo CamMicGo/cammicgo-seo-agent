@@ -653,9 +653,9 @@ public class MainActivity extends Activity {
 
     LinearLayout actions = new LinearLayout(this);
     actions.setPadding(dp(8), dp(6), dp(8), dp(6));
-    Button messages = secondary("Messages");
-    Button network = secondary("Réseau");
-    Button search = secondary("Recherche");
+    Button messages = secondary(t("linkedin_messages"));
+    Button network = secondary(t("linkedin_network"));
+    Button search = secondary(t("linkedin_search"));
     actions.addView(messages, new LinearLayout.LayoutParams(0, -2, 1));
     actions.addView(network, new LinearLayout.LayoutParams(0, -2, 1));
     actions.addView(search, new LinearLayout.LayoutParams(0, -2, 1));
