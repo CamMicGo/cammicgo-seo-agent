@@ -546,18 +546,18 @@ public class MainActivity extends Activity {
       });
     });
 
-    section(root, t("notebook_section"));
-    notebookRequests=card(root);
-    section(root, "OPÉRATIONS LINKEDIN");
-    linkedinRequests = card(root);
     section(root, t("sec_sent"));
+    // One unified, scrollable activity feed for YouTube, NotebookLM and LinkedIn.
     TextView hint = text(root, t("long_press"), 12, MUTED, false);
     hint.setPadding(dp(4), 0, 0, dp(8));
     LinearLayout h = card(root);
     h.setPadding(dp(6), dp(6), dp(6), dp(6));
     historyList = new LinearLayout(this);
     historyList.setOrientation(LinearLayout.VERTICAL);
-    h.addView(historyList);
+    android.widget.ScrollView activityScroll = new android.widget.ScrollView(this);
+    activityScroll.setFillViewport(false);
+    activityScroll.addView(historyList);
+    h.addView(activityScroll, new LinearLayout.LayoutParams(-1, dp(360)));
     Button diagnostics = secondary("Diagnostic MCP / LinkedIn");
     diagnostics.setOnClickListener(v -> {
       SharedPreferences prefs = RelayClient.prefs(this);
@@ -575,7 +575,7 @@ public class MainActivity extends Activity {
         .setMessage(t("clear_msg"))
         .setPositiveButton(t("clear_ok"), (dlg, which) -> {
           SharedPreferences prefs = RelayClient.prefs(this);
-          prefs.edit().putString("history", "[]").putString("assistantNotebookHistory", "[]").apply();
+          prefs.edit().putString("history", "[]").putString("assistantNotebookHistory", "[]").putString("linkedinAssistantHistory", "[]").apply();
           historyShown = null;
           refreshHistory(prefs);
         })
@@ -1566,8 +1566,6 @@ public class MainActivity extends Activity {
       progressFreshness.setTextColor(fresh ? MUTED : AMBER);
       if (error != null) progressFreshness.append(" · " + t("sync_error"));
     }
-    refreshNotebookRequests(p);
-    refreshLinkedInRequests(p);
     refreshHistory(p);
   }
 
@@ -1772,16 +1770,18 @@ public class MainActivity extends Activity {
     for (int i = 0; i < max; i++) {
       JSONObject e = h.optJSONObject(i);
       if (e == null) continue;
-      boolean ok = "done".equals(e.optString("status"));
+      String state = e.optString("status");
+      boolean ok = "done".equals(state);
+      boolean pending = "pending".equals(state) || "received".equals(state) || "queued".equals(state) || "running".equals(state) || "in_progress".equals(state);
       boolean notebookEntry = "notebooklm".equals(e.optString("type"));
       boolean mcpDebugEntry = "mcp_debug".equals(e.optString("type"));
       boolean linkedinEntry = "linkedin_mcp".equals(e.optString("type"));
       LinearLayout row = new LinearLayout(this);
       row.setGravity(Gravity.CENTER_VERTICAL);
       row.setPadding(dp(10), dp(9), dp(10), dp(9));
-      TextView icon = text(null, ok ? "✓" : linkedinEntry && !"failed".equals(e.optString("status")) ? "…" : "✕", 14, Color.WHITE, true);
+      TextView icon = text(null, ok ? "✓" : pending ? "…" : "✕", 14, Color.WHITE, true);
       icon.setGravity(Gravity.CENTER);
-      icon.setBackground(dot(ok ? GREEN : linkedinEntry && !"failed".equals(e.optString("status")) ? AMBER : RED));
+      icon.setBackground(dot(ok ? GREEN : pending ? AMBER : RED));
       row.addView(icon, new LinearLayout.LayoutParams(dp(24), dp(24)));
       LinearLayout texts = new LinearLayout(this);
       texts.setOrientation(LinearLayout.VERTICAL);
@@ -1818,7 +1818,7 @@ public class MainActivity extends Activity {
       origin.setCompoundDrawablePadding(dp(5));
       String when = DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(e.optLong("at")));
       String detail = linkedinEntry ? ("LinkedIn MCP · " + e.optString("status") + " · " + when) : mcpDebugEntry ? ("MCP HTTP · " + when + " · Appuyer pour déboguer") : notebookEntry ? ("NotebookLM · " + e.optString("status") + " · " + when) : ok ? t("segments", e.optInt("segments")) + " · " + when : when + " · " + e.optString("error", t("failed"));
-      TextView d = text(texts, detail, 12, ok ? MUTED : RED, false);
+      TextView d = text(texts, detail, 12, ok || pending ? MUTED : RED, false);
       d.setMaxLines(1); d.setEllipsize(TextUtils.TruncateAt.END);
       row.addView(texts, new LinearLayout.LayoutParams(0, -2, 1));
       final String vid = e.optString("videoId");
