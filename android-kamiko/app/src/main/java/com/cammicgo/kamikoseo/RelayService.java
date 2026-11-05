@@ -352,7 +352,15 @@ public class RelayService extends Service {
         }
         out.put(prior);
       }
-      p.edit().putString("notebookHistory",out.toString()).apply();
+      // Keep the Assistant IA sent-items archive independent of the NotebookLM operations log.
+      org.json.JSONArray sentOld=new org.json.JSONArray(p.getString("assistantNotebookHistory","[]"));
+      org.json.JSONArray sentOut=new org.json.JSONArray();
+      sentOut.put(e);
+      for(int i=0;i<sentOld.length()&&sentOut.length()<60;i++){
+        JSONObject prior=sentOld.optJSONObject(i);
+        if(prior!=null&&!jobId.equals(prior.optString("jobId")))sentOut.put(prior);
+      }
+      p.edit().putString("notebookHistory",out.toString()).putString("assistantNotebookHistory",sentOut.toString()).apply();
     } catch(Exception ignored) {}
   }
 
