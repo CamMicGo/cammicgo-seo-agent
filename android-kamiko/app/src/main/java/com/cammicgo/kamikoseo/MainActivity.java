@@ -995,23 +995,148 @@ public class MainActivity extends Activity {
 
   /** User-initiated local JSON export of the currently loaded conversation. */
   private void exportLinkedInThreadJson() {
-    if (!isLinkedInMessagingPage() || linkedinWeb.getUrl() == null || !linkedinWeb.getUrl().contains("/thread/")) {
-      Toast.makeText(this, "Ouvrez d'abord une conversation LinkedIn.", Toast.LENGTH_LONG).show();
+    if (linkedinWeb == null || linkedinWeb.getUrl() == null ||
+        !linkedinWeb.getUrl().startsWith("https://www.linkedin.com/")) {
+      Toast.makeText(this, "Ouvrez une conversation ou un profil LinkedIn.", Toast.LENGTH_LONG).show();
       return;
     }
-    String js = "(function(){const nodes=[...document.querySelectorAll('li[class*=message],[class*=msg-s-event-listitem],[class*=message-event]')];const messages=nodes.map(n=>({text:(n.innerText||'').trim().slice(0,8000),timestamp:n.querySelector('time')?.getAttribute('datetime')||null,images:[...n.querySelectorAll('img')].map(i=>({url:i.currentSrc||i.src,alt:i.alt||''})).filter(i=>i.url&&/messaging-image|licdn/i.test(i.url)).slice(0,20),files:[...n.querySelectorAll('a[download]')].map(a=>({name:(a.innerText||'').trim(),url:a.href})).slice(0,20)})).filter(m=>m.text||m.images.length||m.files.length);const header=document.querySelector('[class*=conversation-header],h2,h3');const avatars=[...document.querySelectorAll('[class*=conversation-header] img')].map(i=>({url:i.currentSrc||i.src,alt:i.alt||''}));return JSON.stringify({format:'cammicgo-linkedin-thread-v1',url:location.href,participant:(header?.innerText||'').trim().slice(0,250),avatars,messages,loadedMessages:messages.length,partial:true,exportedAt:new Date().toISOString()});})()";
+    // Keep each image on its original message, and distinguish author avatars from attachments.
+    String js = "(function(){const nodes=[...document.querySelectorAll('li[class*=message],[class*=msg-s-event-listitem],[class*=message-event]')];const img=i=>({url:i.currentSrc||i.src||'',alt:i.alt||'',role:'attachment'});const messages=nodes.map((n,index)=>({index,text:(n.innerText||'').trim().slice(0,8000),timestamp:n.querySelector('time')?.getAttribute('datetime')||null,author:(n.querySelector('[class*=actor-name],[class*=sender-name]')?.innerText||'').trim(),images:[...n.querySelectorAll('img')].map(img).filter(i=>i.url&&/messaging-image|licdn/i.test(i.url)).slice(0,20),files:[...n.querySelectorAll('a[download]')].map(a=>({name:(a.innerText||'').trim(),url:a.href})).slice(0,20)})).filter(m=>m.text||m.images.length||m.files.length);const header=document.querySelector('[class*=conversation-header],h2,h3');const profile=location.pathname.includes('/in/');const avatars=[...document.querySelectorAll(profile?'main img[class*=profile],main img[class*=photo],main img[class*=avatar]':'[class*=conversation-header] img')].slice(0,10).map(i=>({url:i.currentSrc||i.src||'',alt:i.alt||'',role:'profile'})).filter(i=>i.url);return JSON.stringify({format:'cammicgo-linkedin-multimodal-v2',url:location.href,kind:profile?'profile':'conversation',participant:(header?.innerText||'').trim().slice(0,250),avatars,messages,loadedMessages:messages.length,partial:true,exportedAt:new Date().toISOString()});})()";
     linkedinWeb.evaluateJavascript(js, raw -> {
       try {
         JSONObject data = new JSONObject(new JSONArray("[" + raw + "]").getString(0));
-        if (data.optJSONArray("messages") == null || data.optJSONArray("messages").length() == 0) {
-          Toast.makeText(this, "Aucun message chargé à exporter.", Toast.LENGTH_LONG).show();
+        JSONArray messages = data.optJSONArray("messages");
+        JSONArray avatars = data.optJSONArray("avatars");
+        if ((messages == null || messages.length() == 0) && (avatars == null || avatars.length() == 0)) {
+          Toast.makeText(this, "Aucune donnée chargée à exporter.", Toast.LENGTH_LONG).show();
           return;
         }
-        new AlertDialog.Builder(this).setTitle("Exporter la conversation")
-          .setMessage("Sauvegarder les messages actuellement chargés en JSON ? Les liens vers les images peuvent nécessiter une session LinkedIn et le fichier ne contient pas les octets des images.")
-          .setNegativeButton("Annuler", (d, w) -> {})
-          .setPositiveButton("Exporter", (d, w) -> save(data.toString(), "application/json", "linkedin-conversation-" + System.currentTimeMillis() + ".json")).show();
+        new AlertDialog.Builder(this).setTitle("Export multimodal LinkedIn")
+          .setMessage("Inclure les images accessibles en Base64 dans le JSON ? Les images indisponibles garderont leur URL et leur statut. L'export contient uniquement les éléments chargés à l'écran.")
+          .setNegativeButton("Annuler", null)
+          .setPositiveButton("Enregistrer", (dialog, which) -> buildLinkedInMultimodalExport(data, false))
+          .setNeutralButton("Partager avec une IA", (dialog, which) -> buildLinkedInMultimodalExport(data, true)).show();
       } catch (Exception e) { Toast.makeText(this, "Export JSON impossible : " + e.getMessage(), Toast.LENGTH_LONG).show(); }
+    });
+  }
+
+  /** Download bounded image data on a worker thread; never put LinkedIn cookies in the export. */
+  private void buildLinkedInMultimodalExport(JSONObject data, boolean share) {
+    final String cookie = CookieManager.getInstance().getCookie("https://www.linkedin.com/");
+    final String agent = linkedinWeb.getSettings().getUserAgentString();
+    Toast.makeText(this, "Préparation des images de l'export…", Toast.LENGTH_SHORT).show();
+    worker.execute(() -> {
+      try {
+        java.util.HashMap<String, JSONObject> cache = new java.util.HashMap<>();
+        int[] remaining = {24};
+        embedLinkedInImageArray(data.optJSONArray("avatars"), cookie, agent, cache, remaining);
+        JSONArray messages = data.optJSONArray("messages");
+        if (messages != null) for (int i = 0; i < messages.length(); i++)
+          embedLinkedInImageArray(messages.optJSONObject(i) == null ? null : messages.optJSONObject(i).optJSONArray("images"), cookie, agent, cache, remaining);
+        data.put("imageEncoding", "data-uri-base64");
+        data.put("embeddedImages", cache.size());
+        String content = data.toString();
+        ui.post(() -> {
+          if (share) shareLinkedInMultimodalJson(content);
+          else save(content, "application/json", "linkedin-multimodal-" + System.currentTimeMillis() + ".json");
+        });
+      } catch (Exception e) {
+        ui.post(() -> Toast.makeText(this, "Export multimodal impossible : " + e.getMessage(), Toast.LENGTH_LONG).show());
+      }
+    });
+  }
+
+  private void embedLinkedInImageArray(JSONArray images, String cookie, String agent,
+      java.util.HashMap<String, JSONObject> cache, int[] remaining) throws org.json.JSONException {
+    if (images == null) return;
+    for (int i = 0; i < images.length(); i++) {
+      JSONObject image = images.optJSONObject(i);
+      if (image == null) continue;
+      String url = image.optString("url", "");
+      if (cache.containsKey(url)) {
+        JSONObject existing = cache.get(url);
+        image.put("status", existing.optString("status"));
+        if (existing.has("dataUri")) image.put("dataUri", existing.optString("dataUri"));
+        if (existing.has("mimeType")) image.put("mimeType", existing.optString("mimeType"));
+        continue;
+      }
+      JSONObject result = new JSONObject();
+      String status = "unavailable";
+      if (remaining[0] <= 0) status = "limit_reached";
+      else {
+        Uri parsed = Uri.parse(url);
+        String host = parsed.getHost();
+        if ("https".equalsIgnoreCase(parsed.getScheme()) && host != null &&
+            (host.equals("linkedin.com") || host.endsWith(".linkedin.com") ||
+             host.equals("licdn.com") || host.endsWith(".licdn.com"))) {
+          remaining[0]--;
+          java.net.HttpURLConnection connection = null;
+          try {
+            connection = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+            connection.setConnectTimeout(10000);
+            connection.setReadTimeout(15000);
+            connection.setInstanceFollowRedirects(false);
+            connection.setRequestProperty("User-Agent", agent);
+            connection.setRequestProperty("Referer", "https://www.linkedin.com/");
+            if (cookie != null) connection.setRequestProperty("Cookie", cookie);
+            if (connection.getResponseCode() == 200) {
+              String mime = connection.getContentType();
+              if (mime != null) mime = mime.split(";")[0].trim().toLowerCase(java.util.Locale.ROOT);
+              if ("image/jpeg".equals(mime) || "image/png".equals(mime) ||
+                  "image/webp".equals(mime) || "image/gif".equals(mime)) {
+                if (connection.getContentLengthLong() > 2_000_000L) status = "too_large";
+                else {
+                  java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+                  try (java.io.InputStream in = connection.getInputStream()) {
+                    byte[] buffer = new byte[8192];
+                    int n;
+                    while ((n = in.read(buffer)) != -1) {
+                      if (bytes.size() + n > 2_000_000) { status = "too_large"; break; }
+                      bytes.write(buffer, 0, n);
+                    }
+                  }
+                  if (bytes.size() > 0 && !"too_large".equals(status)) {
+                    result.put("dataUri", "data:" + mime + ";base64," +
+                        android.util.Base64.encodeToString(bytes.toByteArray(), android.util.Base64.NO_WRAP));
+                    result.put("mimeType", mime);
+                    status = "embedded";
+                  }
+                }
+              }
+            }
+          } catch (Exception ignored) {
+            status = "unavailable";
+          } finally { if (connection != null) connection.disconnect(); }
+        }
+      }
+      result.put("status", status);
+      cache.put(url, result);
+      image.put("status", status);
+      if (result.has("dataUri")) image.put("dataUri", result.optString("dataUri"));
+      if (result.has("mimeType")) image.put("mimeType", result.optString("mimeType"));
+    }
+  }
+
+  private void shareLinkedInMultimodalJson(String content) {
+    worker.execute(() -> {
+      try {
+        java.io.File dir = new java.io.File(getCacheDir(), "linkedin-shared");
+        if (!dir.exists() && !dir.mkdirs()) throw new java.io.IOException("Cache unavailable");
+        java.io.File file = new java.io.File(dir, "linkedin-multimodal-" + System.currentTimeMillis() + ".json");
+        try (java.io.FileOutputStream out = new java.io.FileOutputStream(file)) {
+          out.write(content.getBytes(StandardCharsets.UTF_8));
+        }
+        Uri uri = androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", file);
+        ui.post(() -> {
+          Intent send = new Intent(Intent.ACTION_SEND);
+          send.setType("application/json");
+          send.putExtra(Intent.EXTRA_STREAM, uri);
+          send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+          startActivity(Intent.createChooser(send, "Partager l'export multimodal"));
+        });
+      } catch (Exception e) {
+        ui.post(() -> Toast.makeText(this, "Partage JSON impossible : " + e.getMessage(), Toast.LENGTH_LONG).show());
+      }
     });
   }
 
