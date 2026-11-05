@@ -209,7 +209,7 @@ async function handler(req:NextRequest){
    server.registerTool('linkedin_send_invitation',{title:'Invite a selected LinkedIn connection',description:'Two-step invitation: preview only until explicit confirmation in a NEW user message. Requires exact visible profile URL on the suggestions page. No bulk invitations.',inputSchema:z.object({profileUrl:z.string().url().max(600),confirm:z.boolean().optional().default(false),confirmationToken:z.string().optional()})},async a=>{
     if(!/^https:\/\/([a-z]{2,3}\.)?linkedin\.com\/in\/[a-zA-Z0-9_%-]+\/?$/.test(a.profileUrl))return asText({status:'error',error:'LinkedIn personal profile URL required'});
     const crypto=await import('node:crypto');
-    const secret=process.env.LINKEDIN_CONFIRMATION_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_JWT_SECRET;
+    const secret=process.env.LINKEDIN_CONFIRMATION_SECRET || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_JWT_SECRET;
     if(!secret)return asText({status:'error',error:'Configure LINKEDIN_CONFIRMATION_SECRET on server'});
     const digest=crypto.createHmac('sha256',secret).update(JSON.stringify({userId:user.id,operation:'invite',profileUrl:a.profileUrl})).digest('hex');
     if(!a.confirm)return asText({status:'preview',profileUrl:a.profileUrl,confirmationToken:digest,note:'No invitation sent. Obtain explicit confirmation in a new user turn.'});
@@ -218,7 +218,7 @@ async function handler(req:NextRequest){
    });
    server.registerTool('linkedin_send_message',{title:'Send a confirmed private LinkedIn message via Android',description:'Two-step private message sending. First call with confirm=false returns a preview and confirmationToken without sending. Only call confirm=true with the token after the user explicitly approves the exact recipient and text in a NEW message. Sends TEXT ONLY; images and attachments are not supported yet. Requires the authorized LinkedIn WebView open on Android.',inputSchema:z.object({participant:z.string().min(2).max(150),text:z.string().min(1).max(3000),confirm:z.boolean().optional().default(false),confirmationToken:z.string().optional()})},async a=>{
     const crypto=await import('node:crypto');
-    const secret=process.env.LINKEDIN_CONFIRMATION_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_JWT_SECRET;
+    const secret=process.env.LINKEDIN_CONFIRMATION_SECRET || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_JWT_SECRET;
     if(!secret)return asText({status:'error',error:'Confirmation signing unavailable: configure LINKEDIN_CONFIRMATION_SECRET as a private server environment variable'});
     const payload=JSON.stringify({userId:user.id,participant:a.participant,text:a.text});
     const digest=crypto.createHmac('sha256',secret).update(payload).digest('hex');
