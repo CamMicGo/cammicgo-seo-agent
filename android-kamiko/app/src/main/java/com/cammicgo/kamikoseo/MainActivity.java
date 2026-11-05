@@ -83,6 +83,9 @@ public class MainActivity extends Activity {
   private LinearLayout appShell;
   private View appHeader, appTabs;
   private WebView linkedinWeb;
+  private boolean linkedinExpanded = false;
+  private Button linkedinExpand;
+  private LinearLayout linkedinActions;
   private boolean linkedinMcpEnabled = false;
   private boolean linkedinPollBusy = false;
   private final Runnable linkedinPoll = new Runnable() {
@@ -694,6 +697,20 @@ public class MainActivity extends Activity {
   }
 
   // ---------- LinkedIn: personal account, on-device session ----------
+  private void setLinkedInExpanded(boolean expanded) {
+    linkedinExpanded = expanded;
+    if (appHeader != null) appHeader.setVisibility(expanded ? View.GONE : View.VISIBLE);
+    if (appTabs != null) appTabs.setVisibility(expanded ? View.GONE : View.VISIBLE);
+    if (linkedinActions != null) linkedinActions.setVisibility(expanded ? View.GONE : View.VISIBLE);
+    if (linkedinExpand != null) {
+      linkedinExpand.setText(expanded ? "⤡" : "⤢");
+      linkedinExpand.setContentDescription(expanded ? "Réduire LinkedIn" : "Agrandir LinkedIn");
+    }
+    getWindow().getDecorView().setSystemUiVisibility(expanded
+      ? View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+      : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+  }
+
   private void buildLinkedInTab(FrameLayout host) {
     LinearLayout root = new LinearLayout(this);
     root.setOrientation(LinearLayout.VERTICAL);
@@ -715,6 +732,12 @@ public class MainActivity extends Activity {
     actions.addView(search, new LinearLayout.LayoutParams(0, -2, 1));
     root.addView(actions);
 
+    linkedinActions = actions;
+    Button expandLinkedIn = secondary("⤢");
+    expandLinkedIn.setContentDescription(I18n.code(this).equals("fr") ? "Agrandir LinkedIn" : "Expand LinkedIn");
+    linkedinExpand = expandLinkedIn;
+    root.addView(expandLinkedIn, new LinearLayout.LayoutParams(-1, -2));
+    expandLinkedIn.setOnClickListener(v -> setLinkedInExpanded(!linkedinExpanded));
     linkedinMcpEnabled = false;
     linkedinWeb = new WebView(this);
     linkedinWeb.getSettings().setJavaScriptEnabled(true);
@@ -1126,7 +1149,7 @@ public class MainActivity extends Activity {
     pages[2]=root;
     LinearLayout actions=new LinearLayout(this);
     actions.setPadding(dp(8),dp(6),dp(8),dp(6));
-    Button notebooks=secondary(I18n.code(this).equals("fr") ? "Carnets" : "Notebooks");
+    Button notebooks=secondary("Notebooks");
     Button sources=secondary("Sources");
     Button reload=secondary("⟳");
     reload.setContentDescription(I18n.code(this).equals("fr") ? "Actualiser" : "Refresh");
