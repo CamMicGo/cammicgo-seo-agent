@@ -775,7 +775,7 @@ public class MainActivity extends Activity {
         Toast.makeText(this, "Contrôle LinkedIn MCP désactivé", Toast.LENGTH_SHORT).show();
       } else {
         new AlertDialog.Builder(this).setTitle("Autoriser la navigation LinkedIn ?")
-          .setMessage("Les assistants MCP associés pourront parcourir votre messagerie LinkedIn et lire les conversations affichées tant que cet écran reste ouvert. Les demandes d'envoi de messages nécessitent une confirmation explicite dans l'assistant. Les cookies ne sont jamais transmis.")
+          .setMessage("Les assistants MCP associés pourront parcourir votre messagerie LinkedIn et lire les conversations affichées pendant cette session de l’application. Le contrôle est suspendu en arrière-plan et reprend à votre retour. Vous pouvez le désactiver à tout moment. Les demandes d’envoi de messages nécessitent une confirmation explicite dans l’assistant. Les cookies ne sont jamais transmis.")
           .setNegativeButton("Annuler", (d, w) -> {})
           .setPositiveButton("Autoriser", (d, w) -> {
             linkedinMcpEnabled = true;
@@ -1901,13 +1901,19 @@ public class MainActivity extends Activity {
     SharedPreferences p=RelayClient.prefs(this);
     recoverRelayIfNeeded();
     ui.post(refresher);
+    // Preserve the explicit LinkedIn permission within this Activity session.
+    // Polling is suspended while the Activity is not in the foreground.
+    if (linkedinMcpEnabled && linkedinWeb != null) {
+      ui.removeCallbacks(linkedinPoll);
+      ui.post(linkedinPoll);
+      if (linkedinMcpControlButton != null) linkedinMcpControlButton.setText("✓  MCP autorisé");
+    }
   }
   @Override protected void onPause() {
     ui.removeCallbacks(refresher);
     ui.removeCallbacks(linkedinPoll);
-    linkedinMcpEnabled = false;
-    linkedinPollBusy = false;
-    if (linkedinMcpControlButton != null) linkedinMcpControlButton.setText("Activer navigation LinkedIn via MCP");
+    // Do not revoke the user's explicit consent on tab switches or temporary pauses.
+    // A fresh Activity starts with linkedinMcpEnabled=false, requiring consent again.
     super.onPause();
   }
 
