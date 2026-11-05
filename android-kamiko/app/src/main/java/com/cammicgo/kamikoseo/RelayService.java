@@ -186,6 +186,7 @@ public class RelayService extends Service {
 
   private void handle(String token, JSONObject job) throws IOException {
     String id = job.optString("id"), videoId = job.optString("videoId"), lang = job.optString("language", "original");
+    String agentName = job.optString("agentName", "Assistant inconnu");
     if (job.optString("type").startsWith("notebooklm_")) {
       handleNotebook(token, job);
       return;
@@ -226,7 +227,7 @@ public class RelayService extends Service {
         throw e;
       }
       RelayClient.sendError(token, id, msg);
-      history(videoId, null, "failed", 0, firstLine(msg));
+      history(videoId, null, "failed", 0, firstLine(msg), agentName);
       status(I18n.t(this, "fail_for", videoId, firstLine(msg)));
       current(null);
       return;
@@ -250,13 +251,13 @@ public class RelayService extends Service {
     current(null);
     if (lastError != null) {
       if (isNetwork(lastError)) throw lastError;
-      history(videoId, r.title, "failed", r.segments.size(), firstLine(lastError.getMessage()));
+      history(videoId, r.title, "failed", r.segments.size(), firstLine(lastError.getMessage()), agentName);
       status(I18n.t(this, "refused", videoId, firstLine(lastError.getMessage())));
       return;
     }
     SharedPreferences p = RelayClient.prefs(this);
     p.edit().putInt("jobsDone", p.getInt("jobsDone", 0) + 1).apply();
-    history(videoId, r.title, "done", r.segments.size(), null);
+    history(videoId, r.title, "done", r.segments.size(), null, agentName);
     status(I18n.t(this, "sent", r.title != null ? r.title : videoId, r.segments.size()));
     // Random 1–2 minute delay between successful automatic transcripts; no daily cap.
     nextTranscriptAt = System.currentTimeMillis() + 60_000L + (long)(Math.random() * 60_000L);
@@ -369,7 +370,7 @@ public class RelayService extends Service {
   }
 
   /** Local list of what this device sent, newest first (max 60), shown in the app. */
-  private void history(String videoId, String title, String state, int segments, String error) {
+  private void history(String videoId, String title, String state, int segments, String error, String agentName) {
     SharedPreferences p = RelayClient.prefs(this);
     try {
       org.json.JSONArray old = new org.json.JSONArray(p.getString("history", "[]"));
@@ -377,6 +378,7 @@ public class RelayService extends Service {
       JSONObject e = new JSONObject();
       e.put("videoId", videoId); e.put("title", title == null ? JSONObject.NULL : title); e.put("status", state);
       e.put("segments", segments); e.put("at", System.currentTimeMillis());
+      e.put("agentName", agentName);
       if (error != null) e.put("error", error);
       out.put(e);
       for (int i = 0; i < old.length() && out.length() < 60; i++) out.put(old.get(i));
