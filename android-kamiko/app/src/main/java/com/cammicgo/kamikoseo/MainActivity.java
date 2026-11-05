@@ -810,6 +810,23 @@ public class MainActivity extends Activity {
         linkedinWeb.loadUrl("https://www.linkedin.com/messaging/");
         ui.postDelayed(() -> openLinkedInParticipant(id, participant), 2700);
       } else openLinkedInParticipant(id, participant);
+    } else if ("feed".equals(op)) {
+      linkedinWeb.loadUrl("https://www.linkedin.com/feed/");
+      ui.postDelayed(() -> {
+        String js = "(function(){const posts=[...document.querySelectorAll('div[data-urn],article')].filter(e=>e.querySelector('a[href*=\\\"/in/\\\"],a[href*=\\\"/company/\\\"]')).slice(0,20).map(e=>({text:(e.innerText||'').trim().slice(0,2500),links:[...e.querySelectorAll('a[href]')].map(a=>a.href).filter(u=>u.startsWith('https://www.linkedin.com/')).slice(0,8)})).filter(p=>p.text);return JSON.stringify({url:location.pathname,posts});})()";
+        linkedinWeb.evaluateJavascript(js, raw -> finishLinkedInJs(id, raw));
+      }, 3200);
+    } else if ("search".equals(op)) {
+      String keywords = job.optString("keywords", "").trim();
+      if (keywords.length() < 2 || keywords.length() > 150) { finishLinkedInJob(id, null, "Mots-clés invalides"); return; }
+      try {
+        String url = "https://www.linkedin.com/search/results/people/?keywords=" + java.net.URLEncoder.encode(keywords, "UTF-8");
+        linkedinWeb.loadUrl(url);
+        ui.postDelayed(() -> {
+          String js = "(function(){const items=[...document.querySelectorAll('a[href*=\\\"/in/\\\"]')].filter(a=>a.closest('li,article,[class*=result]')).slice(0,30).map(a=>({name:(a.innerText||a.closest('li,article')?.innerText||'').trim().slice(0,350),profileUrl:a.href})).filter(p=>p.name);return JSON.stringify({url:location.pathname,profiles:items});})()";
+          linkedinWeb.evaluateJavascript(js, raw -> finishLinkedInJs(id, raw));
+        }, 3200);
+      } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
     } else if ("thread".equals(op)) {
       if (!isLinkedInMessagingPage() || !linkedinWeb.getUrl().contains("/thread/")) {
         finishLinkedInJob(id, null, "Ouvrez une conversation LinkedIn"); return;
