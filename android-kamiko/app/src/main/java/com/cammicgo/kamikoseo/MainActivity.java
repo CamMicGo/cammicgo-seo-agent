@@ -858,6 +858,35 @@ public class MainActivity extends Activity {
         java.util.LinkedHashMap<String, JSONObject> found = new java.util.LinkedHashMap<>();
         collectLinkedInSearchPage(id, url, startPage, requested, found);
       } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
+    } else if ("company_search".equals(op)) {
+      String keywords = job.optString("keywords", "").trim();
+      int limit = Math.min(50, Math.max(1, job.optInt("limit", 25)));
+      if (keywords.length() < 2 || keywords.length() > 250) { finishLinkedInJob(id, null, "Invalid company search"); return; }
+      try {
+        String url = "https://www.linkedin.com/search/results/companies/?keywords=" + java.net.URLEncoder.encode(keywords, "UTF-8");
+        linkedinWeb.loadUrl(url);
+        ui.postDelayed(() -> {
+          String js = "(function(limit){const seen=new Set();const companies=[];for(const a of document.querySelectorAll('a[href*=\\\"/company/\\\"]')){const href=a.href.split('?')[0];if(!/^https:\\/\\/www\\.linkedin\\.com\\/company\\//.test(href)||seen.has(href))continue;const card=a.closest('li,article,[class*=result]')||a;const name=(a.innerText||card.querySelector('h3')?.innerText||'').trim().slice(0,160);if(!name)continue;seen.add(href);companies.push({name,companyUrl:href,description:(card.innerText||'').trim().slice(0,500),logoUrl:card.querySelector('img')?.currentSrc||card.querySelector('img')?.src||''});if(companies.length>=limit)break;}return JSON.stringify({companies,retrieved:companies.length,url:location.pathname,partial:true});})(" + limit + ")";
+          linkedinWeb.evaluateJavascript(js, raw -> finishLinkedInJs(id, raw));
+        }, 3200);
+      } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
+    } else if ("network_suggestions".equals(op)) {
+      int limit = Math.min(50, Math.max(1, job.optInt("limit", 25)));
+      linkedinWeb.loadUrl("https://www.linkedin.com/mynetwork/");
+      ui.postDelayed(() -> {
+        String js = "(function(limit){const seen=new Set();const people=[];for(const a of document.querySelectorAll('a[href*=\\\"/in/\\\"]')){const href=a.href.split('?')[0];if(!/^https:\\/\\/www\\.linkedin\\.com\\/in\\//.test(href)||seen.has(href))continue;const card=a.closest('li,article,[class*=card],[class*=person]')||a.parentElement;const name=(a.innerText||card?.querySelector('h3')?.innerText||'').trim().slice(0,150);if(!name)continue;seen.add(href);people.push({name,profileUrl:href,headline:(card?.innerText||'').trim().slice(0,400),avatarUrl:card?.querySelector('img')?.currentSrc||card?.querySelector('img')?.src||''});if(people.length>=limit)break;}return JSON.stringify({people,retrieved:people.length,url:location.pathname,partial:true});})(" + limit + ")";
+        linkedinWeb.evaluateJavascript(js, raw -> finishLinkedInJs(id, raw));
+      }, 3200);
+    } else if ("invite".equals(op)) {
+      String profileUrl = job.optString("profileUrl", "").trim();
+      if (!profileUrl.matches("https://(www\\\\.)?linkedin\\\\.com/in/[a-zA-Z0-9_%-]+/?")) { finishLinkedInJob(id, null, "Invalid profile URL"); return; }
+      // Only act on a suggestion already visible in the network tab. Never guess a recipient.
+      if (linkedinWeb.getUrl() == null || !linkedinWeb.getUrl().contains("/mynetwork")) { finishLinkedInJob(id, null, "Open network suggestions first"); return; }
+      String js = "(function(url){const links=[...document.querySelectorAll('a[href*=\\\"/in/\\\"]')].filter(a=>a.href.split('?')[0].replace(/\\/$/,'')===url.replace(/\\/$/,''));const cards=[...new Set(links.map(a=>a.closest('li,article,[class*=card],[class*=person]')).filter(Boolean))];if(cards.length!==1)return JSON.stringify({error:'Profile not uniquely visible',matches:cards.length});const buttons=[...cards[0].querySelectorAll('button')].filter(b=>!b.disabled&&/^(connect|se connecter|inviter)$/i.test((b.getAttribute('aria-label')||b.innerText||'').trim()));if(buttons.length!==1)return JSON.stringify({error:'Invitation button ambiguous or missing',matches:buttons.length});buttons[0].click();return JSON.stringify({clicked:true,profileUrl:url,note:'Invitation button clicked; verify LinkedIn state'});})(" + JSONObject.quote(profileUrl) + ")";
+      linkedinWeb.evaluateJavascript(js, raw -> {
+        try { JSONObject result = new JSONObject(new JSONArray("[" + raw + "]").getString(0)); finishLinkedInJob(id, result, result.optBoolean("clicked") ? null : result.optString("error", "Invite failed")); }
+        catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
+      });
     } else if ("send".equals(op)) {
       String participant = job.optString("participant", "").trim();
       String message = job.optString("text", "");
