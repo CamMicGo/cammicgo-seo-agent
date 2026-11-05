@@ -832,6 +832,20 @@ public class MainActivity extends Activity {
           linkedinWeb.evaluateJavascript(js, raw -> finishLinkedInJs(id, raw));
         }, 3200);
       } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
+    } else if ("send".equals(op)) {
+      String participant = job.optString("participant", "").trim();
+      String message = job.optString("text", "");
+      if (participant.length() < 2 || message.isEmpty() || message.length() > 3000) { finishLinkedInJob(id, null, "Invalid recipient or text"); return; }
+      if (!isLinkedInMessagingPage() || linkedinWeb.getUrl() == null || !linkedinWeb.getUrl().contains("/thread/")) { finishLinkedInJob(id, null, "Open the intended LinkedIn conversation first"); return; }
+      // Validate the visible recipient and message composer before writing or clicking Send.
+      String js = "(function(name,msg){const heading=[...document.querySelectorAll('h1,h2,h3,[class*=conversation-header]')].map(e=>(e.innerText||'').trim()).filter(Boolean);if(!heading.some(s=>s.toLocaleLowerCase().includes(name.toLocaleLowerCase())))return JSON.stringify({error:'Recipient not verified',headings:heading.slice(0,5)});const editor=document.querySelector('[contenteditable=\\\"true\\\"][role=\\\"textbox\\\"],div[contenteditable=\\\"true\\\"][data-placeholder],div[contenteditable=\\\"true\\\"]');if(!editor)return JSON.stringify({error:'Message composer not found'});editor.focus();editor.textContent=msg;editor.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:msg}));const buttons=[...document.querySelectorAll('button')].filter(b=>!b.disabled&&(/^(send|envoyer)$/i.test((b.getAttribute('aria-label')||'').trim())||/^(send|envoyer)$/i.test((b.innerText||'').trim())));if(buttons.length!==1)return JSON.stringify({error:'Send button ambiguous or missing',matches:buttons.length});buttons[0].click();return JSON.stringify({clicked:true,recipient:name});})(" + JSONObject.quote(participant) + "," + JSONObject.quote(message) + ")";
+      linkedinWeb.evaluateJavascript(js, raw -> {
+        try {
+          JSONObject result = new JSONObject(new JSONArray("[" + raw + "]").getString(0));
+          if (!result.optBoolean("clicked")) finishLinkedInJob(id, result, result.optString("error", "Send failed"));
+          else finishLinkedInJob(id, result, null);
+        } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
+      });
     } else if ("thread".equals(op)) {
       if (!isLinkedInMessagingPage() || !linkedinWeb.getUrl().contains("/thread/")) {
         finishLinkedInJob(id, null, "Ouvrez une conversation LinkedIn"); return;
