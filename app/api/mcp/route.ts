@@ -81,7 +81,17 @@ async function handler(req:NextRequest){
    : /chatgpt|openai/.test(clientText) ? 'ChatGPT'
    : 'Assistant inconnu';
   // Per-call timing (internal performance monitoring: tool name, duration, success; no content), written after the response.
-  const logCall=(tool:string,ms:number,ok:boolean)=>{try{after(async()=>{try{const {sb}=await import('@/lib/device-relay');await sb('/rest/v1/cmg_mcp_calls',{method:'POST',body:JSON.stringify({user_id:user.id,tool,ms:Math.round(ms),ok,agent_name:agentName})});}catch{/* timing is best effort */}});}catch{/* outside a request scope */}};
+  const logCall=(tool:string,ms:number,ok:boolean)=>{try{after(async()=>{try{const {sb}=await import('@/lib/device-relay');await sb('/rest/v1/cmg_mcp_calls',{method:'POST',body:JSON.stringify({user_id:user.id,tool,ms:Math.round(ms),ok,agent_name:agentName,request_debug:{
+    method:rpc?.method||null,
+    tool,
+    clientInfoName:declaredClient||null,
+    clientInfoVersion:typeof metaClient?.version==='string'?metaClient.version.slice(0,80):null,
+    clientInfoSource:typeof metaClient?.name==='string'?'params._meta.io.modelcontextprotocol/clientInfo':typeof requestParams?.clientInfo?.name==='string'?'params.clientInfo':null,
+    userAgent:(req.headers.get('user-agent')||'').slice(0,250),
+    xMcpClientName:(req.headers.get('x-mcp-client-name')||'').slice(0,120),
+    detectedAgent:agentName,
+    bodyRedacted:true
+   }})});}catch{/* timing is best effort */}});}catch{/* outside a request scope */}};
   const protectedMcp=createMcpHandler(server=>{
    // eslint-disable-next-line @typescript-eslint/no-explicit-any
    const register=server.registerTool.bind(server) as any;
