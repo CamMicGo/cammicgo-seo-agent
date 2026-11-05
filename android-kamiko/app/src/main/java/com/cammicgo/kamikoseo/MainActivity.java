@@ -117,7 +117,7 @@ public class MainActivity extends Activity {
   // assistant tab
   private EditText codeInput;
   private Button pairButton, connectButton, retryYoutubeButton;
-  private LinearLayout unpairedBox, pairedBox, historyList, notebookRequests;
+  private LinearLayout unpairedBox, pairedBox, historyList, notebookRequests, linkedinRequests;
   private View statusDot;
   private TextView statusLine, relayDetail;
   private TextView progressCount, progressLabel, progressCurrent, progressNote, progressFreshness, statDone, statWaiting, statFailed;
@@ -548,6 +548,8 @@ public class MainActivity extends Activity {
 
     section(root, t("notebook_section"));
     notebookRequests=card(root);
+    section(root, "OPÉRATIONS LINKEDIN");
+    linkedinRequests = card(root);
     section(root, t("sec_sent"));
     TextView hint = text(root, t("long_press"), 12, MUTED, false);
     hint.setPadding(dp(4), 0, 0, dp(8));
@@ -1565,7 +1567,34 @@ public class MainActivity extends Activity {
       if (error != null) progressFreshness.append(" · " + t("sync_error"));
     }
     refreshNotebookRequests(p);
+    refreshLinkedInRequests(p);
     refreshHistory(p);
+  }
+
+  private String linkedinHistoryShown;
+  private void refreshLinkedInRequests(SharedPreferences prefs) {
+    if (linkedinRequests == null) return;
+    String raw = prefs.getString("linkedinAssistantHistory", "[]");
+    if (raw.equals(linkedinHistoryShown)) return;
+    linkedinHistoryShown = raw;
+    linkedinRequests.removeAllViews();
+    try {
+      JSONArray jobs = new JSONArray(raw);
+      if (jobs.length() == 0) {
+        text(linkedinRequests, "Aucune tâche LinkedIn réceptionnée par cet appareil.", 12, MUTED, false);
+        return;
+      }
+      for (int i = jobs.length() - 1; i >= 0 && i >= jobs.length() - 20; i--) {
+        JSONObject job = jobs.optJSONObject(i);
+        if (job == null) continue;
+        String status = job.optString("status", "pending");
+        String operation = job.optString("operation", "LinkedIn");
+        TextView item = text(linkedinRequests, operation + " · " + status + " · " + job.optString("id"), 12, "failed".equals(status) ? RED : INK, false);
+        item.setPadding(0, dp(5), 0, dp(5));
+      }
+    } catch (Exception e) {
+      text(linkedinRequests, "Historique LinkedIn indisponible.", 12, RED, false);
+    }
   }
 
   private String notebookHistoryShown;
@@ -1711,6 +1740,7 @@ public class MainActivity extends Activity {
         entry.put("at", job.optLong("at"));
         entry.put("error", job.optString("error", ""));
         entry.put("jobId", job.optString("id", ""));
+        entry.put("agentName", job.optString("agentName", ""));
         h.put(entry);
       }
       JSONArray calls = new JSONArray(mcpDebugRaw);
@@ -1738,7 +1768,7 @@ public class MainActivity extends Activity {
       empty.setPadding(dp(12), dp(10), dp(12), dp(10));
       return;
     }
-    int max = Math.min(h.length(), 20);
+    int max = Math.min(h.length(), 50);
     for (int i = 0; i < max; i++) {
       JSONObject e = h.optJSONObject(i);
       if (e == null) continue;
