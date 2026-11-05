@@ -92,8 +92,8 @@ export async function pruneRelayPayloads(){
   ]);
  }catch(e){lastPrune=0;throw e;}
 }
-export async function createJob(userId:string,videoId:string,language:string,ttlMinutes=10){
- const rows=await sb<Job[]>('/rest/v1/cmg_transcript_jobs',{method:'POST',body:JSON.stringify({user_id:userId,video_id:videoId,language,expires_at:new Date(Date.now()+ttlMinutes*60_000).toISOString()}),prefer:'return=representation'});
+export async function createJob(userId:string,videoId:string,language:string,ttlMinutes=10,agentName='Assistant inconnu'){
+ const rows=await sb<Job[]>('/rest/v1/cmg_transcript_jobs',{method:'POST',body:JSON.stringify({user_id:userId,video_id:videoId,language,agent_name:agentName,expires_at:new Date(Date.now()+ttlMinutes*60_000).toISOString()}),prefer:'return=representation'});
  return rows[0];
 }
 export async function getJob(userId:string,jobId:string){
