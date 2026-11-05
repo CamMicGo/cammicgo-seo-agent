@@ -721,48 +721,6 @@ public class MainActivity extends Activity {
     linkedinWeb.getSettings().setDomStorageEnabled(true);
     CookieManager.getInstance().setAcceptCookie(true);
     CookieManager.getInstance().setAcceptThirdPartyCookies(linkedinWeb, true);
-    // Explicit, user-controlled sharing of a conversation to an AI assistant.
-    // Never extract LinkedIn cookies, intercept private APIs, or silently read DOM content.
-    Button shareThread = secondary(I18n.code(this).equals("fr") ? "Partager un fil" : "Share thread");
-    shareThread.setContentDescription(I18n.code(this).equals("fr") ? "Partager une conversation LinkedIn choisie" : "Share a selected LinkedIn conversation");
-    root.addView(shareThread, new LinearLayout.LayoutParams(-1, -2));
-    shareThread.setOnClickListener(v -> {
-      String current = linkedinWeb.getUrl();
-      if (!isLinkedInMessagingPage()) {
-        Toast.makeText(this, I18n.code(this).equals("fr") ? "Ouvrez d'abord une conversation LinkedIn." : "Open a LinkedIn conversation first.", Toast.LENGTH_LONG).show();
-        return;
-      }
-      // Android Sharesheet allows the user to choose an assistant. The URL alone
-      // does not grant access to private messages; the user may paste the text.
-      Intent share = new Intent(Intent.ACTION_SEND);
-      share.setType("text/plain");
-      share.putExtra(Intent.EXTRA_SUBJECT, "LinkedIn conversation");
-      share.putExtra(Intent.EXTRA_TEXT, current + "\\n" + (I18n.code(this).equals("fr") ? "Collez ici les messages que vous souhaitez résumer ou auxquels répondre." : "Paste the messages you want summarized or answered here."));
-      startActivity(Intent.createChooser(share, I18n.code(this).equals("fr") ? "Partager avec un assistant" : "Share with an assistant"));
-    });
-    // Manual, read-only WebView smoke tests. No private API, cookie export or background scraping.
-    Button inspectChats = secondary(I18n.code(this).equals("fr") ? "Tester la liste" : "Test inbox list");
-    Button inspectThread = secondary(I18n.code(this).equals("fr") ? "Lire le fil ouvert" : "Read open thread");
-    LinearLayout tests = new LinearLayout(this);
-    tests.addView(inspectChats, new LinearLayout.LayoutParams(0, -2, 1));
-    tests.addView(inspectThread, new LinearLayout.LayoutParams(0, -2, 1));
-    root.addView(tests);
-    inspectChats.setOnClickListener(v -> {
-      if (!isLinkedInMessagingPage()) {
-        Toast.makeText(this, "Ouvrez la messagerie LinkedIn.", Toast.LENGTH_LONG).show();
-        return;
-      }
-      String js = "(function(){const sels=['li[class*=conversation]','[data-control-name*=conversation]','[class*=conversation-list] li','[class*=messaging] [role=listitem]','a[href*=\\\"/messaging/thread/\\\"]'];let nodes=[];for(const sel of sels){const found=[...document.querySelectorAll(sel)].filter(n=>(n.innerText||'').trim());if(found.length>nodes.length)nodes=found;}const seen=new Set();const rows=[];for(const n of nodes){if(n.closest('nav,footer,[role=navigation]'))continue;const text=(n.innerText||'').trim();const name=(n.querySelector('h3,h4,[class*=participant],[class*=name]')?.innerText||text.split('\\n')[0]||'').trim();const key=name.toLocaleLowerCase();if(!name||['accueil','réseau','publier','notifications','emplois','home','network','jobs'].includes(key)||seen.has(key))continue;seen.add(key);rows.push({name,preview:text.slice(0,400)});if(rows.length>=5)break;}return JSON.stringify({url:location.pathname,count:rows.length,rows,diagnostic:{selectors:sels.map(s=>({selector:s,count:document.querySelectorAll(s).length}))}});})()";
-      linkedinWeb.evaluateJavascript(js, result -> showLinkedInInspection(result, false));
-    });
-    inspectThread.setOnClickListener(v -> {
-      if (!isLinkedInMessagingPage()) {
-        Toast.makeText(this, "Ouvrez une conversation LinkedIn.", Toast.LENGTH_LONG).show();
-        return;
-      }
-      String js = "(function(){const selectors=['[class*=msg-s-event-listitem]','[class*=message-event]','li[class*=message]','[class*=msg-s-message-list] [class*=bubble]','[class*=message-bubble]','[class*=msg-thread] [class*=message]'];let nodes=[];for(const sel of selectors){const found=[...document.querySelectorAll(sel)].filter(n=>(n.innerText||'').trim()||n.querySelector('img,video,a[download]'));if(found.length>nodes.length)nodes=found;}const seen=new Set();const messages=[];const mediaFor=n=>[...n.querySelectorAll('img,video,source,a[download],a[href]')].map(e=>{const tag=e.tagName.toLowerCase();const url=e.currentSrc||e.getAttribute('src')||e.getAttribute('href')||'';const srcset=e.getAttribute('srcset')||'';const alt=e.getAttribute('alt')||'';if(!url&&!srcset)return null;if(tag==='a'&&!e.hasAttribute('download')&&!/\\\\.(png|jpe?g|gif|webp|pdf)(\\\\?|$)/i.test(url))return null;return {type:tag,url:url.slice(0,1800),srcset:srcset.slice(0,1800),alt:alt.slice(0,300),download:e.hasAttribute('download')};}).filter(Boolean).slice(0,10);for(const n of nodes){const text=(n.innerText||'').trim();const media=mediaFor(n);if(!text&&!media.length)continue;const key=text+'|'+media.map(x=>x.url).join('|');if(seen.has(key))continue;seen.add(key);messages.push({text:text.slice(0,4000),media});}return JSON.stringify({url:location.pathname,count:messages.length,messages:messages.slice(-30),diagnostic:{title:document.title,matchedSelectors:selectors.map(s=>({selector:s,count:document.querySelectorAll(s).length}))}});})()";
-      linkedinWeb.evaluateJavascript(js, result -> showLinkedInInspection(result, true));
-    });
     Button mcpControl = secondary("Activer navigation LinkedIn via MCP");
     root.addView(mcpControl, new LinearLayout.LayoutParams(-1, -2));
     mcpControl.setOnClickListener(v -> {
@@ -782,9 +740,9 @@ public class MainActivity extends Activity {
           }).show();
       }
     });
-    Button exportMedia = secondary("Exporter les images du fil");
-    root.addView(exportMedia, new LinearLayout.LayoutParams(-1, -2));
-    exportMedia.setOnClickListener(v -> exportLinkedInImages());
+    Button exportJson = secondary(I18n.code(this).equals("fr") ? "Exporter ce fil en JSON" : "Export conversation JSON");
+    root.addView(exportJson, new LinearLayout.LayoutParams(-1, -2));
+    exportJson.setOnClickListener(v -> exportLinkedInThreadJson());
     linkedinWeb.setWebChromeClient(new WebChromeClient());
     linkedinWeb.setWebViewClient(new WebViewClient());
     root.addView(linkedinWeb, new LinearLayout.LayoutParams(-1, 0, 1));
@@ -904,7 +862,7 @@ public class MainActivity extends Activity {
 
   private void extractLinkedInInbox(String id) {
     if (!linkedinMcpEnabled) { finishLinkedInJob(id, null, "Contrôle désactivé"); return; }
-    String js = "(function(){const s=['li[class*=conversation]','[class*=conversation-list] li','[class*=messaging] [role=listitem]','a[href*=\\\"/messaging/thread/\\\"]'];let nodes=[];for(const x of s){let found=[...document.querySelectorAll(x)].filter(n=>(n.innerText||'').trim());if(found.length>nodes.length)nodes=found;}return JSON.stringify({url:location.pathname,conversations:nodes.filter(n=>!n.closest('nav,footer')).slice(0,30).map(n=>({name:(n.querySelector('h3,h4,[class*=participant],[class*=name]')?.innerText||n.innerText.split('\\n')[0]||'').trim().slice(0,150),preview:(n.innerText||'').trim().slice(0,350)}))});})()";
+    String js = "(function(){const s=['li[class*=conversation]','[class*=conversation-list] li','[class*=messaging] [role=listitem]','a[href*=\\\"/messaging/thread/\\\"]'];let nodes=[];for(const x of s){let found=[...document.querySelectorAll(x)].filter(n=>(n.innerText||'').trim());if(found.length>nodes.length)nodes=found;}return JSON.stringify({url:location.pathname,conversations:nodes.filter(n=>!n.closest('nav,footer')).slice(0,30).map(n=>({name:(n.querySelector('h3,h4,[class*=participant],[class*=name]')?.innerText||n.innerText.split('\\n')[0]||'').trim().slice(0,150),preview:(n.innerText||'').trim().slice(0,350),avatarUrl:(n.querySelector('img')?.currentSrc||n.querySelector('img')?.src||'')}))});})()";
     linkedinWeb.evaluateJavascript(js, raw -> finishLinkedInJs(id, raw));
   }
 
@@ -1006,6 +964,28 @@ public class MainActivity extends Activity {
         else body.put("result", result);
         RelayClient.request("POST", "/api/devices/linkedin", RelayClient.token(this), body.toString());
       } catch (Exception e) { android.util.Log.w("CamMicGoLinkedIn", "Relay result failed", e); }
+    });
+  }
+
+  /** User-initiated local JSON export of the currently loaded conversation. */
+  private void exportLinkedInThreadJson() {
+    if (!isLinkedInMessagingPage() || linkedinWeb.getUrl() == null || !linkedinWeb.getUrl().contains("/thread/")) {
+      Toast.makeText(this, "Ouvrez d'abord une conversation LinkedIn.", Toast.LENGTH_LONG).show();
+      return;
+    }
+    String js = "(function(){const nodes=[...document.querySelectorAll('li[class*=message],[class*=msg-s-event-listitem],[class*=message-event]')];const messages=nodes.map(n=>({text:(n.innerText||'').trim().slice(0,8000),timestamp:n.querySelector('time')?.getAttribute('datetime')||null,images:[...n.querySelectorAll('img')].map(i=>({url:i.currentSrc||i.src,alt:i.alt||''})).filter(i=>i.url&&/messaging-image|licdn/i.test(i.url)).slice(0,20),files:[...n.querySelectorAll('a[download]')].map(a=>({name:(a.innerText||'').trim(),url:a.href})).slice(0,20)})).filter(m=>m.text||m.images.length||m.files.length);const header=document.querySelector('[class*=conversation-header],h2,h3');const avatars=[...document.querySelectorAll('[class*=conversation-header] img')].map(i=>({url:i.currentSrc||i.src,alt:i.alt||''}));return JSON.stringify({format:'cammicgo-linkedin-thread-v1',url:location.href,participant:(header?.innerText||'').trim().slice(0,250),avatars,messages,loadedMessages:messages.length,partial:true,exportedAt:new Date().toISOString()});})()";
+    linkedinWeb.evaluateJavascript(js, raw -> {
+      try {
+        JSONObject data = new JSONObject(new JSONArray("[" + raw + "]").getString(0));
+        if (data.optJSONArray("messages") == null || data.optJSONArray("messages").length() == 0) {
+          Toast.makeText(this, "Aucun message chargé à exporter.", Toast.LENGTH_LONG).show();
+          return;
+        }
+        new AlertDialog.Builder(this).setTitle("Exporter la conversation")
+          .setMessage("Sauvegarder les messages actuellement chargés en JSON ? Les liens vers les images peuvent nécessiter une session LinkedIn et le fichier ne contient pas les octets des images.")
+          .setNegativeButton("Annuler", (d, w) -> {})
+          .setPositiveButton("Exporter", (d, w) -> save(data.toString(2), "application/json", "linkedin-conversation-" + System.currentTimeMillis() + ".json")).show();
+      } catch (Exception e) { Toast.makeText(this, "Export JSON impossible : " + e.getMessage(), Toast.LENGTH_LONG).show(); }
     });
   }
 
