@@ -370,6 +370,8 @@ public class MainActivity extends Activity {
   }
 
   private void selectTab(int index) {
+    if (notebookExpanded && index != 2) setNotebookExpanded(false);
+    if (linkedinExpanded && index != 3) setLinkedInExpanded(false);
     currentTab = index;
     for (int i = 0; i < pages.length; i++) {
       pages[i].setVisibility(i == index ? View.VISIBLE : View.GONE);
