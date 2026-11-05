@@ -762,14 +762,16 @@ public class MainActivity extends Activity {
     linkedinWeb.getSettings().setDomStorageEnabled(true);
     CookieManager.getInstance().setAcceptCookie(true);
     CookieManager.getInstance().setAcceptThirdPartyCookies(linkedinWeb, true);
-    Button mcpControl = secondary("Activer navigation LinkedIn via MCP");
+    Button mcpControl = secondary("🔒  Autoriser MCP");
+    mcpControl.setAllCaps(false);
+    mcpControl.setContentDescription("Autoriser ou désactiver la navigation LinkedIn pour les assistants MCP");
     linkedinMcpControlButton = mcpControl;
     root.addView(mcpControl, new LinearLayout.LayoutParams(-1, -2));
     mcpControl.setOnClickListener(v -> {
       if (linkedinMcpEnabled) {
         linkedinMcpEnabled = false;
         ui.removeCallbacks(linkedinPoll);
-        mcpControl.setText("Activer navigation LinkedIn via MCP");
+        mcpControl.setText("🔒  Autoriser MCP");
         Toast.makeText(this, "Contrôle LinkedIn MCP désactivé", Toast.LENGTH_SHORT).show();
       } else {
         new AlertDialog.Builder(this).setTitle("Autoriser la navigation LinkedIn ?")
@@ -777,7 +779,7 @@ public class MainActivity extends Activity {
           .setNegativeButton("Annuler", (d, w) -> {})
           .setPositiveButton("Autoriser", (d, w) -> {
             linkedinMcpEnabled = true;
-            mcpControl.setText("Désactiver navigation LinkedIn MCP");
+            mcpControl.setText("✓  MCP autorisé");
             ui.post(linkedinPoll);
           }).show();
       }
