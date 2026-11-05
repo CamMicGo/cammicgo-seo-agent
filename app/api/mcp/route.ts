@@ -176,7 +176,7 @@ async function handler(req:NextRequest){
     const liRelay=await import('@/lib/linkedin-relay');
     const devices=await relay.listDevices(user.id);
     if(!devices.some(relay.isOnline))return asText({status:'device_offline',message:'Connectez et ouvrez CamMicGo Android, puis activez le contrôle LinkedIn MCP.'});
-    const job=await liRelay.enqueueLinkedIn(user.id,operation,payload);
+    const job=await liRelay.enqueueLinkedIn(user.id,operation,{...payload,agentName});
     const deadline=Date.now()+35000;
     while(Date.now()<deadline){
      await new Promise(r=>setTimeout(r,1500));
