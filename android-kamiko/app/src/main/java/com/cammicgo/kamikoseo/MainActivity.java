@@ -99,7 +99,7 @@ public class MainActivity extends Activity {
           try {
             JSONObject response = new JSONObject(RelayClient.request("GET", "/api/devices/linkedin", RelayClient.token(MainActivity.this), null));
             JSONObject job = response.optJSONObject("job");
-            if (job != null) ui.post(() -> { recordLinkedInActivity(job.optString("id"), job.optString("operation"), "received", ""); executeLinkedInJob(job); });
+            if (job != null) ui.post(() -> { recordLinkedInActivity(job.optString("id"), job.optString("operation"), "received", "", job.optString("agentName", "")); executeLinkedInJob(job); });
             else ui.post(() -> linkedinPollBusy = false);
           } catch (Exception e) { ui.post(() -> { linkedinLastPollError = e.toString(); linkedinPollBusy = false; }); }
         });
@@ -1005,7 +1005,7 @@ public class MainActivity extends Activity {
   }
 
   private void finishLinkedInJob(String id, JSONObject result, String error) {
-    recordLinkedInActivity(id, "", error == null ? "done" : "failed", error == null ? "" : error);
+    recordLinkedInActivity(id, "", error == null ? "done" : "failed", error == null ? "" : error, "");
     linkedinPollBusy = false;
     worker.execute(() -> {
       try {
@@ -1019,7 +1019,7 @@ public class MainActivity extends Activity {
   }
 
   /** Only operation metadata is retained, never LinkedIn messages or credentials. */
-  private void recordLinkedInActivity(String id, String operation, String status, String error) {
+  private void recordLinkedInActivity(String id, String operation, String status, String error, String agentName) {
     if (id == null || id.isEmpty()) return;
     try {
       SharedPreferences prefs = RelayClient.prefs(this);
@@ -1034,6 +1034,7 @@ public class MainActivity extends Activity {
       }
       item.put("id", id);
       if (!operation.isEmpty()) item.put("operation", operation);
+      if (agentName != null && !agentName.isEmpty()) item.put("agentName", agentName);
       item.put("status", status);
       item.put("error", error);
       item.put("at", System.currentTimeMillis());
@@ -1851,9 +1852,9 @@ public class MainActivity extends Activity {
       else if (identity.contains("gemini")) provider = "Gemini";
       else if (!agent.isEmpty()) provider = agent;
       TextView origin = text(texts, provider + (source.isEmpty() || provider.equals(source) ? "" : " · " + source), 11, MUTED, false);
-      origin.setCompoundDrawablesWithIntrinsicBounds(
-          "Assistant inconnu".equals(provider) ? android.R.drawable.ic_menu_myplaces : android.R.drawable.ic_menu_info_details,
-          0, 0, 0);
+      origin.setCompoundDrawables(null, null, null, null);
+      android.graphics.drawable.Drawable providerLogo = AgentIcons.forProvider(this, provider);
+      origin.setCompoundDrawables(providerLogo, null, null, null);
       origin.setCompoundDrawablePadding(dp(5));
       String when = DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(e.optLong("at")));
       String detail = linkedinEntry ? ("LinkedIn MCP · " + localizedJobStatus(e.optString("status")) + " · " + when) : mcpDebugEntry ? ("MCP HTTP · " + when + " · " + ("fr".equals(I18n.code(this)) ? "Appuyer pour déboguer" : "Tap for diagnostics")) : notebookEntry ? ("NotebookLM · " + localizedJobStatus(e.optString("status")) + " · " + when) : ok ? t("segments", e.optInt("segments")) + " · " + when : when + " · " + e.optString("error", t("failed"));
