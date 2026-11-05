@@ -1544,17 +1544,19 @@ public class MainActivity extends Activity {
         else if (label.startsWith("Claude · ")) agent = "Claude";
         else if (label.startsWith("Gemini · ")) agent = "Gemini";
         else if (label.startsWith("Antigravity · ")) agent = "Antigravity";
+        else if (label.startsWith("Cursor · ")) agent = "Cursor";
+        else if (label.startsWith("Codex · ")) agent = "Codex";
       }
       String source = e.optString("agentSource", e.optString("source", "")).trim();
       String identity = (agent + " " + source).toLowerCase(java.util.Locale.ROOT);
       String provider = "Assistant inconnu";
-      if (identity.contains("chatgpt") || identity.contains("openai")) provider = "ChatGPT";
-      else if (identity.contains("claude") || identity.contains("anthropic")) provider = "Claude";
-      else if (identity.contains("antigravity")) provider = "Antigravity";
-      else if (identity.contains("gemini cli")) provider = "Gemini CLI";
-      else if (identity.contains("gemini")) provider = "Gemini";
+      if (identity.contains("antigravity")) provider = "Antigravity";
       else if (identity.contains("cursor")) provider = "Cursor";
       else if (identity.contains("codex")) provider = "Codex";
+      else if (identity.contains("chatgpt") || identity.contains("openai")) provider = "ChatGPT";
+      else if (identity.contains("claude") || identity.contains("anthropic")) provider = "Claude";
+      else if (identity.contains("gemini cli")) provider = "Gemini CLI";
+      else if (identity.contains("gemini")) provider = "Gemini";
       else if (!agent.isEmpty()) provider = agent;
       TextView origin = text(texts, provider + (source.isEmpty() || provider.equals(source) ? "" : " · " + source), 11, MUTED, false);
       origin.setCompoundDrawablesWithIntrinsicBounds(
