@@ -1607,7 +1607,7 @@ public class MainActivity extends Activity {
       row.addView(texts, new LinearLayout.LayoutParams(0, -2, 1));
       final String vid = e.optString("videoId");
       final long at = e.optLong("at");
-      row.setOnClickListener(v -> { if (mcpDebugEntry) { JSONObject debug = e.optJSONObject("requestDebug"); new AlertDialog.Builder(this).setTitle("Diagnostic identité MCP (données masquées)").setMessage(debug == null ? "Métadonnées absentes pour cette requête." : debug.toString()).setPositiveButton("OK", (d,w) -> {}).show(); } else if (notebookEntry) selectTab(2); else startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=" + vid))); });
+      row.setOnClickListener(v -> { if (mcpDebugEntry) { JSONObject debug = e.optJSONObject("requestDebug"); new AlertDialog.Builder(this).setTitle("Diagnostic identité MCP (données masquées)").setMessage(debug == null ? "Métadonnées absentes pour cette requête." : debug.toString()).setPositiveButton("OK", (dialog, which) -> {}).show(); } else if (notebookEntry) selectTab(2); else startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=" + vid))); });
       row.setOnLongClickListener(v -> {
         new AlertDialog.Builder(this).setMessage(t("remove_q"))
             .setPositiveButton(t("remove"), (dlg, which) -> editHistory(vid, at))
