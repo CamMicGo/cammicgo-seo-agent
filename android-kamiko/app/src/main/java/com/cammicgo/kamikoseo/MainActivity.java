@@ -552,7 +552,14 @@ public class MainActivity extends Activity {
     clearHistory.setOnClickListener(v -> new AlertDialog.Builder(this)
         .setTitle(t("clear_title"))
         .setMessage(t("clear_msg"))
-        .setPositiveButton(t("clear_ok"), (dlg, which) -> editHistory(null, 0))
+        .setPositiveButton(t("clear_ok"), (dlg, which) -> {
+          SharedPreferences prefs = RelayClient.prefs(this);
+          prefs.edit().putString("history", "[]").putString("notebookHistory", "[]").apply();
+          historyShown = null;
+          notebookHistoryShown = null;
+          refreshNotebookRequests(prefs);
+          refreshHistory(prefs);
+        })
         .setNegativeButton(t("cancel"), null)
         .show());
     h.addView(clearHistory, new LinearLayout.LayoutParams(-1, -2));
