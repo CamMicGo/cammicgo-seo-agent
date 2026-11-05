@@ -823,14 +823,14 @@ public class MainActivity extends Activity {
       }, 3200);
     } else if ("search".equals(op)) {
       String keywords = job.optString("keywords", "").trim();
-      if (keywords.length() < 2 || keywords.length() > 150) { finishLinkedInJob(id, null, "Mots-clés invalides"); return; }
+      int requested = job.optInt("limit", 50);
+      if (keywords.length() < 2 || keywords.length() > 150 || requested < 1 || requested > 100) {
+        finishLinkedInJob(id, null, "Invalid search parameters"); return;
+      }
       try {
         String url = "https://www.linkedin.com/search/results/people/?keywords=" + java.net.URLEncoder.encode(keywords, "UTF-8");
-        linkedinWeb.loadUrl(url);
-        ui.postDelayed(() -> {
-          String js = "(function(){const items=[...document.querySelectorAll('a[href*=\\\"/in/\\\"]')].filter(a=>a.closest('li,article,[class*=result]')).slice(0,30).map(a=>({name:(a.innerText||a.closest('li,article')?.innerText||'').trim().slice(0,350),profileUrl:a.href})).filter(p=>p.name);return JSON.stringify({url:location.pathname,profiles:items});})()";
-          linkedinWeb.evaluateJavascript(js, raw -> finishLinkedInJs(id, raw));
-        }, 3200);
+        java.util.LinkedHashMap<String, JSONObject> found = new java.util.LinkedHashMap<>();
+        collectLinkedInSearchPage(id, url, 1, requested, found);
       } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
     } else if ("send".equals(op)) {
       String participant = job.optString("participant", "").trim();
@@ -853,6 +853,50 @@ public class MainActivity extends Activity {
       String js = "(function(){const n=[...document.querySelectorAll('li[class*=message]')];const a=n.map(e=>({text:(e.innerText||'').trim().slice(0,4000),media:[...e.querySelectorAll('img')].map(i=>i.currentSrc||i.src).filter(u=>u&&u.includes('messaging-image')).slice(0,8)})).filter(x=>x.text||x.media.length);return JSON.stringify({url:location.pathname,messages:a.slice(-60)});})()";
       linkedinWeb.evaluateJavascript(js, raw -> finishLinkedInThread(id, raw));
     } else finishLinkedInJob(id, null, "Operation inconnue");
+  }
+
+  /** Page through user-requested LinkedIn people results, without inventing matches. */
+  private void collectLinkedInSearchPage(String id, String baseUrl, int page, int requested,
+                                         java.util.LinkedHashMap<String, JSONObject> found) {
+    if (!linkedinMcpEnabled) { finishLinkedInJob(id, null, "LinkedIn navigation disabled"); return; }
+    if (page > 10 || found.size() >= requested) { finishLinkedInSearch(id, requested, found, page - 1, "limit_reached"); return; }
+    String url = baseUrl + "&page=" + page;
+    linkedinWeb.loadUrl(url);
+    ui.postDelayed(() -> {
+      if (!linkedinMcpEnabled) { finishLinkedInJob(id, null, "LinkedIn navigation disabled"); return; }
+      String js = "(function(){const anchors=[...document.querySelectorAll('a[href*=\\\"/in/\\\"]')].filter(a=>a.closest('li,article,[class*=result]'));const profiles=anchors.map(a=>({name:(a.innerText||a.closest('li,article')?.innerText||'').trim().slice(0,350),profileUrl:a.href.split('?')[0]})).filter(p=>p.name&&p.profileUrl);return JSON.stringify({profiles:profiles.slice(0,100),url:location.pathname});})()";
+      linkedinWeb.evaluateJavascript(js, raw -> {
+        try {
+          JSONObject data = new JSONObject(new JSONArray("[" + raw + "]").getString(0));
+          JSONArray items = data.optJSONArray("profiles");
+          int before = found.size();
+          if (items != null) for (int n = 0; n < items.length() && found.size() < requested; n++) {
+            JSONObject profile = items.optJSONObject(n);
+            if (profile == null) continue;
+            String profileUrl = profile.optString("profileUrl");
+            if (profileUrl.startsWith("https://www.linkedin.com/in/") && !found.containsKey(profileUrl)) found.put(profileUrl, profile);
+          }
+          if (found.size() >= requested) finishLinkedInSearch(id, requested, found, page, "requested_count_reached");
+          else if (items == null || items.length() == 0 || found.size() == before) finishLinkedInSearch(id, requested, found, page, "no_more_visible_results");
+          else collectLinkedInSearchPage(id, baseUrl, page + 1, requested, found);
+        } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
+      });
+    }, 2800);
+  }
+
+  private void finishLinkedInSearch(String id, int requested, java.util.LinkedHashMap<String, JSONObject> found, int pages, String reason) {
+    try {
+      JSONObject result = new JSONObject();
+      JSONArray profiles = new JSONArray();
+      for (JSONObject profile : found.values()) profiles.put(profile);
+      result.put("requested", requested);
+      result.put("retrieved", profiles.length());
+      result.put("pagesVisited", pages);
+      result.put("complete", profiles.length() >= requested);
+      result.put("reason", reason);
+      result.put("profiles", profiles);
+      finishLinkedInJob(id, result, null);
+    } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
   }
 
   private void extractLinkedInInbox(String id) {
