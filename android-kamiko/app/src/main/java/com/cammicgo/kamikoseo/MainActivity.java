@@ -1021,7 +1021,7 @@ public class MainActivity extends Activity {
           .setMessage("Inclure les images accessibles en Base64 dans le JSON ? Les images indisponibles garderont leur URL et leur statut. L'export contient uniquement les éléments chargés à l'écran.")
           .setNegativeButton("Annuler", null)
           .setPositiveButton("Enregistrer", (dialog, which) -> buildLinkedInMultimodalExport(data, false))
-          .setNeutralButton("Partager avec une IA", (dialog, which) -> buildLinkedInMultimodalExport(data, true)).show();
+          .show();
       } catch (Exception e) { Toast.makeText(this, "Export JSON impossible : " + e.getMessage(), Toast.LENGTH_LONG).show(); }
     });
   }
