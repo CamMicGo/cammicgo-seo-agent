@@ -122,6 +122,7 @@ public class MainActivity extends Activity {
   private ProgressBar progressBar, progressSpinner;
   private LinearLayout progressStats;
   private String historyShown;
+  private long lastMcpDebugFetch = 0L;
   private Button clearHistory;
   // extract tab
   private EditText urlInput;
@@ -1330,8 +1331,24 @@ public class MainActivity extends Activity {
     catch (RuntimeException e) { p.edit().putString("lastRelayError", e.toString()).apply(); }
   }
 
+  /** Refresh only sanitized MCP request metadata; no secrets or tool arguments. */
+  private void fetchMcpDebugHistory() {
+    if (!RelayClient.isPaired(this) || System.currentTimeMillis() - lastMcpDebugFetch < 30000L) return;
+    lastMcpDebugFetch = System.currentTimeMillis();
+    worker.execute(() -> {
+      try {
+        String raw = RelayClient.request("GET", "/api/devices/mcp-debug", RelayClient.token(this), null);
+        JSONArray calls = new JSONObject(raw).optJSONArray("calls");
+        if (calls == null) return;
+        RelayClient.prefs(this).edit().putString("mcpDebugHistory", calls.toString()).apply();
+        ui.post(() -> { historyShown = null; refreshHistory(RelayClient.prefs(this)); });
+      } catch (Exception ignored) { /* Debug history is best-effort. */ }
+    });
+  }
+
   private void refreshRelay() {
     if (statusLine == null) return;
+    fetchMcpDebugHistory();
     SharedPreferences p = RelayClient.prefs(this);
     boolean paired = RelayClient.isPaired(this);
     long now = System.currentTimeMillis();
@@ -1487,8 +1504,9 @@ public class MainActivity extends Activity {
   private void refreshHistory(SharedPreferences p) {
     String raw = p.getString("history", "[]");
     String notebookRaw = p.getString("assistantNotebookHistory", "[]");
+    String mcpDebugRaw = p.getString("mcpDebugHistory", "[]");
     long minute = System.currentTimeMillis() / 60_000;
-    String key = raw.hashCode() + ":" + notebookRaw.hashCode() + ":" + minute;
+    String key = raw.hashCode() + ":" + notebookRaw.hashCode() + ":" + mcpDebugRaw.hashCode() + ":" + minute;
     if (key.equals(historyShown)) return;
     historyShown = key;
     historyList.removeAllViews();
@@ -1510,6 +1528,19 @@ public class MainActivity extends Activity {
         entry.put("error", n.optString("error", ""));
         h.put(entry);
       }
+      JSONArray calls = new JSONArray(mcpDebugRaw);
+      for (int i = 0; i < calls.length(); i++) {
+        JSONObject c = calls.optJSONObject(i);
+        if (c == null) continue;
+        JSONObject entry = new JSONObject();
+        entry.put("type", "mcp_debug");
+        entry.put("title", c.optString("tool", "MCP request"));
+        entry.put("agentName", c.optString("agentName", ""));
+        entry.put("status", c.optBoolean("ok", false) ? "done" : "failed");
+        entry.put("at", java.time.Instant.parse(c.optString("at")).toEpochMilli());
+        entry.put("requestDebug", c.optJSONObject("requestDebug"));
+        h.put(entry);
+      }
       java.util.ArrayList<JSONObject> ordered = new java.util.ArrayList<>();
       for (int i = 0; i < h.length(); i++) if (h.optJSONObject(i) != null) ordered.add(h.optJSONObject(i));
       ordered.sort((a,b) -> Long.compare(b.optLong("at"), a.optLong("at")));
@@ -1528,6 +1559,7 @@ public class MainActivity extends Activity {
       if (e == null) continue;
       boolean ok = "done".equals(e.optString("status"));
       boolean notebookEntry = "notebooklm".equals(e.optString("type"));
+      boolean mcpDebugEntry = "mcp_debug".equals(e.optString("type"));
       LinearLayout row = new LinearLayout(this);
       row.setGravity(Gravity.CENTER_VERTICAL);
       row.setPadding(dp(10), dp(9), dp(10), dp(9));
@@ -1569,13 +1601,13 @@ public class MainActivity extends Activity {
           0, 0, 0);
       origin.setCompoundDrawablePadding(dp(5));
       String when = DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(e.optLong("at")));
-      String detail = notebookEntry ? ("NotebookLM · " + e.optString("status") + " · " + when) : ok ? t("segments", e.optInt("segments")) + " · " + when : when + " · " + e.optString("error", t("failed"));
+      String detail = mcpDebugEntry ? ("MCP HTTP · " + when + " · Appuyer pour déboguer") : notebookEntry ? ("NotebookLM · " + e.optString("status") + " · " + when) : ok ? t("segments", e.optInt("segments")) + " · " + when : when + " · " + e.optString("error", t("failed"));
       TextView d = text(texts, detail, 12, ok ? MUTED : RED, false);
       d.setMaxLines(1); d.setEllipsize(TextUtils.TruncateAt.END);
       row.addView(texts, new LinearLayout.LayoutParams(0, -2, 1));
       final String vid = e.optString("videoId");
       final long at = e.optLong("at");
-      row.setOnClickListener(v -> { if (notebookEntry) selectTab(2); else startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=" + vid))); });
+      row.setOnClickListener(v -> { if (mcpDebugEntry) { JSONObject debug = e.optJSONObject("requestDebug"); new AlertDialog.Builder(this).setTitle("Diagnostic identité MCP (données masquées)").setMessage(debug == null ? "Métadonnées absentes pour cette requête." : debug.toString()).setPositiveButton("OK", (d,w) -> {}).show(); } else if (notebookEntry) selectTab(2); else startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=" + vid))); });
       row.setOnLongClickListener(v -> {
         new AlertDialog.Builder(this).setMessage(t("remove_q"))
             .setPositiveButton(t("remove"), (dlg, which) -> editHistory(vid, at))
