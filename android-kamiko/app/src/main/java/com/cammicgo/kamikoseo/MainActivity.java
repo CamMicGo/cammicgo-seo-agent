@@ -722,7 +722,7 @@ public class MainActivity extends Activity {
     if (linkedinActions != null) linkedinActions.setVisibility(expanded ? View.GONE : View.VISIBLE);
     if (linkedinExpand != null) {
       linkedinExpand.setText(expanded ? "⤡" : "⤢");
-      linkedinExpand.setContentDescription(expanded ? "Réduire LinkedIn" : "Agrandir LinkedIn");
+      linkedinExpand.setContentDescription(linkedinToolbarText(expanded ? "collapse" : "expand"));
     }
     getWindow().getDecorView().setSystemUiVisibility(expanded
       ? View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
@@ -760,7 +760,7 @@ public class MainActivity extends Activity {
     expandLinkedIn.setMinHeight(0);
     expandLinkedIn.setMinimumHeight(0);
     expandLinkedIn.setPadding(dp(6), dp(3), dp(6), dp(3));
-    expandLinkedIn.setContentDescription(I18n.code(this).equals("fr") ? "Agrandir LinkedIn" : "Expand LinkedIn");
+    expandLinkedIn.setContentDescription(linkedinToolbarText("expand"));
     linkedinExpand = expandLinkedIn;
     toolsRow.addView(expandLinkedIn, new LinearLayout.LayoutParams(dp(44), dp(40)));
     expandLinkedIn.setOnClickListener(v -> setLinkedInExpanded(!linkedinExpanded));
@@ -772,9 +772,9 @@ public class MainActivity extends Activity {
     CookieManager.getInstance().setAcceptThirdPartyCookies(linkedinWeb, true);
     Button mcpControl = secondary("🔒  Autoriser MCP");
     mcpControl.setAllCaps(false);
-    mcpControl.setContentDescription("Autoriser ou désactiver la navigation LinkedIn pour les assistants MCP");
+    mcpControl.setContentDescription(linkedinToolbarText("permission"));
     linkedinMcpControlButton = mcpControl;
-    mcpControl.setText("🔒 MCP");
+    mcpControl.setText(linkedinToolbarText("allow"));
     mcpControl.setTextSize(12);
     mcpControl.setMinHeight(0);
     mcpControl.setMinimumHeight(0);
@@ -786,7 +786,7 @@ public class MainActivity extends Activity {
       if (linkedinMcpEnabled) {
         linkedinMcpEnabled = false;
         ui.removeCallbacks(linkedinPoll);
-        mcpControl.setText("🔒 MCP");
+        mcpControl.setText(linkedinToolbarText("allow"));
         Toast.makeText(this, "Contrôle LinkedIn MCP désactivé", Toast.LENGTH_SHORT).show();
       } else {
         new AlertDialog.Builder(this).setTitle("Autoriser la navigation LinkedIn ?")
@@ -794,13 +794,13 @@ public class MainActivity extends Activity {
           .setNegativeButton("Annuler", (d, w) -> {})
           .setPositiveButton("Autoriser", (d, w) -> {
             linkedinMcpEnabled = true;
-            mcpControl.setText("✓ MCP autorisé");
+            mcpControl.setText(linkedinToolbarText("allowed"));
             ui.post(linkedinPoll);
           }).show();
       }
     });
     Button exportJson = secondary(I18n.code(this).equals("fr") ? "⇩ JSON" : "⇩ JSON");
-    exportJson.setContentDescription(I18n.code(this).equals("fr") ? "Exporter la conversation ou le profil en JSON avec images" : "Export conversation or profile as JSON with images");
+    exportJson.setContentDescription(linkedinToolbarText("export"));
     exportJson.setTextSize(12);
     exportJson.setMinHeight(0);
     exportJson.setMinimumHeight(0);
@@ -1750,6 +1750,29 @@ public class MainActivity extends Activity {
   }
 
   /** Label shared by the assistant activity button and its diagnostics dialog. */
+  /** Compact LinkedIn toolbar translations in I18n.CODES order. */
+  private String linkedinToolbarText(String key) {
+    String[][] labels = {
+      {"Expand LinkedIn","Agrandir LinkedIn","Ampliar LinkedIn","LinkedIn vergrößern","Ampliar LinkedIn","Espandi LinkedIn","Развернуть LinkedIn","展开 LinkedIn","LinkedInを拡大","LinkedIn 확대","توسيع لينكدإن"},
+      {"Collapse LinkedIn","Réduire LinkedIn","Reducir LinkedIn","LinkedIn verkleinern","Reduzir LinkedIn","Riduci LinkedIn","Свернуть LinkedIn","收起 LinkedIn","LinkedInを縮小","LinkedIn 축소","تصغير لينكدإن"},
+      {"🔒 Allow MCP","🔒 Autoriser MCP","🔒 Permitir MCP","🔒 MCP erlauben","🔒 Permitir MCP","🔒 Autorizza MCP","🔒 Разрешить MCP","🔒 授权 MCP","🔒 MCPを許可","🔒 MCP 허용","🔒 السماح لـ MCP"},
+      {"✓ MCP allowed","✓ MCP autorisé","✓ MCP autorizado","✓ MCP erlaubt","✓ MCP autorizado","✓ MCP autorizzato","✓ MCP разрешён","✓ MCP 已授权","✓ MCP 許可済み","✓ MCP 허용됨","✓ MCP مسموح"},
+      {"Export conversation or profile as JSON with images","Exporter la conversation ou le profil en JSON avec images","Exportar conversación o perfil a JSON con imágenes","Konversation oder Profil als JSON mit Bildern exportieren","Exportar conversa ou perfil em JSON com imagens","Esporta conversazione o profilo in JSON con immagini","Экспорт беседы или профиля в JSON с изображениями","将对话或个人资料及图片导出为 JSON","会話またはプロフィールを画像付きJSONで書き出す","대화 또는 프로필을 이미지 포함 JSON으로 내보내기","تصدير المحادثة أو الملف الشخصي بصيغة JSON مع الصور"},
+      {"Allow or revoke LinkedIn MCP access","Autoriser ou révoquer l'accès MCP à LinkedIn","Permitir o revocar acceso MCP a LinkedIn","LinkedIn-MCP-Zugriff erlauben oder widerrufen","Permitir ou revogar acesso MCP ao LinkedIn","Autorizza o revoca accesso MCP a LinkedIn","Разрешить или отозвать доступ MCP к LinkedIn","允许或撤销 LinkedIn MCP 访问权限","LinkedIn MCPアクセスを許可または取り消す","LinkedIn MCP 접근 허용 또는 취소","السماح بوصول MCP إلى لينكدإن أو إلغاؤه"}
+    };
+    int index;
+    switch (key) {
+      case "expand": index=0; break;
+      case "collapse": index=1; break;
+      case "allow": index=2; break;
+      case "allowed": index=3; break;
+      case "export": index=4; break;
+      default: index=5; break;
+    }
+    int lang=I18n.index(this);
+    return labels[index][lang>=0 && lang<11 ? lang : 0];
+  }
+
   private String localizedMcpDiagnosticTitle() {
     String[] labels = {
       "MCP request diagnostics", "Diagnostic des requêtes MCP",
@@ -1929,7 +1952,7 @@ public class MainActivity extends Activity {
     if (linkedinMcpEnabled && linkedinWeb != null) {
       ui.removeCallbacks(linkedinPoll);
       ui.post(linkedinPoll);
-      if (linkedinMcpControlButton != null) linkedinMcpControlButton.setText("✓ MCP autorisé");
+      if (linkedinMcpControlButton != null) linkedinMcpControlButton.setText(linkedinToolbarText("allowed"));
     }
   }
   @Override protected void onPause() {
