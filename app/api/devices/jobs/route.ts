@@ -1,5 +1,5 @@
 import {NextRequest,NextResponse} from 'next/server';
-import {claimJob,claimNotebookJob,deviceFromAuthorization,deviceProgress,pruneRelayPayloads,touchDevice} from '@/lib/device-relay';
+import {claimJob,claimNotebookJob,deviceFromAuthorization,deviceProgress,pruneRelayPayloads,touchDevice,sb} from '@/lib/device-relay';
 export const runtime='nodejs';
 const noStore={'Cache-Control':'no-store'};
 /** Paired device polls this: marks it online and hands it the next transcript job, if any. */
@@ -13,7 +13,8 @@ export async function GET(req:NextRequest){
   const claiming=req.nextUrl.searchParams.get('claim')!=='0';
   const notebook=claiming?await claimNotebookJob(device).catch(()=>null):null;
   const job=claiming&&!notebook?await claimJob(device):null;
+  const transcriptAgent=job?await sb<Array<{agent_name:string|null}>>('/rest/v1/cmg_transcript_jobs?id=eq.'+job.id+'&user_id=eq.'+device.user_id+'&select=agent_name').then(rows=>rows[0]?.agent_name||'Assistant inconnu').catch(()=> 'Assistant inconnu'):null;
   const progress=await deviceProgress(device.user_id).catch(()=>null);
-  return NextResponse.json({device:{id:device.id,name:device.name},job:notebook?{id:notebook.id,type:'notebooklm_'+notebook.operation,...notebook.payload}:job?{id:job.id,type:'transcript',videoId:job.video_id,language:job.language}:null,progress,pollAfterMs:job?1500:4000},{headers:noStore});
+  return NextResponse.json({device:{id:device.id,name:device.name},job:notebook?{id:notebook.id,type:'notebooklm_'+notebook.operation,...notebook.payload}:job?{id:job.id,type:'transcript',videoId:job.video_id,language:job.language,agentName:transcriptAgent}:null,progress,pollAfterMs:job?1500:4000},{headers:noStore});
  }catch(e){return NextResponse.json({error:e instanceof Error?e.message:'Relay unavailable'},{status:503,headers:noStore})}
 }
