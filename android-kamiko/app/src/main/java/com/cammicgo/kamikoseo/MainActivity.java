@@ -88,6 +88,8 @@ public class MainActivity extends Activity {
   private LinearLayout linkedinActions;
   private boolean linkedinMcpEnabled = false;
   private boolean linkedinPollBusy = false;
+  private Button linkedinMcpControlButton;
+  private String linkedinLastPollError = "";
   private final Runnable linkedinPoll = new Runnable() {
     @Override public void run() {
       if (!linkedinMcpEnabled || linkedinWeb == null) return;
@@ -97,9 +99,9 @@ public class MainActivity extends Activity {
           try {
             JSONObject response = new JSONObject(RelayClient.request("GET", "/api/devices/linkedin", RelayClient.token(MainActivity.this), null));
             JSONObject job = response.optJSONObject("job");
-            if (job != null) ui.post(() -> executeLinkedInJob(job));
+            if (job != null) ui.post(() -> { recordLinkedInActivity(job.optString("id"), job.optString("operation"), "received", ""); executeLinkedInJob(job); });
             else ui.post(() -> linkedinPollBusy = false);
-          } catch (Exception e) { ui.post(() -> linkedinPollBusy = false); }
+          } catch (Exception e) { ui.post(() -> { linkedinLastPollError = e.toString(); linkedinPollBusy = false; }); }
         });
       }
       ui.postDelayed(this, 4500);
@@ -554,6 +556,17 @@ public class MainActivity extends Activity {
     historyList = new LinearLayout(this);
     historyList.setOrientation(LinearLayout.VERTICAL);
     h.addView(historyList);
+    Button diagnostics = secondary("Diagnostic MCP / LinkedIn");
+    diagnostics.setOnClickListener(v -> {
+      SharedPreferences prefs = RelayClient.prefs(this);
+      String report = "Contrôle LinkedIn : " + (linkedinMcpEnabled ? "activé" : "désactivé")
+          + "\nDernière erreur : " + (linkedinLastPollError.isEmpty() ? "aucune" : linkedinLastPollError)
+          + "\nTâches LinkedIn : " + prefs.getString("linkedinAssistantHistory", "[]")
+          + "\nMétadonnées MCP : " + prefs.getString("mcpDebugHistory", "[]");
+      new AlertDialog.Builder(this).setTitle("Diagnostic des demandes de l'assistant")
+          .setMessage(report).setPositiveButton("Fermer", null).show();
+    });
+    h.addView(diagnostics, new LinearLayout.LayoutParams(-1, -2));
     clearHistory = flat(t("clear_list"), RED);
     clearHistory.setOnClickListener(v -> new AlertDialog.Builder(this)
         .setTitle(t("clear_title"))
@@ -748,6 +761,7 @@ public class MainActivity extends Activity {
     CookieManager.getInstance().setAcceptCookie(true);
     CookieManager.getInstance().setAcceptThirdPartyCookies(linkedinWeb, true);
     Button mcpControl = secondary("Activer navigation LinkedIn via MCP");
+    linkedinMcpControlButton = mcpControl;
     root.addView(mcpControl, new LinearLayout.LayoutParams(-1, -2));
     mcpControl.setOnClickListener(v -> {
       if (linkedinMcpEnabled) {
@@ -987,6 +1001,7 @@ public class MainActivity extends Activity {
   }
 
   private void finishLinkedInJob(String id, JSONObject result, String error) {
+    recordLinkedInActivity(id, "", error == null ? "done" : "failed", error == null ? "" : error);
     linkedinPollBusy = false;
     worker.execute(() -> {
       try {
@@ -997,6 +1012,32 @@ public class MainActivity extends Activity {
         RelayClient.request("POST", "/api/devices/linkedin", RelayClient.token(this), body.toString());
       } catch (Exception e) { android.util.Log.w("CamMicGoLinkedIn", "Relay result failed", e); }
     });
+  }
+
+  /** Only operation metadata is retained, never LinkedIn messages or credentials. */
+  private void recordLinkedInActivity(String id, String operation, String status, String error) {
+    if (id == null || id.isEmpty()) return;
+    try {
+      SharedPreferences prefs = RelayClient.prefs(this);
+      JSONArray previous = new JSONArray(prefs.getString("linkedinAssistantHistory", "[]"));
+      JSONArray updated = new JSONArray();
+      JSONObject item = new JSONObject();
+      for (int i = 0; i < previous.length(); i++) {
+        JSONObject old = previous.optJSONObject(i);
+        if (old == null) continue;
+        if (id.equals(old.optString("id"))) item = old;
+        else if (updated.length() < 29) updated.put(old);
+      }
+      item.put("id", id);
+      if (!operation.isEmpty()) item.put("operation", operation);
+      item.put("status", status);
+      item.put("error", error);
+      item.put("at", System.currentTimeMillis());
+      updated.put(item);
+      prefs.edit().putString("linkedinAssistantHistory", updated.toString()).apply();
+      historyShown = null;
+      refreshHistory(prefs);
+    } catch (Exception e) { android.util.Log.w("CamMicGoLinkedIn", "Journal error", e); }
   }
 
   /** User-initiated local JSON export of the currently loaded conversation. */
@@ -1636,8 +1677,9 @@ public class MainActivity extends Activity {
     String raw = p.getString("history", "[]");
     String notebookRaw = p.getString("assistantNotebookHistory", "[]");
     String mcpDebugRaw = p.getString("mcpDebugHistory", "[]");
+    String linkedinRaw = p.getString("linkedinAssistantHistory", "[]");
     long minute = System.currentTimeMillis() / 60_000;
-    String key = raw.hashCode() + ":" + notebookRaw.hashCode() + ":" + mcpDebugRaw.hashCode() + ":" + minute;
+    String key = raw.hashCode() + ":" + notebookRaw.hashCode() + ":" + mcpDebugRaw.hashCode() + ":" + linkedinRaw.hashCode() + ":" + minute;
     if (key.equals(historyShown)) return;
     historyShown = key;
     historyList.removeAllViews();
@@ -1657,6 +1699,19 @@ public class MainActivity extends Activity {
         entry.put("status", "done".equals(n.optString("status")) ? "done" : n.optString("status"));
         entry.put("at", n.optLong("at"));
         entry.put("error", n.optString("error", ""));
+        h.put(entry);
+      }
+      JSONArray linkedinJobs = new JSONArray(linkedinRaw);
+      for (int i = 0; i < linkedinJobs.length(); i++) {
+        JSONObject job = linkedinJobs.optJSONObject(i);
+        if (job == null) continue;
+        JSONObject entry = new JSONObject();
+        entry.put("type", "linkedin_mcp");
+        entry.put("title", "LinkedIn · " + job.optString("operation", "demande"));
+        entry.put("status", job.optString("status"));
+        entry.put("at", job.optLong("at"));
+        entry.put("error", job.optString("error", ""));
+        entry.put("jobId", job.optString("id", ""));
         h.put(entry);
       }
       JSONArray calls = new JSONArray(mcpDebugRaw);
@@ -1691,12 +1746,13 @@ public class MainActivity extends Activity {
       boolean ok = "done".equals(e.optString("status"));
       boolean notebookEntry = "notebooklm".equals(e.optString("type"));
       boolean mcpDebugEntry = "mcp_debug".equals(e.optString("type"));
+      boolean linkedinEntry = "linkedin_mcp".equals(e.optString("type"));
       LinearLayout row = new LinearLayout(this);
       row.setGravity(Gravity.CENTER_VERTICAL);
       row.setPadding(dp(10), dp(9), dp(10), dp(9));
-      TextView icon = text(null, ok ? "✓" : "✕", 14, Color.WHITE, true);
+      TextView icon = text(null, ok ? "✓" : linkedinEntry && !"failed".equals(e.optString("status")) ? "…" : "✕", 14, Color.WHITE, true);
       icon.setGravity(Gravity.CENTER);
-      icon.setBackground(dot(ok ? GREEN : RED));
+      icon.setBackground(dot(ok ? GREEN : linkedinEntry && !"failed".equals(e.optString("status")) ? AMBER : RED));
       row.addView(icon, new LinearLayout.LayoutParams(dp(24), dp(24)));
       LinearLayout texts = new LinearLayout(this);
       texts.setOrientation(LinearLayout.VERTICAL);
@@ -1732,13 +1788,13 @@ public class MainActivity extends Activity {
           0, 0, 0);
       origin.setCompoundDrawablePadding(dp(5));
       String when = DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(e.optLong("at")));
-      String detail = mcpDebugEntry ? ("MCP HTTP · " + when + " · Appuyer pour déboguer") : notebookEntry ? ("NotebookLM · " + e.optString("status") + " · " + when) : ok ? t("segments", e.optInt("segments")) + " · " + when : when + " · " + e.optString("error", t("failed"));
+      String detail = linkedinEntry ? ("LinkedIn MCP · " + e.optString("status") + " · " + when) : mcpDebugEntry ? ("MCP HTTP · " + when + " · Appuyer pour déboguer") : notebookEntry ? ("NotebookLM · " + e.optString("status") + " · " + when) : ok ? t("segments", e.optInt("segments")) + " · " + when : when + " · " + e.optString("error", t("failed"));
       TextView d = text(texts, detail, 12, ok ? MUTED : RED, false);
       d.setMaxLines(1); d.setEllipsize(TextUtils.TruncateAt.END);
       row.addView(texts, new LinearLayout.LayoutParams(0, -2, 1));
       final String vid = e.optString("videoId");
       final long at = e.optLong("at");
-      row.setOnClickListener(v -> { if (mcpDebugEntry) { JSONObject debug = e.optJSONObject("requestDebug"); new AlertDialog.Builder(this).setTitle("Diagnostic identité MCP (données masquées)").setMessage(debug == null ? "Métadonnées absentes pour cette requête." : debug.toString()).setPositiveButton("OK", (dialog, which) -> {}).show(); } else if (notebookEntry) selectTab(2); else startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=" + vid))); });
+      row.setOnClickListener(v -> { if (linkedinEntry) { new AlertDialog.Builder(this).setTitle("Demande LinkedIn MCP").setMessage("ID : " + e.optString("jobId") + "\nÉtat : " + e.optString("status") + "\nErreur : " + e.optString("error", "aucune")).setPositiveButton("OK", null).show(); } else if (mcpDebugEntry) { JSONObject debug = e.optJSONObject("requestDebug"); new AlertDialog.Builder(this).setTitle("Diagnostic identité MCP (données masquées)").setMessage(debug == null ? "Métadonnées absentes pour cette requête." : debug.toString()).setPositiveButton("OK", (dialog, which) -> {}).show(); } else if (notebookEntry) selectTab(2); else startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=" + vid))); });
       row.setOnLongClickListener(v -> {
         new AlertDialog.Builder(this).setMessage(t("remove_q"))
             .setPositiveButton(t("remove"), (dlg, which) -> editHistory(vid, at))
@@ -1764,7 +1820,14 @@ public class MainActivity extends Activity {
     recoverRelayIfNeeded();
     ui.post(refresher);
   }
-  @Override protected void onPause() { ui.removeCallbacks(refresher); ui.removeCallbacks(linkedinPoll); linkedinMcpEnabled = false; super.onPause(); }
+  @Override protected void onPause() {
+    ui.removeCallbacks(refresher);
+    ui.removeCallbacks(linkedinPoll);
+    linkedinMcpEnabled = false;
+    linkedinPollBusy = false;
+    if (linkedinMcpControlButton != null) linkedinMcpControlButton.setText("Activer navigation LinkedIn via MCP");
+    super.onPause();
+  }
 
   // ---------- manual extraction ----------
 
