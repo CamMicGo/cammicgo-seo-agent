@@ -751,10 +751,18 @@ public class MainActivity extends Activity {
     root.addView(actions);
 
     linkedinActions = actions;
-    Button expandLinkedIn = secondary("⤢");
+    // Compact secondary toolbar leaves more room for the LinkedIn WebView.
+    LinearLayout toolsRow = new LinearLayout(this);
+    toolsRow.setOrientation(LinearLayout.HORIZONTAL);
+    toolsRow.setPadding(dp(8), dp(2), dp(8), dp(2));
+    Button expandLinkedIn = secondary("⛶");
+    expandLinkedIn.setTextSize(17);
+    expandLinkedIn.setMinHeight(0);
+    expandLinkedIn.setMinimumHeight(0);
+    expandLinkedIn.setPadding(dp(6), dp(3), dp(6), dp(3));
     expandLinkedIn.setContentDescription(I18n.code(this).equals("fr") ? "Agrandir LinkedIn" : "Expand LinkedIn");
     linkedinExpand = expandLinkedIn;
-    root.addView(expandLinkedIn, new LinearLayout.LayoutParams(-1, -2));
+    toolsRow.addView(expandLinkedIn, new LinearLayout.LayoutParams(dp(44), dp(40)));
     expandLinkedIn.setOnClickListener(v -> setLinkedInExpanded(!linkedinExpanded));
     linkedinMcpEnabled = false;
     linkedinWeb = new WebView(this);
@@ -766,12 +774,19 @@ public class MainActivity extends Activity {
     mcpControl.setAllCaps(false);
     mcpControl.setContentDescription("Autoriser ou désactiver la navigation LinkedIn pour les assistants MCP");
     linkedinMcpControlButton = mcpControl;
-    root.addView(mcpControl, new LinearLayout.LayoutParams(-1, -2));
+    mcpControl.setText("🔒 MCP");
+    mcpControl.setTextSize(12);
+    mcpControl.setMinHeight(0);
+    mcpControl.setMinimumHeight(0);
+    mcpControl.setPadding(dp(5), dp(3), dp(5), dp(3));
+    LinearLayout.LayoutParams mcpLp = new LinearLayout.LayoutParams(0, dp(40), 1);
+    mcpLp.leftMargin = dp(4);
+    toolsRow.addView(mcpControl, mcpLp);
     mcpControl.setOnClickListener(v -> {
       if (linkedinMcpEnabled) {
         linkedinMcpEnabled = false;
         ui.removeCallbacks(linkedinPoll);
-        mcpControl.setText("🔒  Autoriser MCP");
+        mcpControl.setText("🔒 MCP");
         Toast.makeText(this, "Contrôle LinkedIn MCP désactivé", Toast.LENGTH_SHORT).show();
       } else {
         new AlertDialog.Builder(this).setTitle("Autoriser la navigation LinkedIn ?")
@@ -779,13 +794,21 @@ public class MainActivity extends Activity {
           .setNegativeButton("Annuler", (d, w) -> {})
           .setPositiveButton("Autoriser", (d, w) -> {
             linkedinMcpEnabled = true;
-            mcpControl.setText("✓  MCP autorisé");
+            mcpControl.setText("✓ MCP autorisé");
             ui.post(linkedinPoll);
           }).show();
       }
     });
-    Button exportJson = secondary(I18n.code(this).equals("fr") ? "Exporter conversation / profil (images)" : "Export conversation / profile (images)");
-    root.addView(exportJson, new LinearLayout.LayoutParams(-1, -2));
+    Button exportJson = secondary(I18n.code(this).equals("fr") ? "⇩ JSON" : "⇩ JSON");
+    exportJson.setContentDescription(I18n.code(this).equals("fr") ? "Exporter la conversation ou le profil en JSON avec images" : "Export conversation or profile as JSON with images");
+    exportJson.setTextSize(12);
+    exportJson.setMinHeight(0);
+    exportJson.setMinimumHeight(0);
+    exportJson.setPadding(dp(5), dp(3), dp(5), dp(3));
+    LinearLayout.LayoutParams exportLp = new LinearLayout.LayoutParams(0, dp(40), 0.75f);
+    exportLp.leftMargin = dp(4);
+    toolsRow.addView(exportJson, exportLp);
+    root.addView(toolsRow, new LinearLayout.LayoutParams(-1, dp(44)));
     exportJson.setOnClickListener(v -> exportLinkedInThreadJson());
     linkedinWeb.setWebChromeClient(new WebChromeClient());
     linkedinWeb.setWebViewClient(new WebViewClient());
@@ -1906,7 +1929,7 @@ public class MainActivity extends Activity {
     if (linkedinMcpEnabled && linkedinWeb != null) {
       ui.removeCallbacks(linkedinPoll);
       ui.post(linkedinPoll);
-      if (linkedinMcpControlButton != null) linkedinMcpControlButton.setText("✓  MCP autorisé");
+      if (linkedinMcpControlButton != null) linkedinMcpControlButton.setText("✓ MCP autorisé");
     }
   }
   @Override protected void onPause() {
