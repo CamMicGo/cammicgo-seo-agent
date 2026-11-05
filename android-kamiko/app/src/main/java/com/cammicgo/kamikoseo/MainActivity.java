@@ -835,7 +835,7 @@ public class MainActivity extends Activity {
       if (!isLinkedInMessagingPage() || !linkedinWeb.getUrl().contains("/thread/")) {
         finishLinkedInJob(id, null, "Ouvrez une conversation LinkedIn"); return;
       }
-      String js = "(function(){const n=[...document.querySelectorAll('li[class*=message]')];const a=n.map(e=>({text:(e.innerText||'').trim().slice(0,4000),media:[...e.querySelectorAll('img')].map(i=>i.currentSrc||i.src).filter(u=>u&&u.includes('messaging-image')).slice(0,8)})).filter(x=>x.text||x.media.length);return JSON.stringify({url:location.pathname,messages:a.slice(-60)});})()";
+      String js = "(function(){const n=[...document.querySelectorAll('li[class*=message],[class*=msg-s-event-listitem],[class*=message-event]')];const a=n.map((e,index)=>({index,text:(e.innerText||'').trim().slice(0,4000),timestamp:e.querySelector('time')?.getAttribute('datetime')||null,author:(e.querySelector('[class*=actor-name],[class*=sender-name]')?.innerText||'').trim(),media:[...e.querySelectorAll('img')].map(i=>i.currentSrc||i.src).filter(u=>u&&/messaging-image/.test(u)).slice(0,8)})).filter(x=>x.text||x.media.length);const avatars=[...document.querySelectorAll('[class*=conversation-header] img')].slice(0,6).map(i=>({url:i.currentSrc||i.src||'',alt:i.alt||'',role:'profile'})).filter(i=>i.url);return JSON.stringify({format:'cammicgo-linkedin-thread-mcp-v2',url:location.pathname,participant:(document.querySelector('[class*=conversation-header]')?.innerText||'').trim().slice(0,250),avatars,messages:a.slice(-60),partial:true});})()";
       linkedinWeb.evaluateJavascript(js, raw -> finishLinkedInThread(id, raw));
     } else finishLinkedInJob(id, null, "Operation inconnue");
   }
@@ -849,7 +849,7 @@ public class MainActivity extends Activity {
     linkedinWeb.loadUrl(url);
     ui.postDelayed(() -> {
       if (!linkedinMcpEnabled) { finishLinkedInJob(id, null, "LinkedIn navigation disabled"); return; }
-      String js = "(function(){const anchors=[...document.querySelectorAll('a[href*=\\\"/in/\\\"]')].filter(a=>a.closest('li,article,[class*=result]'));const profiles=anchors.map(a=>({name:(a.innerText||a.closest('li,article')?.innerText||'').trim().slice(0,350),profileUrl:a.href.split('?')[0]})).filter(p=>p.name&&p.profileUrl);return JSON.stringify({profiles:profiles.slice(0,100),url:location.pathname});})()";
+      String js = "(function(){const anchors=[...document.querySelectorAll('a[href*=\\\"/in/\\\"]')].filter(a=>a.closest('li,article,[class*=result]'));const profiles=anchors.map(a=>({name:(a.innerText||a.closest('li,article')?.innerText||'').trim().slice(0,350),profileUrl:a.href.split('?')[0],avatarUrl:(a.closest('li,article,[class*=result]')?.querySelector('img')?.currentSrc||a.closest('li,article,[class*=result]')?.querySelector('img')?.src||'')})).filter(p=>p.name&&p.profileUrl);return JSON.stringify({profiles:profiles.slice(0,100),url:location.pathname});})()";
       linkedinWeb.evaluateJavascript(js, raw -> {
         try {
           JSONObject data = new JSONObject(new JSONArray("[" + raw + "]").getString(0));
@@ -921,6 +921,11 @@ public class MainActivity extends Activity {
           if(url.contains("messaging-image"))urls.add(url);
         }
       }
+      JSONArray avatars = thread.optJSONArray("avatars");
+      if (avatars != null) for (int i=0;i<avatars.length();i++) {
+        JSONObject avatar = avatars.optJSONObject(i);
+        if (avatar != null && !avatar.optString("url").isEmpty()) urls.add(avatar.optString("url"));
+      }
       final String cookie=CookieManager.getInstance().getCookie("https://www.linkedin.com/");
       final String agent=linkedinWeb.getSettings().getUserAgentString();
       worker.execute(() -> {
@@ -930,6 +935,7 @@ public class MainActivity extends Activity {
           if(index>=8)break;
           int current=index++;
           JSONObject item=new JSONObject();
+          try { item.put("url", url); } catch (Exception ignored) {}
           java.net.HttpURLConnection conn=null;
           try {
             android.net.Uri uri=android.net.Uri.parse(url);
@@ -961,7 +967,7 @@ public class MainActivity extends Activity {
               java.io.ByteArrayOutputStream response=new java.io.ByteArrayOutputStream();
               try(java.io.InputStream input=upload.getInputStream()){byte[] buffer=new byte[4096];int n;while((n=input.read(buffer))!=-1){response.write(buffer,0,n);if(response.size()>12000)throw new java.io.IOException("Response too large");}}
               JSONObject saved=new JSONObject(response.toString("UTF-8"));
-              item.put("storagePath",saved.optString("storagePath"));item.put("mime",mime);item.put("bytes",bytes.size());
+              item.put("url",url);item.put("storagePath",saved.optString("storagePath"));item.put("mime",mime);item.put("bytes",bytes.size());
             }finally{upload.disconnect();}
           }catch(Exception e){try{item.put("error",e.getMessage());}catch(Exception ignored){}}
           finally{if(conn!=null)conn.disconnect();}
