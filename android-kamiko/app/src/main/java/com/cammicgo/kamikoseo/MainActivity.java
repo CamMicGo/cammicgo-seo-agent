@@ -867,7 +867,7 @@ public class MainActivity extends Activity {
         linkedinWeb.loadUrl(url);
         ui.postDelayed(() -> {
           String js = "(function(limit){const seen=new Set();const companies=[];for(const a of document.querySelectorAll('a[href*=\\\"/company/\\\"]')){const href=a.href.split('?')[0];if(!/^https:\\/\\/www\\.linkedin\\.com\\/company\\//.test(href)||seen.has(href))continue;const card=a.closest('li,article,[class*=result]')||a;const name=(a.innerText||card.querySelector('h3')?.innerText||'').trim().slice(0,160);if(!name)continue;seen.add(href);companies.push({name,companyUrl:href,description:(card.innerText||'').trim().slice(0,500),logoUrl:card.querySelector('img')?.currentSrc||card.querySelector('img')?.src||''});if(companies.length>=limit)break;}return JSON.stringify({companies,retrieved:companies.length,url:location.pathname,partial:true});})(" + limit + ")";
-          linkedinWeb.evaluateJavascript(js, raw -> finishLinkedInJs(id, raw));
+          linkedinWeb.evaluateJavascript(js, raw -> { try { finishLinkedInCards(id, new JSONObject(new JSONArray("[" + raw + "]").getString(0))); } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); } });
         }, 3200);
       } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
     } else if ("network_suggestions".equals(op)) {
@@ -952,7 +952,7 @@ public class MainActivity extends Activity {
       result.put("complete", profiles.length() >= requested || "no_more_visible_results".equals(reason));
       result.put("reason", reason);
       result.put("profiles", profiles);
-      finishLinkedInJob(id, result, null);
+      finishLinkedInCards(id, result);
     } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
   }
 
@@ -1047,6 +1047,56 @@ public class MainActivity extends Activity {
         finishLinkedInJob(id,thread,null);
       });
     }catch(Exception e){finishLinkedInJob(id,null,e.getMessage());}
+  }
+
+  /** Embed compact profile thumbnails in the relay result, avoiding expiring LinkedIn image URLs. */
+  private void finishLinkedInCards(String id, JSONObject data) {
+    worker.execute(() -> {
+      try {
+        JSONArray items = data.optJSONArray("profiles");
+        if (items == null) items = data.optJSONArray("people");
+        if (items == null) items = data.optJSONArray("companies");
+        if (items != null) {
+          String cookie = CookieManager.getInstance().getCookie("https://www.linkedin.com/");
+          String agent = linkedinWeb == null ? "" : linkedinWeb.getSettings().getUserAgentString();
+          for (int i = 0; i < items.length() && i < 25; i++) {
+            JSONObject card = items.optJSONObject(i);
+            if (card == null) continue;
+            String url = card.optString("avatarUrl", card.optString("logoUrl", ""));
+            if (url.isEmpty()) continue;
+            java.net.HttpURLConnection conn = null;
+            try {
+              android.net.Uri uri = android.net.Uri.parse(url);
+              String host = uri.getHost();
+              if (!"https".equalsIgnoreCase(uri.getScheme()) || host == null || !(host.equals("licdn.com") || host.endsWith(".licdn.com") || host.equals("linkedin.com") || host.endsWith(".linkedin.com"))) continue;
+              conn = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+              conn.setConnectTimeout(5000); conn.setReadTimeout(8000);
+              conn.setRequestProperty("User-Agent", agent);
+              if (cookie != null) conn.setRequestProperty("Cookie", cookie);
+              if (conn.getResponseCode() != 200) continue;
+              java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+              try (java.io.InputStream in = conn.getInputStream()) {
+                byte[] buffer = new byte[4096]; int n;
+                while ((n = in.read(buffer)) != -1) { bytes.write(buffer, 0, n); if (bytes.size() > 200000) break; }
+              }
+              if (bytes.size() > 200000) continue;
+              android.graphics.Bitmap original = android.graphics.BitmapFactory.decodeByteArray(bytes.toByteArray(), 0, bytes.size());
+              if (original == null) continue;
+              android.graphics.Bitmap thumb = android.graphics.Bitmap.createScaledBitmap(original, 72, 72, true);
+              java.io.ByteArrayOutputStream jpeg = new java.io.ByteArrayOutputStream();
+              thumb.compress(android.graphics.Bitmap.CompressFormat.JPEG, 60, jpeg);
+              if (thumb != original) thumb.recycle(); original.recycle();
+              if (jpeg.size() <= 12000) {
+                card.put("imageMime", "image/jpeg");
+                card.put("imageBase64", android.util.Base64.encodeToString(jpeg.toByteArray(), android.util.Base64.NO_WRAP));
+              }
+            } catch (Exception e) { android.util.Log.d("CamMicGoLinkedIn", "Thumbnail unavailable: " + e.getClass().getSimpleName()); }
+            finally { if (conn != null) conn.disconnect(); }
+          }
+        }
+      } catch (Exception e) { android.util.Log.w("CamMicGoLinkedIn", "Card thumbnails", e); }
+      finishLinkedInJob(id, data, null);
+    });
   }
 
   private void finishLinkedInJs(String id, String raw) {
