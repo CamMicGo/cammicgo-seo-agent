@@ -274,7 +274,7 @@ public class RelayService extends Service {
     // Show the authenticated MCP client when provided by the server; never infer it.
     String agent=job.optString("agentName", job.optString("agentSource", "")).trim();
     if (!agent.isEmpty()) label=agent+" · "+label;
-    notebookHistory(id,label, "working", null);
+    notebookHistory(id,label, "working", null, agent);
     status("NotebookLM : "+label);
     try {
       NotebookClient client=new NotebookClient(this);
@@ -314,7 +314,7 @@ public class RelayService extends Service {
       else throw new IOException("Opération NotebookLM non prise en charge : "+operation);
       JSONObject body=new JSONObject().put("type","notebooklm").put("result",result);
       RelayClient.request("POST","/api/devices/jobs/"+id,token,body.toString());
-      notebookHistory(id,label,"done",null);
+      notebookHistory(id,label,"done",null, agent);
       status("NotebookLM : opération exécutée");
     } catch (Throwable ex) {
       // Catch WebView/Android runtime failures too, so no claimed job stays stuck locally.
@@ -322,7 +322,7 @@ public class RelayService extends Service {
       String error=ex.getMessage()==null?ex.getClass().getSimpleName():ex.getMessage();
       // Persist the failure locally before any network request. A failed error
       // acknowledgement must never leave the UI showing "working" indefinitely.
-      notebookHistory(id,label,"failed",error);
+      notebookHistory(id,label,"failed",error, agent);
       status("NotebookLM : "+error);
       try {
         JSONObject body=new JSONObject().put("type","notebooklm").put("error",error);
@@ -333,12 +333,12 @@ public class RelayService extends Service {
     }
   }
 
-  private void notebookHistory(String jobId,String label,String state,String error) {
+  private void notebookHistory(String jobId,String label,String state,String error,String agent) {
     SharedPreferences p=RelayClient.prefs(this);
     try {
       org.json.JSONArray old=new org.json.JSONArray(p.getString("notebookHistory","[]"));
       org.json.JSONArray out=new org.json.JSONArray();
-      JSONObject e=new JSONObject();e.put("jobId",jobId);e.put("label",label);
+      JSONObject e=new JSONObject();e.put("jobId",jobId);e.put("label",label);e.put("agentName",agent);
       e.put("status",state);e.put("at",System.currentTimeMillis());
       if(error!=null)e.put("error",error);
       out.put(e);
