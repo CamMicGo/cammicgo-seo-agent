@@ -1701,41 +1701,40 @@ public class MainActivity extends Activity {
     } catch (Exception e) { return null; }
   }
 
-  /** Render historical operation labels in the current UI language, not the language at request time. */
+  /** Translate persisted historical labels on display without changing their original data. */
   private String localizedOperation(String value) {
     if (value == null) return "";
-    String lang = I18n.code(this);
-    if ("fr".equals(lang)) return value;
     String out = value;
-    // Existing relay entries contain a human-readable French label; preserve IDs and URLs.
-    String[][] known = {
-      {"Consulter un notebook", "Get notebook"},
-      {"Lister les notebooks", "List notebooks"},
-      {"Créer un notebook", "Create notebook"},
-      {"Ajouter une source", "Add source"},
-      {"Supprimer une source", "Delete source"},
-      {"Mettre à jour une source", "Update source"},
-      {"Lister les sources", "List sources"},
-      {"Extraire une transcription", "Extract transcript"},
-      {"Extraire les transcriptions", "Extract transcripts"},
-      {"demande", "request"}
+    String[][] labels = {
+      {"Consulter un notebook", "Get notebook", "Consultar un cuaderno", "Notizbuch abrufen", "Consultar caderno", "Consulta notebook", "Открыть блокнот", "查看笔记本", "ノートブックを取得", "노트북 조회", "عرض دفتر الملاحظات"},
+      {"Lister les notebooks", "List notebooks", "Listar cuadernos", "Notizbücher auflisten", "Listar cadernos", "Elenca notebook", "Список блокнотов", "列出笔记本", "ノートブック一覧", "노트북 목록", "قائمة دفاتر الملاحظات"},
+      {"Créer un notebook", "Create notebook", "Crear cuaderno", "Notizbuch erstellen", "Criar caderno", "Crea notebook", "Создать блокнот", "创建笔记本", "ノートブックを作成", "노트북 생성", "إنشاء دفتر ملاحظات"},
+      {"Ajouter une source", "Add source", "Añadir fuente", "Quelle hinzufügen", "Adicionar fonte", "Aggiungi fonte", "Добавить источник", "添加来源", "ソースを追加", "소스 추가", "إضافة مصدر"},
+      {"Supprimer une source", "Delete source", "Eliminar fuente", "Quelle löschen", "Eliminar fonte", "Elimina fonte", "Удалить источник", "删除来源", "ソースを削除", "소스 삭제", "حذف مصدر"},
+      {"Mettre à jour une source", "Update source", "Actualizar fuente", "Quelle aktualisieren", "Atualizar fonte", "Aggiorna fonte", "Обновить источник", "更新来源", "ソースを更新", "소스 업데이트", "تحديث مصدر"},
+      {"Lister les sources", "List sources", "Listar fuentes", "Quellen auflisten", "Listar fontes", "Elenca fonti", "Список источников", "列出来源", "ソース一覧", "소스 목록", "قائمة المصادر"},
+      {"Extraire une transcription", "Extract transcript", "Extraer transcripción", "Transkript extrahieren", "Extrair transcrição", "Estrai trascrizione", "Извлечь транскрипт", "提取字幕", "文字起こしを抽出", "전사 추출", "استخراج النص"},
+      {"Extraire les transcriptions", "Extract transcripts", "Extraer transcripciones", "Transkripte extrahieren", "Extrair transcrições", "Estrai trascrizioni", "Извлечь транскрипты", "提取字幕", "文字起こしを抽出", "전사 추출", "استخراج النصوص"},
+      {"demande", "request", "solicitud", "Anfrage", "pedido", "richiesta", "запрос", "请求", "リクエスト", "요청", "طلب"}
     };
-    if ("en".equals(lang)) for (String[] pair : known) out = out.replace(pair[0], pair[1]);
+    int lang = I18n.index(this);
+    for (String[] label : labels) {
+      // Match labels already stored in French or English; never translate URLs or IDs.
+      out = out.replace(label[0], label[lang]).replace(label[1], label[lang]);
+    }
     return out;
   }
 
   private String localizedJobStatus(String status) {
-    String lang = I18n.code(this);
-    if ("fr".equals(lang)) {
-      if ("done".equals(status)) return "terminé";
-      if ("failed".equals(status)) return "échec";
-      if ("pending".equals(status) || "queued".equals(status)) return "en attente";
-      if ("working".equals(status) || "running".equals(status) || "in_progress".equals(status)) return "en cours";
-    }
-    if ("done".equals(status)) return "completed";
-    if ("failed".equals(status)) return "failed";
-    if ("pending".equals(status) || "queued".equals(status)) return "pending";
-    if ("working".equals(status) || "running".equals(status) || "in_progress".equals(status)) return "in progress";
+    String[] completed = {"Completed","Terminé","Completado","Abgeschlossen","Concluído","Completato","Завершено","已完成","完了","완료","مكتمل"};
+    String[] failed = {"Failed","Échec","Error","Fehlgeschlagen","Falhou","Errore","Ошибка","失败","失敗","실패","فشل"};
+    String[] pending = {"Pending","En attente","Pendiente","Ausstehend","Pendente","In attesa","Ожидание","等待中","保留中","대기 중","قيد الانتظار"};
+    String[] working = {"In progress","En cours","En curso","In Bearbeitung","Em andamento","In corso","Выполняется","进行中","処理中","진행 중","قيد التنفيذ"};
+    int lang = I18n.index(this);
+    if ("done".equals(status) || "completed".equals(status)) return completed[lang];
+    if ("failed".equals(status) || "error".equals(status)) return failed[lang];
+    if ("pending".equals(status) || "queued".equals(status) || "received".equals(status)) return pending[lang];
+    if ("working".equals(status) || "running".equals(status) || "in_progress".equals(status)) return working[lang];
     return status;
   }
 
@@ -1857,7 +1856,7 @@ public class MainActivity extends Activity {
           0, 0, 0);
       origin.setCompoundDrawablePadding(dp(5));
       String when = DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(e.optLong("at")));
-      String detail = linkedinEntry ? ("LinkedIn MCP · " + localizedJobStatus(e.optString("status")) + " · " + when) : mcpDebugEntry ? ("MCP HTTP · " + when + " · Appuyer pour déboguer") : notebookEntry ? ("NotebookLM · " + localizedJobStatus(e.optString("status")) + " · " + when) : ok ? t("segments", e.optInt("segments")) + " · " + when : when + " · " + e.optString("error", t("failed"));
+      String detail = linkedinEntry ? ("LinkedIn MCP · " + localizedJobStatus(e.optString("status")) + " · " + when) : mcpDebugEntry ? ("MCP HTTP · " + when + " · " + ("fr".equals(I18n.code(this)) ? "Appuyer pour déboguer" : "Tap for diagnostics")) : notebookEntry ? ("NotebookLM · " + localizedJobStatus(e.optString("status")) + " · " + when) : ok ? t("segments", e.optInt("segments")) + " · " + when : when + " · " + e.optString("error", t("failed"));
       TextView d = text(texts, detail, 12, ok || pending ? MUTED : RED, false);
       d.setMaxLines(1); d.setEllipsize(TextUtils.TruncateAt.END);
       row.addView(texts, new LinearLayout.LayoutParams(0, -2, 1));
