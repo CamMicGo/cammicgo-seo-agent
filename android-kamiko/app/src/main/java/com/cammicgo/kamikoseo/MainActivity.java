@@ -554,10 +554,8 @@ public class MainActivity extends Activity {
         .setMessage(t("clear_msg"))
         .setPositiveButton(t("clear_ok"), (dlg, which) -> {
           SharedPreferences prefs = RelayClient.prefs(this);
-          prefs.edit().putString("history", "[]").putString("notebookHistory", "[]").apply();
+          prefs.edit().putString("history", "[]").putString("assistantNotebookHistory", "[]").apply();
           historyShown = null;
-          notebookHistoryShown = null;
-          refreshNotebookRequests(prefs);
           refreshHistory(prefs);
         })
         .setNegativeButton(t("cancel"), null)
@@ -1422,7 +1420,7 @@ public class MainActivity extends Activity {
 
   private void refreshHistory(SharedPreferences p) {
     String raw = p.getString("history", "[]");
-    String notebookRaw = p.getString("notebookHistory", "[]");
+    String notebookRaw = p.getString("assistantNotebookHistory", "[]");
     long minute = System.currentTimeMillis() / 60_000;
     String key = raw.hashCode() + ":" + notebookRaw.hashCode() + ":" + minute;
     if (key.equals(historyShown)) return;
