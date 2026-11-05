@@ -1701,13 +1701,51 @@ public class MainActivity extends Activity {
     } catch (Exception e) { return null; }
   }
 
+  /** Render historical operation labels in the current UI language, not the language at request time. */
+  private String localizedOperation(String value) {
+    if (value == null) return "";
+    String lang = I18n.code(this);
+    if ("fr".equals(lang)) return value;
+    String out = value;
+    // Existing relay entries contain a human-readable French label; preserve IDs and URLs.
+    String[][] known = {
+      {"Consulter un notebook", "Get notebook"},
+      {"Lister les notebooks", "List notebooks"},
+      {"Créer un notebook", "Create notebook"},
+      {"Ajouter une source", "Add source"},
+      {"Supprimer une source", "Delete source"},
+      {"Mettre à jour une source", "Update source"},
+      {"Lister les sources", "List sources"},
+      {"Extraire une transcription", "Extract transcript"},
+      {"Extraire les transcriptions", "Extract transcripts"},
+      {"demande", "request"}
+    };
+    if ("en".equals(lang)) for (String[] pair : known) out = out.replace(pair[0], pair[1]);
+    return out;
+  }
+
+  private String localizedJobStatus(String status) {
+    String lang = I18n.code(this);
+    if ("fr".equals(lang)) {
+      if ("done".equals(status)) return "terminé";
+      if ("failed".equals(status)) return "échec";
+      if ("pending".equals(status) || "queued".equals(status)) return "en attente";
+      if ("working".equals(status) || "running".equals(status) || "in_progress".equals(status)) return "en cours";
+    }
+    if ("done".equals(status)) return "completed";
+    if ("failed".equals(status)) return "failed";
+    if ("pending".equals(status) || "queued".equals(status)) return "pending";
+    if ("working".equals(status) || "running".equals(status) || "in_progress".equals(status)) return "in progress";
+    return status;
+  }
+
   private void refreshHistory(SharedPreferences p) {
     String raw = p.getString("history", "[]");
     String notebookRaw = p.getString("assistantNotebookHistory", "[]");
     String mcpDebugRaw = p.getString("mcpDebugHistory", "[]");
     String linkedinRaw = p.getString("linkedinAssistantHistory", "[]");
     long minute = System.currentTimeMillis() / 60_000;
-    String key = raw.hashCode() + ":" + notebookRaw.hashCode() + ":" + mcpDebugRaw.hashCode() + ":" + linkedinRaw.hashCode() + ":" + minute;
+    String key = I18n.code(this) + ":" + raw.hashCode() + ":" + notebookRaw.hashCode() + ":" + mcpDebugRaw.hashCode() + ":" + linkedinRaw.hashCode() + ":" + minute;
     if (key.equals(historyShown)) return;
     historyShown = key;
     historyList.removeAllViews();
@@ -1788,7 +1826,7 @@ public class MainActivity extends Activity {
       LinearLayout texts = new LinearLayout(this);
       texts.setOrientation(LinearLayout.VERTICAL);
       texts.setPadding(dp(10), 0, 0, 0);
-      String title = e.isNull("title") ? null : e.optString("title", null);
+      String title = e.isNull("title") ? null : localizedOperation(e.optString("title", null));
       TextView tv = text(texts, title != null && !title.isEmpty() ? title : t("video", e.optString("videoId")), 14, INK, true);
       tv.setMaxLines(1); tv.setEllipsize(TextUtils.TruncateAt.END);
       // Preserve the caller identity supplied by the relay; never guess a provider.
@@ -1819,7 +1857,7 @@ public class MainActivity extends Activity {
           0, 0, 0);
       origin.setCompoundDrawablePadding(dp(5));
       String when = DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(e.optLong("at")));
-      String detail = linkedinEntry ? ("LinkedIn MCP · " + e.optString("status") + " · " + when) : mcpDebugEntry ? ("MCP HTTP · " + when + " · Appuyer pour déboguer") : notebookEntry ? ("NotebookLM · " + e.optString("status") + " · " + when) : ok ? t("segments", e.optInt("segments")) + " · " + when : when + " · " + e.optString("error", t("failed"));
+      String detail = linkedinEntry ? ("LinkedIn MCP · " + localizedJobStatus(e.optString("status")) + " · " + when) : mcpDebugEntry ? ("MCP HTTP · " + when + " · Appuyer pour déboguer") : notebookEntry ? ("NotebookLM · " + localizedJobStatus(e.optString("status")) + " · " + when) : ok ? t("segments", e.optInt("segments")) + " · " + when : when + " · " + e.optString("error", t("failed"));
       TextView d = text(texts, detail, 12, ok || pending ? MUTED : RED, false);
       d.setMaxLines(1); d.setEllipsize(TextUtils.TruncateAt.END);
       row.addView(texts, new LinearLayout.LayoutParams(0, -2, 1));
