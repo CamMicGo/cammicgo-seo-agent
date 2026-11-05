@@ -731,7 +731,7 @@ public class MainActivity extends Activity {
         Toast.makeText(this, "Contrôle LinkedIn MCP désactivé", Toast.LENGTH_SHORT).show();
       } else {
         new AlertDialog.Builder(this).setTitle("Autoriser la navigation LinkedIn ?")
-          .setMessage("Les assistants MCP associés pourront parcourir votre messagerie LinkedIn et lire les conversations affichées tant que cet écran reste ouvert. Aucun message ne sera envoyé. Les cookies ne sont jamais transmis.")
+          .setMessage("Les assistants MCP associés pourront parcourir votre messagerie LinkedIn et lire les conversations affichées tant que cet écran reste ouvert. Les demandes d'envoi de messages nécessitent une confirmation explicite dans l'assistant. Les cookies ne sont jamais transmis.")
           .setNegativeButton("Annuler", (d, w) -> {})
           .setPositiveButton("Autoriser", (d, w) -> {
             linkedinMcpEnabled = true;
