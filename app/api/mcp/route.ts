@@ -65,14 +65,21 @@ async function handler(req:NextRequest){
   const quotaLimit=(_session:{credentials:{mode:string}})=>2000; // Google API safety cap; the user-facing allowance is counted per MCP call
   // Identify MCP clients only from explicit client metadata or a recognizable user agent.
   // Never infer the client from the requested tool or user prompt.
-  const declaredClient = (rpc as {params?:{clientInfo?:{name?:string}}}|null)?.params?.clientInfo?.name ?? '';
-  const clientHeader = req.headers.get('x-mcp-client-name') ?? req.headers.get('user-agent') ?? '';
+  const requestParams = (rpc as {params?:{clientInfo?:{name?:string};_meta?:Record<string,unknown>}}|null)?.params;
+  const metadata = requestParams?._meta;
+  const metaClient = metadata?.['io.modelcontextprotocol/clientInfo'] as {name?:unknown;version?:unknown}|undefined;
+  const declaredClient = typeof metaClient?.name==='string' ? metaClient.name
+   : typeof requestParams?.clientInfo?.name==='string' ? requestParams.clientInfo.name : '';
+  const clientHeader = req.headers.get('x-mcp-client-name') || req.headers.get('user-agent') || '';
   const clientText = (declaredClient || clientHeader).toLowerCase();
   const agentName = /antigravity/.test(clientText) ? 'Antigravity'
-   : /gemini.cli|gemini_cli|gemini-cli/.test(clientText) ? 'Gemini CLI'
+   : /gemini[._ -]?cli/.test(clientText) ? 'Gemini CLI'
+   : /gemini/.test(clientText) ? 'Gemini'
    : /cursor/.test(clientText) ? 'Cursor'
    : /claude/.test(clientText) ? 'Claude'
-   : /chatgpt|openai/.test(clientText) ? 'ChatGPT' : 'Assistant inconnu';
+   : /codex/.test(clientText) ? 'Codex'
+   : /chatgpt|openai/.test(clientText) ? 'ChatGPT'
+   : 'Assistant inconnu';
   // Per-call timing (internal performance monitoring: tool name, duration, success; no content), written after the response.
   const logCall=(tool:string,ms:number,ok:boolean)=>{try{after(async()=>{try{const {sb}=await import('@/lib/device-relay');await sb('/rest/v1/cmg_mcp_calls',{method:'POST',body:JSON.stringify({user_id:user.id,tool,ms:Math.round(ms),ok,agent_name:agentName})});}catch{/* timing is best effort */}});}catch{/* outside a request scope */}};
   const protectedMcp=createMcpHandler(server=>{
