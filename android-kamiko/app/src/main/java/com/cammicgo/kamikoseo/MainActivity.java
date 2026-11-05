@@ -879,7 +879,7 @@ public class MainActivity extends Activity {
       }, 3200);
     } else if ("invite".equals(op)) {
       String profileUrl = job.optString("profileUrl", "").trim();
-      if (!profileUrl.matches("https://(www\\\\.)?linkedin\\\\.com/in/[a-zA-Z0-9_%-]+/?")) { finishLinkedInJob(id, null, "Invalid profile URL"); return; }
+      if (!profileUrl.startsWith("https://www.linkedin.com/in/") || profileUrl.contains("?") || profileUrl.contains("#") || profileUrl.length() > 350) { finishLinkedInJob(id, null, "Invalid profile URL"); return; }
       // Only act on a suggestion already visible in the network tab. Never guess a recipient.
       if (linkedinWeb.getUrl() == null || !linkedinWeb.getUrl().contains("/mynetwork")) { finishLinkedInJob(id, null, "Open network suggestions first"); return; }
       String js = "(function(url){const links=[...document.querySelectorAll('a[href*=\\\"/in/\\\"]')].filter(a=>a.href.split('?')[0].replace(/\\/$/,'')===url.replace(/\\/$/,''));const cards=[...new Set(links.map(a=>a.closest('li,article,[class*=card],[class*=person]')).filter(Boolean))];if(cards.length!==1)return JSON.stringify({error:'Profile not uniquely visible',matches:cards.length});const buttons=[...cards[0].querySelectorAll('button')].filter(b=>!b.disabled&&/^(connect|se connecter|inviter)$/i.test((b.getAttribute('aria-label')||b.innerText||'').trim()));if(buttons.length!==1)return JSON.stringify({error:'Invitation button ambiguous or missing',matches:buttons.length});buttons[0].click();return JSON.stringify({clicked:true,profileUrl:url,note:'Invitation button clicked; verify LinkedIn state'});})(" + JSONObject.quote(profileUrl) + ")";
