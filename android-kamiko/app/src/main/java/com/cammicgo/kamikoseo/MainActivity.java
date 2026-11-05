@@ -875,7 +875,7 @@ public class MainActivity extends Activity {
       linkedinWeb.loadUrl("https://www.linkedin.com/mynetwork/");
       ui.postDelayed(() -> {
         String js = "(function(limit){const seen=new Set();const people=[];for(const a of document.querySelectorAll('a[href*=\\\"/in/\\\"]')){const href=a.href.split('?')[0];if(!/^https:\\/\\/www\\.linkedin\\.com\\/in\\//.test(href)||seen.has(href))continue;const card=a.closest('li,article,[class*=card],[class*=person]')||a.parentElement;const name=(a.innerText||card?.querySelector('h3')?.innerText||'').trim().slice(0,150);if(!name)continue;seen.add(href);people.push({name,profileUrl:href,headline:(card?.innerText||'').trim().slice(0,400),avatarUrl:card?.querySelector('img')?.currentSrc||card?.querySelector('img')?.src||''});if(people.length>=limit)break;}return JSON.stringify({people,retrieved:people.length,url:location.pathname,partial:true});})(" + limit + ")";
-        linkedinWeb.evaluateJavascript(js, raw -> finishLinkedInJs(id, raw));
+        linkedinWeb.evaluateJavascript(js, raw -> { try { finishLinkedInCards(id, new JSONObject(new JSONArray("[" + raw + "]").getString(0))); } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); } });
       }, 3200);
     } else if ("invite".equals(op)) {
       String profileUrl = job.optString("profileUrl", "").trim();
