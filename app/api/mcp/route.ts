@@ -90,7 +90,7 @@ async function handler(req:NextRequest){
    const notebookJob=async(operation:'create'|'list'|'add_url_source'|'get'|'rename'|'delete_preview'|'delete'|'add_text_source'|'add_drive_source'|'usage'|'source_list'|'studio_create'|'studio_status'|'mindmap_create'|'notebook_share_status'|'query'|'notebook_share_public'|'notebook_share_invite'|'artifact_download_link'|'source_rename'|'source_sync_drive'|'source_delete'|'studio_get'|'research_start'|'research_status'|'research_import'|'note'|'source_describe'|'source_get_content'|'artifact_download_binary'|'studio_delete',payload:Record<string,string>)=>{
     const devices=await relay.listDevices(user.id);
     if(!devices.some(relay.isOnline))return asText({status:'device_offline',created:false,messageForUser:'Connectez le relais CamMicGo sur votre ordinateur, avec une session NotebookLM Google ouverte. Les actions ne sont pas exécutées dans le cloud.'});
-    const job=await relay.createNotebookJob(user.id,operation,payload);
+    const job=await relay.createNotebookJob(user.id,operation,{...payload,agentName,agentSource:declaredClient||clientHeader});
     const deadline=Date.now()+40_000;
     while(Date.now()<deadline){
      await new Promise(r=>setTimeout(r,1500));
