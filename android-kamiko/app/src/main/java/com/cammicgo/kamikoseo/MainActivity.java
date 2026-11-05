@@ -770,11 +770,13 @@ public class MainActivity extends Activity {
     linkedinWeb.getSettings().setDomStorageEnabled(true);
     CookieManager.getInstance().setAcceptCookie(true);
     CookieManager.getInstance().setAcceptThirdPartyCookies(linkedinWeb, true);
-    Button mcpControl = secondary("🔒  Autoriser MCP");
+    Button mcpControl = secondary(linkedinToolbarText("allow"));
     mcpControl.setAllCaps(false);
     mcpControl.setContentDescription(linkedinToolbarText("permission"));
     linkedinMcpControlButton = mcpControl;
     mcpControl.setText(linkedinToolbarText("allow"));
+    mcpControl.setCompoundDrawablesWithIntrinsicBounds(linkedinShieldIcon(), null, null, null);
+    mcpControl.setCompoundDrawablePadding(dp(4));
     mcpControl.setTextSize(12);
     mcpControl.setMinHeight(0);
     mcpControl.setMinimumHeight(0);
@@ -1830,11 +1832,39 @@ public class MainActivity extends Activity {
 
   /** Label shared by the assistant activity button and its diagnostics dialog. */
   /** Compact LinkedIn toolbar translations in I18n.CODES order. */
+  /** Native vector shield, consistent across Android fonts and locales (no lock emoji). */
+  private android.graphics.drawable.Drawable linkedinShieldIcon() {
+    android.graphics.drawable.Drawable icon = new android.graphics.drawable.Drawable() {
+      private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+      @Override public void draw(android.graphics.Canvas canvas) {
+        android.graphics.Rect b = getBounds();
+        float sx = b.width() / 24f, sy = b.height() / 24f;
+        canvas.save(); canvas.translate(b.left, b.top); canvas.scale(sx, sy);
+        paint.setColor(BLUE); paint.setStyle(android.graphics.Paint.Style.STROKE); paint.setStrokeWidth(2.1f);
+        paint.setStrokeJoin(android.graphics.Paint.Join.ROUND); paint.setStrokeCap(android.graphics.Paint.Cap.ROUND);
+        android.graphics.Path shield = new android.graphics.Path();
+        shield.moveTo(12, 2); shield.cubicTo(9.5f, 4, 6.6f, 5, 3.5f, 5.5f);
+        shield.lineTo(3.5f, 11); shield.cubicTo(3.5f, 16.5f, 7.1f, 20, 12, 22);
+        shield.cubicTo(16.9f, 20, 20.5f, 16.5f, 20.5f, 11); shield.lineTo(20.5f, 5.5f);
+        shield.cubicTo(17.4f, 5, 14.5f, 4, 12, 2); shield.close(); canvas.drawPath(shield, paint);
+        paint.setStrokeWidth(2.3f); canvas.drawLine(8.5f, 12, 11, 14.5f, paint);
+        canvas.drawLine(11, 14.5f, 15.8f, 9.5f, paint); canvas.restore();
+      }
+      @Override public void setAlpha(int alpha) { paint.setAlpha(alpha); }
+      @Override public void setColorFilter(android.graphics.ColorFilter filter) { paint.setColorFilter(filter); }
+      @Override public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
+      @Override public int getIntrinsicWidth() { return dp(17); }
+      @Override public int getIntrinsicHeight() { return dp(17); }
+    };
+    icon.setBounds(0, 0, dp(17), dp(17));
+    return icon;
+  }
+
   private String linkedinToolbarText(String key) {
     String[][] labels = {
       {"Expand LinkedIn","Agrandir LinkedIn","Ampliar LinkedIn","LinkedIn vergrößern","Ampliar LinkedIn","Espandi LinkedIn","Развернуть LinkedIn","展开 LinkedIn","LinkedInを拡大","LinkedIn 확대","توسيع لينكدإن"},
       {"Collapse LinkedIn","Réduire LinkedIn","Reducir LinkedIn","LinkedIn verkleinern","Reduzir LinkedIn","Riduci LinkedIn","Свернуть LinkedIn","收起 LinkedIn","LinkedInを縮小","LinkedIn 축소","تصغير لينكدإن"},
-      {"🔒 Allow MCP","🔒 Autoriser MCP","🔒 Permitir MCP","🔒 MCP erlauben","🔒 Permitir MCP","🔒 Autorizza MCP","🔒 Разрешить MCP","🔒 授权 MCP","🔒 MCPを許可","🔒 MCP 허용","🔒 السماح لـ MCP"},
+      {"Allow MCP","Autoriser MCP","Permitir MCP","MCP erlauben","Permitir MCP","Autorizza MCP","Разрешить MCP","授权 MCP","MCPを許可","MCP 허용","السماح لـ MCP"},
       {"✓ MCP allowed","✓ MCP autorisé","✓ MCP autorizado","✓ MCP erlaubt","✓ MCP autorizado","✓ MCP autorizzato","✓ MCP разрешён","✓ MCP 已授权","✓ MCP 許可済み","✓ MCP 허용됨","✓ MCP مسموح"},
       {"Export conversation or profile as JSON with images","Exporter la conversation ou le profil en JSON avec images","Exportar conversación o perfil a JSON con imágenes","Konversation oder Profil als JSON mit Bildern exportieren","Exportar conversa ou perfil em JSON com imagens","Esporta conversazione o profilo in JSON con immagini","Экспорт беседы или профиля в JSON с изображениями","将对话或个人资料及图片导出为 JSON","会話またはプロフィールを画像付きJSONで書き出す","대화 또는 프로필을 이미지 포함 JSON으로 내보내기","تصدير المحادثة أو الملف الشخصي بصيغة JSON مع الصور"},
       {"Allow or revoke LinkedIn MCP access","Autoriser ou révoquer l'accès MCP à LinkedIn","Permitir o revocar acceso MCP a LinkedIn","LinkedIn-MCP-Zugriff erlauben oder widerrufen","Permitir ou revogar acesso MCP ao LinkedIn","Autorizza o revoca accesso MCP a LinkedIn","Разрешить или отозвать доступ MCP к LinkedIn","允许或撤销 LinkedIn MCP 访问权限","LinkedIn MCPアクセスを許可または取り消す","LinkedIn MCP 접근 허용 또는 취소","السماح بوصول MCP إلى لينكدإن أو إلغاؤه"}
