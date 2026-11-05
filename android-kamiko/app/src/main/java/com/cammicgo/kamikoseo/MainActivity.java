@@ -1035,8 +1035,7 @@ public class MainActivity extends Activity {
       item.put("at", System.currentTimeMillis());
       updated.put(item);
       prefs.edit().putString("linkedinAssistantHistory", updated.toString()).apply();
-      historyShown = null;
-      refreshHistory(prefs);
+      ui.post(() -> { historyShown = null; if (historyList != null) refreshHistory(prefs); });
     } catch (Exception e) { android.util.Log.w("CamMicGoLinkedIn", "Journal error", e); }
   }
 
