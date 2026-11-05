@@ -766,7 +766,7 @@ public class MainActivity extends Activity {
           }).show();
       }
     });
-    Button exportJson = secondary(I18n.code(this).equals("fr") ? "Exporter ce fil en JSON" : "Export conversation JSON");
+    Button exportJson = secondary(I18n.code(this).equals("fr") ? "Exporter conversation / profil (images)" : "Export conversation / profile (images)");
     root.addView(exportJson, new LinearLayout.LayoutParams(-1, -2));
     exportJson.setOnClickListener(v -> exportLinkedInThreadJson());
     linkedinWeb.setWebChromeClient(new WebChromeClient());
