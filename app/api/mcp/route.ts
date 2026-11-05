@@ -155,7 +155,7 @@ async function handler(req:NextRequest){
    // These tools provide a truthful, user-supplied conversation workflow without
    // harvesting browser cookies, scraping private endpoints or fabricating messages.
    // LinkedIn Android relay: explicit opt-in on the device; read/navigation only, never sends messages.
-   const linkedinDevice=async(operation:'inbox'|'open'|'thread'|'back',payload:Record<string,string>={})=>{
+   const linkedinDevice=async(operation:'inbox'|'open'|'thread'|'back'|'feed'|'search',payload:Record<string,string>={})=>{
     const liRelay=await import('@/lib/linkedin-relay');
     const devices=await relay.listDevices(user.id);
     if(!devices.some(relay.isOnline))return asText({status:'device_offline',message:'Connectez et ouvrez CamMicGo Android, puis activez le contrôle LinkedIn MCP.'});
@@ -184,6 +184,8 @@ async function handler(req:NextRequest){
     }
     return asText({status:'pending',jobId:job.id,message:'Ouvrez CamMicGo Android avec le contrôle LinkedIn activé; vérifiez avec linkedin_job_status.'});
    };
+   server.registerTool('linkedin_feed',{title:'Read recent LinkedIn feed posts via paired Android',annotations:{readOnlyHint:true},description:'Read up to 20 currently visible LinkedIn feed posts through the user-authorized Android WebView. Read-only; results depend on the signed-in session and page layout.',inputSchema:z.object({})},async()=>linkedinDevice('feed'));
+   server.registerTool('linkedin_search_profiles',{title:'Search LinkedIn people by keywords via paired Android',annotations:{readOnlyHint:true},description:'Search the signed-in LinkedIn people results page for user-supplied keywords. Returns visible profile names and URLs only; no bulk harvesting or connection invitations.',inputSchema:z.object({keywords:z.string().min(2).max(150)})},async a=>linkedinDevice('search',{keywords:a.keywords}));
    server.registerTool('linkedin_list_conversations',{title:'List LinkedIn conversations on paired Android',annotations:{readOnlyHint:true},description:'Navigate to LinkedIn inbox and list conversations in the authenticated Android WebView. Requires explicit LinkedIn MCP opt-in on the open phone.',inputSchema:z.object({})},async()=>linkedinDevice('inbox'));
    server.registerTool('linkedin_open_conversation',{title:'Open LinkedIn conversation on paired Android',annotations:{readOnlyHint:true},description:'Navigate to a selected LinkedIn conversation by exact visible participant name. Does not send messages.',inputSchema:z.object({participant:z.string().min(2).max(150)})},async a=>linkedinDevice('open',{participant:a.participant}));
    server.registerTool('linkedin_read_conversation',{title:'Read open LinkedIn thread on paired Android',annotations:{readOnlyHint:true},description:'Read messages and image URLs from the authenticated LinkedIn WebView. Does not transfer image bytes yet.',inputSchema:z.object({})},async()=>linkedinDevice('thread'));
