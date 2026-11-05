@@ -1010,7 +1010,7 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this).setTitle("Exporter la conversation")
           .setMessage("Sauvegarder les messages actuellement chargés en JSON ? Les liens vers les images peuvent nécessiter une session LinkedIn et le fichier ne contient pas les octets des images.")
           .setNegativeButton("Annuler", (d, w) -> {})
-          .setPositiveButton("Exporter", (d, w) -> save(data.toString(2), "application/json", "linkedin-conversation-" + System.currentTimeMillis() + ".json")).show();
+          .setPositiveButton("Exporter", (d, w) -> save(data.toString(), "application/json", "linkedin-conversation-" + System.currentTimeMillis() + ".json")).show();
       } catch (Exception e) { Toast.makeText(this, "Export JSON impossible : " + e.getMessage(), Toast.LENGTH_LONG).show(); }
     });
   }
