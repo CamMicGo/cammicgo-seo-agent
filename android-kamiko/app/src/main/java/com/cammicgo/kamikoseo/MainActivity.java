@@ -558,15 +558,15 @@ public class MainActivity extends Activity {
     activityScroll.setFillViewport(false);
     activityScroll.addView(historyList);
     h.addView(activityScroll, new LinearLayout.LayoutParams(-1, dp(360)));
-    Button diagnostics = secondary("Diagnostic MCP / LinkedIn");
+    Button diagnostics = secondary(localizedMcpDiagnosticTitle());
     diagnostics.setOnClickListener(v -> {
       SharedPreferences prefs = RelayClient.prefs(this);
       String report = "Contrôle LinkedIn : " + (linkedinMcpEnabled ? "activé" : "désactivé")
           + "\nDernière erreur : " + (linkedinLastPollError.isEmpty() ? "aucune" : linkedinLastPollError)
           + "\nTâches LinkedIn : " + prefs.getString("linkedinAssistantHistory", "[]")
           + "\nMétadonnées MCP : " + prefs.getString("mcpDebugHistory", "[]");
-      new AlertDialog.Builder(this).setTitle("Diagnostic des demandes de l'assistant")
-          .setMessage(report).setPositiveButton("Fermer", null).show();
+      new AlertDialog.Builder(this).setTitle(localizedMcpDiagnosticTitle())
+          .setMessage(report).setPositiveButton("OK", null).show();
     });
     h.addView(diagnostics, new LinearLayout.LayoutParams(-1, -2));
     clearHistory = flat(t("clear_list"), RED);
@@ -1724,6 +1724,19 @@ public class MainActivity extends Activity {
       out = out.replace(label[0], label[lang]).replace(label[1], label[lang]);
     }
     return out;
+  }
+
+  /** Label shared by the assistant activity button and its diagnostics dialog. */
+  private String localizedMcpDiagnosticTitle() {
+    String[] labels = {
+      "MCP request diagnostics", "Diagnostic des requêtes MCP",
+      "Diagnóstico de solicitudes MCP", "MCP-Anfragendiagnose",
+      "Diagnóstico de solicitações MCP", "Diagnostica richieste MCP",
+      "Диагностика запросов MCP", "MCP 请求诊断",
+      "MCPリクエスト診断", "MCP 요청 진단", "تشخيص طلبات MCP"
+    };
+    int index = I18n.index(this);
+    return labels[index >= 0 && index < labels.length ? index : 0];
   }
 
   private String localizedJobStatus(String status) {
