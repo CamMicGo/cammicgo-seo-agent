@@ -1433,6 +1433,7 @@ public class MainActivity extends Activity {
         JSONObject entry = new JSONObject();
         entry.put("type", "notebooklm");
         entry.put("title", n.optString("label", "NotebookLM"));
+        entry.put("agentName", n.optString("agentName", ""));
         entry.put("status", "done".equals(n.optString("status")) ? "done" : n.optString("status"));
         entry.put("at", n.optLong("at"));
         entry.put("error", n.optString("error", ""));
