@@ -71,6 +71,7 @@ public class MainActivity extends Activity {
       LINE = Color.rgb(223, 232, 247), FIELD = Color.rgb(244, 248, 255), GREEN = Color.rgb(22, 163, 74),
       AMBER = Color.rgb(217, 119, 6), RED = Color.rgb(200, 50, 50), GREY = Color.rgb(170, 180, 200);
   static final int EXPORT_REQUEST = 41;
+  static final int LINKEDIN_FILE_REQUEST = 42;
   static final String[] TABS = {"tab_assistant", "tab_extract", "NotebookLM", "LinkedIn", "tab_help"};
 
   private final ExecutorService worker = Executors.newSingleThreadExecutor();
@@ -83,6 +84,7 @@ public class MainActivity extends Activity {
   private LinearLayout appShell;
   private View appHeader, appTabs;
   private WebView linkedinWeb;
+  private android.webkit.ValueCallback<Uri[]> linkedinFileCallback;
   private boolean linkedinExpanded = false;
   private Button linkedinExpand;
   private LinearLayout linkedinActions;
@@ -812,7 +814,22 @@ public class MainActivity extends Activity {
     toolsRow.addView(exportJson, exportLp);
     root.addView(toolsRow, new LinearLayout.LayoutParams(-1, dp(44)));
     exportJson.setOnClickListener(v -> exportLinkedInThreadJson());
-    linkedinWeb.setWebChromeClient(new WebChromeClient());
+    linkedinWeb.setWebChromeClient(new WebChromeClient() {
+      @Override public boolean onShowFileChooser(WebView view, android.webkit.ValueCallback<Uri[]> callback, FileChooserParams params) {
+        if (linkedinFileCallback != null) linkedinFileCallback.onReceiveValue(null);
+        linkedinFileCallback = callback;
+        try {
+          Intent picker = params.createIntent();
+          picker.addCategory(Intent.CATEGORY_OPENABLE);
+          startActivityForResult(picker, LINKEDIN_FILE_REQUEST);
+        } catch (Exception e) {
+          linkedinFileCallback = null;
+          callback.onReceiveValue(null);
+          Toast.makeText(MainActivity.this, "Impossible d'ouvrir les fichiers", Toast.LENGTH_LONG).show();
+        }
+        return true;
+      }
+    });
     linkedinWeb.setWebViewClient(new WebViewClient());
     root.addView(linkedinWeb, new LinearLayout.LayoutParams(-1, 0, 1));
     messages.setOnClickListener(v -> linkedinWeb.loadUrl("https://www.linkedin.com/messaging/"));
@@ -2191,6 +2208,14 @@ public class MainActivity extends Activity {
 
   @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
     super.onActivityResult(requestCode, resultCode, data);
+    if (requestCode == LINKEDIN_FILE_REQUEST) {
+      if (linkedinFileCallback != null) {
+        Uri[] selected = resultCode == RESULT_OK ? WebChromeClient.FileChooserParams.parseResult(resultCode, data) : null;
+        linkedinFileCallback.onReceiveValue(selected);
+        linkedinFileCallback = null;
+      }
+      return;
+    }
     if (requestCode != EXPORT_REQUEST || resultCode != RESULT_OK || data == null || data.getData() == null || pendingExport == null) return;
     Uri uri = data.getData();
     final String content = pendingExport;
