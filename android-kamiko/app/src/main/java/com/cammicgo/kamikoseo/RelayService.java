@@ -295,6 +295,15 @@ public class RelayService extends Service {
       else if ("studio_revise".equals(operation)) result=client.studioRevise(job.optString("notebookUrl"),job.optString("artifactId"),new JSONArray(job.optString("instructions","[]")));
       else if ("export_artifact".equals(operation)) result=client.exportArtifact(job.optString("notebookUrl"),job.optString("artifactId"),job.optString("title","NotebookLM Export"),job.optString("exportType","docs"));
       else if ("notebook_describe".equals(operation)) result=client.describeNotebook(job.optString("notebookUrl"));
+      else if ("chat_configure".equals(operation)) result=client.chatConfigure(job.optString("notebookUrl"),job.optString("goal","default"),job.optString("customPrompt",""),job.optString("responseLength","default"));
+      else if ("chat_get".equals(operation)) result=client.chatGet(job.optString("notebookUrl"),job.optInt("limit",20));
+      else if ("chat_delete".equals(operation)) result=client.chatDelete(job.optString("notebookUrl"),job.optBoolean("confirm",false));
+      else if ("source_search".equals(operation)) result=client.sourceSearch(job.optString("notebookUrl"),job.optString("query"),job.has("sourceIds")?new JSONArray(job.optString("sourceIds","[]")):null,job.optInt("maxResults",8));
+      else if ("source_list_drive".equals(operation)) result=client.sourceListDrive(job.optString("notebookUrl"));
+      else if ("collection_list".equals(operation)) result=client.collectionList();
+      else if ("collection_create".equals(operation)) result=client.collectionCreate(job.optString("name"),new JSONArray(job.optString("notebookUrls","[]")));
+      else if ("collection_edit".equals(operation)) result=client.collectionEdit(job.optString("collectionId"),job.optString("name",""),new JSONArray(job.optString("add","[]")),new JSONArray(job.optString("remove","[]")),job.has("emoji")?job.optString("emoji"):null);
+      else if ("collection_delete".equals(operation)) result=client.collectionDelete(job.optString("collectionId"),job.optBoolean("confirm",false));
       else if ("research_start".equals(operation)) result=client.researchStart(job.optString("notebookUrl"),job.optString("query"),job.optString("source","web"),job.optString("mode","fast"));
       else if ("research_status".equals(operation)) result=client.researchStatus(job.optString("notebookUrl"),job.optString("taskId"));
       else if ("research_import".equals(operation)) result=client.researchImport(job.optString("notebookUrl"),job.optString("taskId"),new JSONArray(job.optString("sources","[]")),job.optBoolean("confirm",false));

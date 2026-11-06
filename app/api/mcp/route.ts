@@ -105,7 +105,7 @@ async function handler(req:NextRequest){
     finally{logCall(name,performance.now()-t0,ok);}
    });
    // NotebookLM personal actions execute only on a paired, signed-in desktop browser.
-   const notebookJob=async(operation:'studio_revise'|'export_artifact'|'notebook_describe'|'create'|'list'|'add_url_source'|'get'|'rename'|'delete_preview'|'delete'|'add_text_source'|'add_drive_source'|'usage'|'source_list'|'studio_create'|'studio_status'|'mindmap_create'|'notebook_share_status'|'query'|'notebook_share_public'|'notebook_share_invite'|'artifact_download_link'|'source_rename'|'source_sync_drive'|'source_delete'|'studio_get'|'research_start'|'research_status'|'research_import'|'note'|'source_describe'|'source_get_content'|'artifact_download_binary'|'studio_delete',payload:Record<string,string>)=>{
+   const notebookJob=async(operation:'chat_configure'|'chat_get'|'chat_delete'|'source_search'|'source_list_drive'|'collection_list'|'collection_create'|'collection_edit'|'collection_delete'|'studio_revise'|'export_artifact'|'notebook_describe'|'create'|'list'|'add_url_source'|'get'|'rename'|'delete_preview'|'delete'|'add_text_source'|'add_drive_source'|'usage'|'source_list'|'studio_create'|'studio_status'|'mindmap_create'|'notebook_share_status'|'query'|'notebook_share_public'|'notebook_share_invite'|'artifact_download_link'|'source_rename'|'source_sync_drive'|'source_delete'|'studio_get'|'research_start'|'research_status'|'research_import'|'note'|'source_describe'|'source_get_content'|'artifact_download_binary'|'studio_delete',payload:Record<string,string>)=>{
     const devices=await relay.listDevices(user.id);
     if(!devices.some(relay.isOnline))return asText({status:'device_offline',created:false,messageForUser:'Connectez le relais CamMicGo sur votre ordinateur, avec une session NotebookLM Google ouverte. Les actions ne sont pas exécutées dans le cloud.'});
     const job=await relay.createNotebookJob(user.id,operation,{...payload,agentName:payload.agentName||agentName,agentSource:payload.agentName?'mcp-tool-argument':declaredClient||clientHeader});
@@ -154,6 +154,83 @@ async function handler(req:NextRequest){
    server.registerTool('export_artifact',{title:'Export a NotebookLM report or table to Google Docs or Sheets',annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:true},description:'Export a completed NotebookLM report (to Google Docs) or data table (to Google Sheets) into the user\'s Google Drive, through the paired device. Returns the new document URL.',
     inputSchema:z.object({notebookUrl:z.string().url(),artifactId:z.string().min(5).max(100),title:z.string().min(1).max(200).default('NotebookLM Export'),exportType:z.enum(['docs','sheets']).default('docs')})},
     async a=>notebookJob('export_artifact',{notebookUrl:a.notebookUrl,artifactId:a.artifactId,title:a.title,exportType:a.exportType}));
+   // ---- More NotebookLM tools ported from jacob-bd/notebooklm-mcp-cli (MIT) ----
+   const jobText=(r:{content?:Array<{type:string;text?:string}>})=>{try{return JSON.parse(r.content?.find(c=>c.type==='text')?.text||'{}') as Record<string,unknown>;}catch{return {};}};
+   const nbKey=()=>process.env.SESSION_ENCRYPTION_KEY??'';
+   /** Starts a device job without waiting (several jobs at once); poll each with notebook_job_status. */
+   const startNotebookJob=async(operation:'query'|'notebook_share_invite',payload:Record<string,string>)=>{
+    const job=await relay.createNotebookJob(user.id,operation,{...payload,agentName,agentSource:declaredClient||clientHeader});
+    return job.id;
+   };
+   server.registerTool('chat_configure',{title:'Configure NotebookLM chat',annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:true},description:'Set how a NotebookLM notebook answers questions: goal default | learning_guide | custom (with customPrompt, the role and style to adopt) and response length default | longer | shorter.',
+    inputSchema:z.object({notebookUrl:z.string().url(),goal:z.enum(['default','learning_guide','custom']).default('default'),customPrompt:z.string().max(10000).default(''),responseLength:z.enum(['default','longer','shorter']).default('default')})},
+    async a=>a.goal==='custom'&&!a.customPrompt?asText({error:'customPrompt is required with goal=custom'}):notebookJob('chat_configure',{notebookUrl:a.notebookUrl,goal:a.goal,customPrompt:a.customPrompt,responseLength:a.responseLength}));
+   server.registerTool('chat_get',{title:'Read NotebookLM chat history',annotations:{readOnlyHint:true,openWorldHint:true},description:'Read the chat history of a NotebookLM notebook (questions and answers, oldest first), as stored by NotebookLM.',
+    inputSchema:z.object({notebookUrl:z.string().url(),limit:z.number().int().min(1).max(100).default(20)})},async a=>notebookJob('chat_get',{notebookUrl:a.notebookUrl,limit:String(a.limit)}));
+   server.registerTool('chat_list',{title:'NotebookLM chat sessions',annotations:{readOnlyHint:true,openWorldHint:true},description:'Show the chat session of a NotebookLM notebook (NotebookLM keeps one conversation per notebook): its ID and number of exchanges.',
+    inputSchema:z.object({notebookUrl:z.string().url()})},async a=>{const r=jobText(await notebookJob('chat_get',{notebookUrl:a.notebookUrl,limit:'100'}));
+     return asText(r.status==='done'?{status:'done',notebookUrl:a.notebookUrl,sessions:r.conversationId?[{conversationId:r.conversationId,exchanges:r.turnCount}]:[]}:r);});
+   server.registerTool('chat_export',{title:'Export NotebookLM chat history',annotations:{readOnlyHint:true,openWorldHint:true},description:'Export the chat history of a NotebookLM notebook as Markdown or JSON (returned here; save it with drive_upload_file if wanted).',
+    inputSchema:z.object({notebookUrl:z.string().url(),format:z.enum(['markdown','json']).default('markdown'),limit:z.number().int().min(1).max(100).default(100)})},async a=>{
+     const r=jobText(await notebookJob('chat_get',{notebookUrl:a.notebookUrl,limit:String(a.limit)}));
+     if(r.status!=='done')return asText(r);
+     const turns=(r.turns??[]) as Array<{turn:number;question:string;answer:string}>;
+     if(a.format==='json')return asText({status:'done',format:'json',turns});
+     return asText({status:'done',format:'markdown',markdown:'# NotebookLM chat\n\n'+turns.map(t=>'## '+t.turn+'. '+t.question+'\n\n'+t.answer).join('\n\n')});
+   });
+   server.registerTool('chat_save_to_note',{title:'Save NotebookLM chat to a note',annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:true},description:'Save the chat history of a NotebookLM notebook (or one exchange, by its number) as a new note in that notebook.',
+    inputSchema:z.object({notebookUrl:z.string().url(),turn:z.number().int().min(1).optional(),title:z.string().min(1).max(200).default('Chat NotebookLM')})},async a=>{
+     const r=jobText(await notebookJob('chat_get',{notebookUrl:a.notebookUrl,limit:'100'}));
+     if(r.status!=='done')return asText(r);
+     const turns=((r.turns??[]) as Array<{turn:number;question:string;answer:string}>).filter(t=>!a.turn||t.turn===a.turn);
+     if(!turns.length)return asText({error:'no_chat',messageForUser:a.turn?'This exchange does not exist.':'This notebook has no chat history.'});
+     const content=turns.map(t=>'Q: '+t.question+'\n\n'+t.answer).join('\n\n---\n\n').slice(0,75000);
+     return notebookJob('note',{notebookUrl:a.notebookUrl,action:'create',noteId:'',title:a.title,content,confirm:'false'});
+   });
+   server.registerTool('chat_delete',{title:'Delete NotebookLM chat history (confirmation required)',annotations:{readOnlyHint:false,destructiveHint:true,openWorldHint:true},description:'PERMANENTLY delete the chat history of a NotebookLM notebook. Two steps: confirm=false returns what would be deleted and a confirmationToken; delete only after the user explicitly says yes in a NEW message (confirm=true with the token).',
+    inputSchema:z.object({notebookUrl:z.string().url(),confirm:z.boolean().default(false),confirmationToken:z.string().max(80).optional()})},async a=>{
+     const ids=['chat-delete:'+a.notebookUrl];
+     if(!a.confirm){const r=jobText(await notebookJob('chat_get',{notebookUrl:a.notebookUrl,limit:'100'}));if(r.status!=='done')return asText(r);
+      return asText({status:'preview',deleted:false,notebookUrl:a.notebookUrl,exchanges:r.turnCount,confirmationToken:drive.confirmToken(nbKey(),user.id,'trash',ids),next:'Show this to the user; delete only after an explicit yes in a NEW message (confirm=true and this token). This cannot be undone.'});}
+     const c=drive.checkConfirmToken(nbKey(),user.id,'trash',ids,a.confirmationToken);
+     if(!c.ok)return asText({error:'confirmation_required',reason:c.reason,messageForUser:'Call with confirm=false first, show the preview, and delete only after an explicit yes.'});
+     return notebookJob('chat_delete',{notebookUrl:a.notebookUrl,confirm:'true'});
+   });
+   server.registerTool('source_search',{title:'Search passages in NotebookLM sources',annotations:{readOnlyHint:true,openWorldHint:true},description:'Find the passages of a notebook\'s sources that match a query (excerpts with their source, no AI rewriting). Optional sourceIds limits the search.',
+    inputSchema:z.object({notebookUrl:z.string().url(),query:z.string().min(2).max(500),sourceIds:z.array(z.string().min(1).max(100)).max(300).optional(),maxResults:z.number().int().min(1).max(25).default(8)})},
+    async a=>notebookJob('source_search',{notebookUrl:a.notebookUrl,query:a.query,maxResults:String(a.maxResults),...(a.sourceIds?.length?{sourceIds:JSON.stringify(a.sourceIds)}:{})}));
+   server.registerTool('source_list_drive',{title:'NotebookLM sources and Drive freshness',annotations:{readOnlyHint:true,openWorldHint:true},description:'List a notebook\'s sources with their type and, for Google Drive sources, whether they are up to date with Drive (source_sync_drive refreshes stale ones).',
+    inputSchema:z.object({notebookUrl:z.string().url()})},async a=>notebookJob('source_list_drive',{notebookUrl:a.notebookUrl}));
+   server.registerTool('collection_list',{title:'List NotebookLM collections',annotations:{readOnlyHint:true,openWorldHint:true},description:'List NotebookLM collections (groups of notebooks). NotebookLM offers no read call: a temporary hidden collection is created and deleted to read the list.',
+    inputSchema:z.object({})},async()=>notebookJob('collection_list',{}));
+   server.registerTool('collection_create',{title:'Create a NotebookLM collection',annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:true},description:'Create a NotebookLM collection grouping notebooks.',
+    inputSchema:z.object({name:z.string().min(1).max(100),notebookUrls:z.array(z.string().url()).max(100).default([])})},async a=>notebookJob('collection_create',{name:a.name,notebookUrls:JSON.stringify(a.notebookUrls)}));
+   server.registerTool('collection_edit',{title:'Edit a NotebookLM collection',annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:true},description:'Rename a NotebookLM collection, add or remove notebooks (the notebooks themselves are never deleted), or set its emoji ("" clears it).',
+    inputSchema:z.object({collectionId:z.string().min(5).max(100),name:z.string().max(100).optional(),addNotebookUrls:z.array(z.string().url()).max(100).optional(),removeNotebookUrls:z.array(z.string().url()).max(100).optional(),emoji:z.string().max(16).optional()})},
+    async a=>notebookJob('collection_edit',{collectionId:a.collectionId,...(a.name?{name:a.name}:{}),add:JSON.stringify(a.addNotebookUrls??[]),remove:JSON.stringify(a.removeNotebookUrls??[]),...(a.emoji!==undefined?{emoji:a.emoji}:{})}));
+   server.registerTool('collection_delete',{title:'Delete a NotebookLM collection (confirmation required)',annotations:{readOnlyHint:false,destructiveHint:true,openWorldHint:true},description:'Delete a NotebookLM collection; its notebooks are kept. Two steps: confirm=false returns a confirmationToken; delete only after the user explicitly says yes in a NEW message.',
+    inputSchema:z.object({collectionId:z.string().min(5).max(100),confirm:z.boolean().default(false),confirmationToken:z.string().max(80).optional()})},async a=>{
+     const ids=['collection-delete:'+a.collectionId];
+     if(!a.confirm)return asText({status:'preview',deleted:false,collectionId:a.collectionId,notebooksKept:true,confirmationToken:drive.confirmToken(nbKey(),user.id,'trash',ids),next:'Delete only after an explicit yes in a NEW message (confirm=true and this token).'});
+     const c=drive.checkConfirmToken(nbKey(),user.id,'trash',ids,a.confirmationToken);
+     if(!c.ok)return asText({error:'confirmation_required',reason:c.reason});
+     return notebookJob('collection_delete',{collectionId:a.collectionId,confirm:'true'});
+   });
+   server.registerTool('cross_notebook_query',{title:'Ask the same question to several NotebookLM notebooks',annotations:{readOnlyHint:true,openWorldHint:true},description:'Ask one question to up to 5 notebooks. Starts one query per notebook on the paired device and returns their jobIds: read each answer with notebook_job_status, then compare or combine them (cite the notebook of each point).',
+    inputSchema:z.object({notebookUrls:z.array(z.string().url()).min(2).max(5),question:z.string().min(3).max(4000)})},async a=>{
+     const devices=await relay.listDevices(user.id);if(!devices.some(relay.isOnline))return asText({status:'device_offline'});
+     const jobs=[];for(const u of a.notebookUrls)jobs.push({notebookUrl:u,jobId:await startNotebookJob('query',{notebookUrl:u,question:a.question})});
+     return asText({status:'started',question:a.question,jobs,next:'Poll each jobId with notebook_job_status (they run one after the other on the device).'});
+   });
+   server.registerTool('notebook_share_batch',{title:'Invite several collaborators to a NotebookLM notebook',annotations:{readOnlyHint:false,destructiveHint:true,openWorldHint:true},description:'Invite several people (viewer or editor) to a notebook. Two steps: confirm=false returns the exact list and a confirmationToken; send the invitations only after the user explicitly approves this list in a NEW message.',
+    inputSchema:z.object({notebookUrl:z.string().url(),invites:z.array(z.object({email:z.string().email(),role:z.enum(['viewer','editor']).default('viewer')})).min(1).max(20),confirm:z.boolean().default(false),confirmationToken:z.string().max(80).optional()})},async a=>{
+     const ids=['share-batch:'+a.notebookUrl+':'+a.invites.map(i=>i.email.toLowerCase()+'/'+i.role).sort().join(',')];
+     if(!a.confirm)return asText({status:'preview',notebookUrl:a.notebookUrl,invites:a.invites,confirmationToken:drive.confirmToken(nbKey(),user.id,'publish',ids),next:'Show the list; invite only after an explicit yes in a NEW message (same list, confirm=true and this token).'});
+     const c=drive.checkConfirmToken(nbKey(),user.id,'publish',ids,a.confirmationToken);
+     if(!c.ok)return asText({error:'confirmation_required',reason:c.reason});
+     const jobs=[];for(const i of a.invites)jobs.push({email:i.email,role:i.role,jobId:await startNotebookJob('notebook_share_invite',{notebookUrl:a.notebookUrl,email:i.email,role:i.role,confirm:'true'})});
+     return asText({status:'started',jobs,next:'Check each jobId with notebook_job_status.'});
+   });
    server.registerTool('notebook_describe',{title:'NotebookLM notebook summary and suggested topics',annotations:{readOnlyHint:true,openWorldHint:true},description:'AI summary of a NotebookLM notebook and its suggested topics (questions and prompts), through the paired device.',
     inputSchema:z.object({notebookUrl:z.string().url()})},async a=>notebookJob('notebook_describe',{notebookUrl:a.notebookUrl}));
    server.registerTool('studio_status',{title:'Check NotebookLM Studio artifacts',annotations:{readOnlyHint:true},description:'Retrieve Studio artifact IDs and raw status codes from NotebookLM.',inputSchema:z.object({notebookUrl:z.string().url()})},async a=>notebookJob('studio_status',a));

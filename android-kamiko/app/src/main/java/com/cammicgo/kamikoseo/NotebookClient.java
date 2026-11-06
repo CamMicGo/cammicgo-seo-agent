@@ -538,6 +538,165 @@ final class NotebookClient {
     }
     return new JSONObject().put("notebookId",id).put("summary",summary).put("suggestedTopics",topics);
   }
+  // ---- Ported from jacob-bd/notebooklm-mcp-cli (MIT, Jacob Ben David): chats, source search, Drive freshness, collections ----
+  private static JSONArray consumerHeader(){
+    JSONArray inner=new JSONArray().put(1);for(int j=0;j<9;j++)inner.put(JSONObject.NULL);inner.put(new JSONArray().put(1).put(3));
+    return new JSONArray().put(2).put(JSONObject.NULL).put(new JSONArray().put(1)).put(inner);
+  }
+  /** Chat goal (default | custom with prompt | learning_guide) and answer length (default | longer | shorter). */
+  JSONObject chatConfigure(String notebookUrl,String goal,String customPrompt,String length) throws Exception {
+    String id=ownedNotebookId(notebookUrl);
+    int g="custom".equals(goal)?2:"learning_guide".equals(goal)?3:1;
+    int l="longer".equals(length)?4:"shorter".equals(length)?5:1;
+    JSONArray goalSetting=new JSONArray().put(g);
+    if(g==2){if(customPrompt==null||customPrompt.isEmpty())throw new IOException("customPrompt required for goal=custom");goalSetting.put(customPrompt);}
+    JSONArray settings=new JSONArray().put(goalSetting).put(new JSONArray().put(l));
+    JSONArray holder=new JSONArray();for(int j=0;j<7;j++)holder.put(JSONObject.NULL);holder.put(settings);
+    Object raw=rpc("s0tc2d",new JSONArray().put(id).put(new JSONArray().put(holder)),"/notebook/"+id);
+    if(raw==null)throw new IOException("Chat settings not confirmed");
+    return new JSONObject().put("notebookId",id).put("goal",goal).put("responseLength",length).put("configured",true);
+  }
+  private String conversationId(String id) throws Exception {
+    Object raw=rpc("hPTbtc",new JSONArray().put(new JSONArray()).put(JSONObject.NULL).put(id).put(20),"/notebook/"+id);
+    if(raw instanceof JSONArray){Object l1=((JSONArray)raw).opt(0);
+      if(l1 instanceof JSONArray){Object l2=((JSONArray)l1).opt(0);
+        if(l2 instanceof String)return (String)l2;
+        if(l2 instanceof JSONArray&&((JSONArray)l2).opt(0) instanceof String)return ((JSONArray)l2).optString(0);}}
+    return null;
+  }
+  /** The notebook's chat history (questions and answers, oldest first). */
+  JSONObject chatGet(String notebookUrl,int limit) throws Exception {
+    String id=ownedNotebookId(notebookUrl);
+    String conv=conversationId(id);
+    JSONArray turns=new JSONArray();
+    if(conv!=null){
+      Object raw=rpc("khqZz",new JSONArray().put(consumerHeader()).put(JSONObject.NULL).put(JSONObject.NULL).put(conv).put(Math.max(1,Math.min(100,limit))),"/notebook/"+id);
+      JSONArray list=raw instanceof JSONArray?((JSONArray)raw).optJSONArray(0):null;
+      java.util.List<String[]> pairs=new java.util.ArrayList<>();String answer=null;
+      if(list!=null)for(int j=0;j<list.length();j++){
+        JSONArray e=list.optJSONArray(j);if(e==null||e.length()<3)continue;
+        int type=e.optInt(2);
+        if(type==2){JSONArray c=e.optJSONArray(4);JSONArray w=c==null?null:c.optJSONArray(0);answer=w==null?"":w.optString(0,"");}
+        else if(type==1&&answer!=null){pairs.add(new String[]{e.optString(3,""),answer});answer=null;}
+      }
+      java.util.Collections.reverse(pairs);
+      for(int j=0;j<pairs.size();j++)turns.put(new JSONObject().put("turn",j+1).put("question",pairs.get(j)[0]).put("answer",pairs.get(j)[1]));
+    }
+    return new JSONObject().put("notebookId",id).put("conversationId",conv==null?JSONObject.NULL:conv).put("turnCount",turns.length()).put("turns",turns);
+  }
+  /** Permanently deletes the notebook's chat history (confirm=true only after the user's explicit yes). */
+  JSONObject chatDelete(String notebookUrl,boolean confirm) throws Exception {
+    String id=ownedNotebookId(notebookUrl);
+    String conv=conversationId(id);
+    if(conv==null)return new JSONObject().put("notebookId",id).put("deleted",false).put("reason","no chat history");
+    if(!confirm)return new JSONObject().put("notebookId",id).put("conversationId",conv).put("deleted",false).put("requiresConfirmation",true);
+    Object raw=rpc("J7Gthc",new JSONArray().put(consumerHeader()).put(conv).put(JSONObject.NULL).put(1),"/notebook/"+id);
+    if(raw==null)throw new IOException("Deletion not confirmed by NotebookLM");
+    return new JSONObject().put("notebookId",id).put("conversationId",conv).put("deleted",true);
+  }
+  /** Passages of the notebook's sources matching a query (excerpts with their source). */
+  JSONObject sourceSearch(String notebookUrl,String query,JSONArray sourceIds,int max) throws Exception {
+    String id=ownedNotebookId(notebookUrl);
+    JSONObject nb=getNotebook(notebookUrl);JSONArray srcs=nb.getJSONArray("sources");
+    java.util.Map<String,String> titles=new java.util.HashMap<>();
+    for(int j=0;j<srcs.length();j++){JSONObject o=srcs.getJSONObject(j);titles.put(o.optString("id").toLowerCase(),o.optString("title"));}
+    JSONArray params=new JSONArray().put(id).put(query).put(JSONObject.NULL).put(new JSONArray().put(1));
+    if(sourceIds!=null&&sourceIds.length()>0){for(int j=0;j<sourceIds.length();j++)if(!titles.containsKey(sourceIds.getString(j).toLowerCase()))throw new IOException("Unknown source ID for this notebook");params.put(new JSONArray().put(sourceIds));}
+    Object raw=rpc("ASU5Oe",params,"/notebook/"+id);
+    JSONArray groups=raw instanceof JSONArray?((JSONArray)raw).optJSONArray(0):null;
+    if(groups==null)throw new IOException("NotebookLM returned an unrecognized search result");
+    java.util.LinkedHashMap<String,java.util.List<String>> by=new java.util.LinkedHashMap<>();
+    for(int j=0;j<groups.length();j++){
+      JSONArray g=groups.optJSONArray(j);if(g==null||g.length()!=2||!(g.opt(0) instanceof String))continue;
+      String sid=g.optString(0).toLowerCase();if(!titles.containsKey(sid))continue;
+      JSONArray items=g.optJSONArray(1);if(items==null)continue;
+      java.util.List<String> ps=by.computeIfAbsent(sid,k->new java.util.ArrayList<>());
+      for(int k=0;k<items.length();k++){
+        JSONArray it=items.optJSONArray(k);JSONArray a=it==null?null:it.optJSONArray(0);JSONArray b=a==null?null:a.optJSONArray(0);JSONArray c=b==null?null:b.optJSONArray(0);
+        if(c!=null&&c.opt(0) instanceof String&&!c.optString(0).trim().isEmpty())ps.add(c.optString(0));
+      }
+    }
+    // Round robin over sources so one long source cannot fill the answer.
+    JSONArray hits=new JSONArray();int total=0;for(java.util.List<String> l:by.values())total+=l.size();
+    for(int depth=0;hits.length()<max;depth++){
+      boolean any=false;
+      for(java.util.Map.Entry<String,java.util.List<String>> en:by.entrySet()){
+        if(hits.length()>=max)break;if(en.getValue().size()<=depth)continue;any=true;
+        String t=en.getValue().get(depth);
+        hits.put(new JSONObject().put("sourceId",en.getKey()).put("sourceTitle",titles.get(en.getKey())).put("excerpt",t.length()>900?t.substring(0,900):t).put("truncated",t.length()>900));
+      }
+      if(!any)break;
+    }
+    return new JSONObject().put("notebookId",id).put("query",query).put("returned",hits.length()).put("available",total).put("results",hits);
+  }
+  /** Drive sources and whether each is up to date with Google Drive (source_sync_drive refreshes stale ones). */
+  JSONObject sourceListDrive(String notebookUrl) throws Exception {
+    JSONObject nb=getNotebook(notebookUrl);JSONArray srcs=nb.getJSONArray("sources");JSONArray out=new JSONArray();int stale=0;
+    for(int j=0;j<srcs.length();j++){
+      JSONObject o=srcs.getJSONObject(j);
+      JSONObject e=new JSONObject().put("id",o.opt("id")).put("title",o.optString("title")).put("sourceType",o.opt("sourceType")).put("status",o.optString("status"));
+      if(o.has("driveDocumentId")){
+        e.put("drive",true).put("driveDocumentId",o.optString("driveDocumentId"));
+        Boolean fresh=null;
+        try{Object raw=rpc("yR9Yof",new JSONArray().put(JSONObject.NULL).put(new JSONArray().put(o.optString("id"))).put(new JSONArray().put(2)),"/");
+          JSONArray inner=raw instanceof JSONArray?((JSONArray)raw).optJSONArray(0):null;
+          if(inner!=null&&inner.length()>=2&&inner.opt(1) instanceof Boolean)fresh=inner.optBoolean(1);}catch(Exception ignored){}
+        e.put("fresh",fresh==null?JSONObject.NULL:fresh);if(Boolean.FALSE.equals(fresh))stale++;
+      }else e.put("drive",false);
+      out.put(e);
+    }
+    return new JSONObject().put("notebookId",nb.optString("id")).put("sources",out).put("staleDriveSources",stale);
+  }
+  private static JSONArray collectionsHeader(){return consumerHeader();}
+  private static JSONArray readCollections(Object raw,String skipName) throws Exception {
+    JSONArray out=new JSONArray();
+    JSONArray list=raw instanceof JSONArray?((JSONArray)raw).optJSONArray(2):null;
+    if(list!=null)for(int j=0;j<list.length();j++){JSONArray c=list.optJSONArray(j);if(c==null||c.length()<3)continue;
+      if(skipName!=null&&skipName.equals(c.optString(0)))continue;
+      out.put(new JSONObject().put("id",c.optString(2)).put("name",c.optString(0)).put("notebookIds",c.optJSONArray(1)==null?new JSONArray():c.optJSONArray(1)).put("emoji",c.optString(3,"")));}
+    return out;
+  }
+  private static String tempCollectionId(Object raw,String name){
+    JSONArray list=raw instanceof JSONArray?((JSONArray)raw).optJSONArray(2):null;
+    if(list!=null)for(int j=0;j<list.length();j++){JSONArray c=list.optJSONArray(j);if(c!=null&&name.equals(c.optString(0)))return c.optString(2);}
+    return null;
+  }
+  /** NotebookLM has no read call for collections: a temporary hidden one is created, read, then deleted (as the original tool). */
+  JSONObject collectionList() throws Exception {
+    String temp="_temp_list_query_"+java.util.UUID.randomUUID().toString().replace("-","");
+    Object raw=rpc("agX4Bc",new JSONArray().put(collectionsHeader()).put(JSONObject.NULL).put(JSONObject.NULL).put(JSONObject.NULL).put(JSONObject.NULL)
+      .put(new JSONArray().put(new JSONArray().put(temp)).put(JSONObject.NULL).put(new JSONArray())).put(3),"/");
+    String tempId=tempCollectionId(raw,temp);
+    JSONArray cols=readCollections(raw,temp);
+    if(tempId==null)throw new IOException("Collection listing could not identify its temporary entry "+temp+": check NotebookLM");
+    rpc("GyzE7e",new JSONArray().put(collectionsHeader()).put(JSONObject.NULL).put(new JSONArray().put(tempId)).put(3),"/");
+    return new JSONObject().put("collections",cols).put("count",cols.length());
+  }
+  JSONObject collectionCreate(String name,JSONArray notebookUrls) throws Exception {
+    JSONArray ids=new JSONArray();for(int j=0;j<notebookUrls.length();j++)ids.put(ownedNotebookId(notebookUrls.getString(j)));
+    Object raw=rpc("agX4Bc",new JSONArray().put(collectionsHeader()).put(JSONObject.NULL).put(JSONObject.NULL).put(JSONObject.NULL).put(JSONObject.NULL)
+      .put(new JSONArray().put(new JSONArray().put(name)).put(JSONObject.NULL).put(ids)).put(3),"/");
+    String cid=tempCollectionId(raw,name);
+    if(cid==null)throw new IOException("Collection creation not confirmed");
+    return new JSONObject().put("id",cid).put("name",name).put("notebookIds",ids).put("created",true);
+  }
+  /** One change per call, as NotebookLM expects: rename, add notebooks, remove notebooks, or set the emoji. */
+  JSONObject collectionEdit(String collectionId,String name,JSONArray addUrls,JSONArray removeUrls,String emoji) throws Exception {
+    JSONArray done=new JSONArray();
+    if(name!=null&&!name.isEmpty()){rpc("le8sX",new JSONArray().put(collectionsHeader()).put(JSONObject.NULL).put(collectionId).put(new JSONArray().put(new JSONArray().put(new JSONArray().put(name)))).put(3),"/");done.put("renamed");}
+    if(addUrls!=null&&addUrls.length()>0){JSONArray ids=new JSONArray();for(int j=0;j<addUrls.length();j++)ids.put(ownedNotebookId(addUrls.getString(j)));
+      rpc("le8sX",new JSONArray().put(collectionsHeader()).put(JSONObject.NULL).put(collectionId).put(new JSONArray().put(new JSONArray().put(JSONObject.NULL).put(JSONObject.NULL).put(JSONObject.NULL).put(new JSONArray().put(ids))).put(new JSONArray())).put(3),"/");done.put("added "+ids.length());}
+    if(removeUrls!=null&&removeUrls.length()>0){JSONArray ids=new JSONArray();for(int j=0;j<removeUrls.length();j++)ids.put(ownedNotebookId(removeUrls.getString(j)));
+      rpc("le8sX",new JSONArray().put(collectionsHeader()).put(JSONObject.NULL).put(collectionId).put(new JSONArray().put(new JSONArray().put(JSONObject.NULL).put(JSONObject.NULL).put(JSONObject.NULL).put(JSONObject.NULL).put(new JSONArray().put(ids))).put(new JSONArray())).put(3),"/");done.put("removed "+ids.length());}
+    if(emoji!=null){rpc("le8sX",new JSONArray().put(collectionsHeader()).put(JSONObject.NULL).put(collectionId).put(new JSONArray().put(new JSONArray().put(new JSONArray().put(JSONObject.NULL).put(emoji)))).put(3),"/");done.put("emoji");}
+    return new JSONObject().put("id",collectionId).put("changes",done);
+  }
+  /** Deletes a collection only (its notebooks stay). */
+  JSONObject collectionDelete(String collectionId,boolean confirm) throws Exception {
+    if(!confirm)return new JSONObject().put("id",collectionId).put("deleted",false).put("requiresConfirmation",true);
+    rpc("GyzE7e",new JSONArray().put(collectionsHeader()).put(JSONObject.NULL).put(new JSONArray().put(collectionId)).put(3),"/");
+    return new JSONObject().put("id",collectionId).put("deleted",true).put("notebooksKept",true);
+  }
   JSONObject studioStatus(String notebookUrl) throws Exception {
     String id=ownedNotebookId(notebookUrl);
     Object raw=rpc("gArtLc",new JSONArray().put(new JSONArray().put(2)).put(id)

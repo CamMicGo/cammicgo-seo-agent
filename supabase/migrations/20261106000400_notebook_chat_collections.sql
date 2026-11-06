@@ -1,0 +1,11 @@
+-- NotebookLM chat history, source passage search, Drive freshness and collections
+-- (ported from jacob-bd/notebooklm-mcp-cli, MIT).
+alter table public.cmg_notebook_jobs drop constraint if exists cmg_notebook_jobs_operation_check;
+alter table public.cmg_notebook_jobs add constraint cmg_notebook_jobs_operation_check check (operation in (
+ 'create','list','add_url_source','get','rename','delete_preview','delete','add_text_source','add_drive_source','usage',
+ 'source_list','studio_create','studio_status','mindmap_create','notebook_share_status','query','notebook_share_public',
+ 'notebook_share_invite','artifact_download_link','source_rename','source_sync_drive','source_delete','studio_get',
+ 'research_start','research_status','research_import','note','source_describe','source_get_content',
+ 'artifact_download_binary','studio_delete','studio_revise','export_artifact','notebook_describe',
+ 'chat_configure','chat_get','chat_delete','source_search','source_list_drive',
+ 'collection_list','collection_create','collection_edit','collection_delete'));
