@@ -8,7 +8,7 @@ val keystoreFile = System.getenv("CMG_KEYSTORE_FILE")?.let { file(it) } ?: rootP
 android {
   namespace = "com.cammicgo.kamikoseo"
   compileSdk = 35
-  defaultConfig { applicationId = "com.cammicgo.kamikoseo"; minSdk = 26; targetSdk = 35; versionCode = 26; versionName = "0.6.15" }
+  defaultConfig { applicationId = "com.cammicgo.kamikoseo"; minSdk = 26; targetSdk = 35; versionCode = 27; versionName = "0.6.16" }
   signingConfigs {
     create("cammicgo") {
       storeFile = keystoreFile
@@ -21,3 +21,5 @@ android {
 }
 
 dependencies { implementation("androidx.core:core:1.13.1") }
+
+[executed on device: instance-20260604-1918 (a7765734-3129-4de5-be49-77d0c678b0cf)]
