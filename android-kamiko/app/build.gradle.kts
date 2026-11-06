@@ -21,5 +21,3 @@ android {
 }
 
 dependencies { implementation("androidx.core:core:1.13.1") }
-
-[executed on device: instance-20260604-1918 (a7765734-3129-4de5-be49-77d0c678b0cf)]
