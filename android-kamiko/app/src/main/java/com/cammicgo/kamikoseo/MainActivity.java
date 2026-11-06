@@ -1425,13 +1425,11 @@ public class MainActivity extends Activity {
   private void liSend(String id, String participant, String text, java.io.File file, JSONObject attached) {
     boolean withFile = file != null;
     String name = withFile ? attached.optString("name") : "";
-    // Follow-up text after LinkedIn sent the file alone: the composer was just emptied by that send.
-    boolean followUp = !withFile && attached != null;
-    String js = "const name=" + q(participant) + ",msg=" + q(text) + ",withFile=" + withFile + ",followUp=" + followUp + ",fname=" + q(name) + ";"
+    String js = "const name=" + q(participant) + ",msg=" + q(text) + ",withFile=" + withFile + ",fname=" + q(name) + ";"
       + "if(!headerHas(name))return JSON.stringify({error:'Recipient not verified'});"
       + "const ev=evidence(fname);"
       + "if(withFile&&!(ev.imgs>0||ev.named>0||ev.remove>0))return JSON.stringify({error:'The file is no longer in the composer: nothing was sent',evidence:ev});"
-      + "if(!withFile&&!followUp&&(ev.imgs>0||ev.named>0))return JSON.stringify({error:'The composer already holds an attachment that was not approved: nothing was sent',evidence:ev});"
+      + "if(!withFile&&(ev.imgs>0||ev.named>0))return JSON.stringify({error:'The composer already holds an attachment that was not approved: nothing was sent',evidence:ev});"
       + "if(ev.progress>0)return JSON.stringify({error:'LinkedIn is still uploading: nothing was sent'});"
       + "const editor=findEditor();if(!editor)return JSON.stringify({error:'Message composer not found',fields:[...document.querySelectorAll('textarea,[contenteditable],[role=\\\"textbox\\\"],input')].filter(visible).slice(0,8).map(e=>({tag:e.tagName.toLowerCase(),type:e.type||'',label:(e.getAttribute('aria-label')||e.getAttribute('placeholder')||'').slice(0,60)}))});"
       + "const scope=document.querySelector('main')||document;"
@@ -1445,12 +1443,6 @@ public class MainActivity extends Activity {
       + "if(buttons[0].disabled||buttons[0].getAttribute('aria-disabled')==='true')return JSON.stringify({error:'Send button disabled'});"
       + "buttons[0].click();return JSON.stringify({clicked:true,before,characters:msg.length});";
     liEval(js, r -> {
-      if (!r.optBoolean("clicked") && followUp) {
-        JSONObject out = new JSONObject();
-        try { out.put("sent", false); out.put("recipient", participant); out.put("attachment", attached); out.put("textSent", false); out.put("error", r.optString("error", "Send failed"));
-          out.put("note", "The file was sent, but the text could not be sent: send the text yourself or ask again for the text only."); } catch (Exception ignored) {}
-        finishLinkedInJob(id, out, null); return;
-      }
       if (!r.optBoolean("clicked")) { liFail(id, r.optString("error", "Send failed") + (r.optString("error").contains("nothing") ? "" : ": nothing was sent"), r); return; }
       liVerifySent(id, participant, text, name, withFile, r.optInt("before"), attached, 20);
     });
@@ -1462,23 +1454,12 @@ public class MainActivity extends Activity {
       + "const fileSeen=last.some(e=>[...e.querySelectorAll('img')].some(i=>/messaging|dms\\/image|media\\.licdn|attachment|blob:/i.test(i.currentSrc||i.src||''))||(n.length>4&&norm(e.innerText).includes(n)));"
       + "const ev=evidence(n);return JSON.stringify({textSeen,fileSeen,count:items().length,composerEmpty:ev.text===0&&ev.remove===0});", r -> {
       boolean ok = r.optBoolean("textSeen") && (!withFile || r.optBoolean("fileSeen"));
-      // LinkedIn mobile sends the file alone from its full-screen preview and drops the hidden text: once the
-      // file is in the conversation (and the text has not appeared for a few seconds), the approved text is
-      // sent as its own message from the composer, which is visible again.
-      if (withFile && !ok && r.optBoolean("fileSeen") && !r.optBoolean("textSeen") && triesLeft <= 14) {
-        try { attached.put("seenInThread", true); attached.put("textSentSeparately", true); } catch (Exception ignored) {}
-        liDeleteJobFiles(id);
-        liStep(id, "writing");
-        liSend(id, participant, text, null, attached);
-        return;
-      }
       if (!ok && triesLeft > 0) { liVerifySent(id, participant, text, name, withFile, before, attached, triesLeft - 1); return; }
       JSONObject out = new JSONObject();
       try {
         out.put("sent", ok); out.put("sendClicked", true); out.put("recipient", participant); out.put("characters", text.length());
         out.put("textSeenInThread", r.optBoolean("textSeen")); out.put("composerEmptied", r.optBoolean("composerEmpty"));
-        if (withFile) attached.put("seenInThread", r.optBoolean("fileSeen"));
-        if (attached != null) out.put("attachment", attached);
+        if (withFile) { attached.put("seenInThread", r.optBoolean("fileSeen")); out.put("attachment", attached); }
         if (!ok) out.put("note", "Send was clicked but the message was not seen in the conversation: check it on the phone before sending again.");
       } catch (Exception ignored) {}
       // LinkedIn has read the file (it is shown sent) or the job is over: the cached copy goes now.
