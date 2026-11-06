@@ -253,7 +253,7 @@ async function handler(req:NextRequest){
     const result=await response.json() as {signedURL?:string;signedUrl?:string};
     const signed=result.signedURL||result.signedUrl;
     if(!signed)return asText({status:'error',error:'Missing signed URL'});
-    return asText({status:'ready',attachmentId:a.attachmentId,downloadUrl:new URL(signed,base+'/storage/v1/').toString(),expiresInSeconds:300,attachedToLinkedIn:false});
+    return asText({status:'ready',attachmentId:a.attachmentId,downloadUrl:new URL(signed.startsWith('/storage/v1/')?signed:'/storage/v1/'+(signed.startsWith('/')?signed.slice(1):signed),base).toString(),expiresInSeconds:300,attachedToLinkedIn:false});
    });
    server.registerTool('linkedin_send_message',{title:'Send an approved LinkedIn message via Android',description:'First preview with confirm=false; send with confirm=true ONLY after explicit user approval of exact recipient and text in a NEW message. No signing key or confirmation table required. Android verifies the conversation.',inputSchema:z.object({participant:z.string().min(2).max(150),text:z.string().min(1).max(3000),confirm:z.boolean().optional().default(false)})},async a=>{
     if(!a.confirm)return asText({status:'preview',participant:a.participant,text:a.text,attachmentsSupported:false,note:'No message sent. Ask for explicit approval in a new user message.'});
