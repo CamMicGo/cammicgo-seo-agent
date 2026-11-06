@@ -85,6 +85,8 @@ public class MainActivity extends Activity {
   private View appHeader, appTabs;
   private WebView linkedinWeb;
   private android.webkit.ValueCallback<Uri[]> linkedinFileCallback;
+  private Uri linkedinPendingAttachment;
+  private String linkedinPendingAttachmentJob;
   private boolean linkedinExpanded = false;
   private Button linkedinExpand;
   private LinearLayout linkedinActions;
@@ -496,7 +498,8 @@ public class MainActivity extends Activity {
     layers.setId(0, android.R.id.background);
     layers.setId(1, android.R.id.progress);
     progressBar.setProgressDrawable(layers);
-    progressBar.setMax(100);
+
+[executed on device: instance-20260604-1918 (a7765734-3129-4de5-be49-77d0c678b0cf)]    progressBar.setMax(100);
     p.addView(progressBar, new LinearLayout.LayoutParams(-1, dp(12)));
     progressStats = new LinearLayout(this);
     statDone = stat(progressStats, GREEN, t("stat_sent"));
@@ -816,6 +819,16 @@ public class MainActivity extends Activity {
     exportJson.setOnClickListener(v -> exportLinkedInThreadJson());
     linkedinWeb.setWebChromeClient(new WebChromeClient() {
       @Override public boolean onShowFileChooser(WebView view, android.webkit.ValueCallback<Uri[]> callback, FileChooserParams params) {
+        if (linkedinPendingAttachment != null && linkedinPendingAttachmentJob != null) {
+          Uri selected = linkedinPendingAttachment;
+          String attachmentJob = linkedinPendingAttachmentJob;
+          linkedinPendingAttachment = null;
+          linkedinPendingAttachmentJob = null;
+          callback.onReceiveValue(new Uri[]{selected});
+          ui.postDelayed(() -> finishLinkedInJob(attachmentJob, new JSONObject(), null), 2000);
+          ui.postDelayed(() -> { try { java.io.File f = new java.io.File(getCacheDir(), "linkedin-shared"); java.io.File[] files = f.listFiles(); if (files != null) for (java.io.File item : files) if (item.getName().startsWith("linkedin-")) item.delete(); } catch (Exception ignored) {} }, 600000);
+          return true;
+        }
         if (linkedinFileCallback != null) linkedinFileCallback.onReceiveValue(null);
         linkedinFileCallback = callback;
         try {
@@ -943,6 +956,57 @@ public class MainActivity extends Activity {
       linkedinWeb.evaluateJavascript(js, raw -> {
         try { JSONObject result = new JSONObject(new JSONArray("[" + raw + "]").getString(0)); finishLinkedInJob(id, result, result.optBoolean("clicked") ? null : result.optString("error", "Invite failed")); }
         catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
+      });
+    } else if ("attach".equals(op)) {
+      String url = job.optString("downloadUrl", "");
+      String mime = job.optString("mime", "");
+      String attachmentId = job.optString("attachmentId", "");
+      if (!isLinkedInMessagingPage() || linkedinWeb.getUrl() == null || !linkedinWeb.getUrl().contains("/thread/")) {
+        finishLinkedInJob(id, null, "Open a LinkedIn thread before attaching"); return;
+      }
+      if (!url.startsWith("https://") || !url.contains("/storage/v1/object/sign/cmg-notebook-artifacts/") ||
+          !attachmentId.matches("[0-9a-fA-F-]{36}") ||
+          !(mime.startsWith("image/") || mime.equals("application/pdf") || mime.equals("text/plain") ||
+            mime.equals("application/msword") || mime.equals("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))) {
+        finishLinkedInJob(id, null, "Invalid attachment"); return;
+      }
+      worker.execute(() -> {
+        try {
+          java.net.HttpURLConnection connection = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+          connection.setConnectTimeout(10000);
+          connection.setReadTimeout(20000);
+          if (connection.getResponseCode() != 200) throw new Exception("Download HTTP " + connection.getResponseCode());
+          java.io.File directory = new java.io.File(getCacheDir(), "linkedin-shared");
+          if (!directory.exists() && !directory.mkdirs()) throw new Exception("Cache unavailable");
+          String ext = mime.equals("image/png") ? "png" : mime.equals("image/jpeg") ? "jpg" :
+            mime.equals("image/webp") ? "webp" : mime.equals("image/gif") ? "gif" :
+            mime.equals("application/pdf") ? "pdf" : mime.equals("text/plain") ? "txt" :
+            mime.equals("application/msword") ? "doc" : "docx";
+          java.io.File file = new java.io.File(directory, "linkedin-" + attachmentId + "." + ext);
+          try (java.io.InputStream input = connection.getInputStream(); java.io.FileOutputStream output = new java.io.FileOutputStream(file)) {
+            byte[] buffer = new byte[8192]; int n; int total = 0;
+            while ((n = input.read(buffer)) != -1) {
+              total += n; if (total > 5000000) throw new Exception("Attachment too large");
+              output.write(buffer, 0, n);
+            }
+            if (total < 1) throw new Exception("Empty attachment");
+          } finally { connection.disconnect(); }
+          Uri uri = androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", file);
+          ui.post(() -> {
+            linkedinPendingAttachment = uri;
+            linkedinPendingAttachmentJob = id;
+            Toast.makeText(this, "Fichier reçu dans le cache privé CamMicGo", Toast.LENGTH_LONG).show();
+            openLinkedInAttachmentPicker(mime.startsWith("image/"));
+            ui.postDelayed(() -> {
+              if (id.equals(linkedinPendingAttachmentJob)) {
+
+[executed on device: instance-20260604-1918 (a7765734-3129-4de5-be49-77d0c678b0cf)]                linkedinPendingAttachment = null;
+                linkedinPendingAttachmentJob = null;
+                finishLinkedInJob(id, null, "LinkedIn file chooser did not open");
+              }
+            }, 9000);
+          });
+        } catch (Exception e) { ui.post(() -> finishLinkedInJob(id, null, "Attachment download failed: " + e.getMessage())); }
       });
     } else if ("send".equals(op)) {
       String participant = job.optString("participant", "").trim();
@@ -1437,6 +1501,7 @@ public class MainActivity extends Activity {
     });
   }
 
+[executed on device: instance-20260604-1918 (a7765734-3129-4de5-be49-77d0c678b0cf)]
   private boolean isLinkedInMessagingPage() {
     if (linkedinWeb == null || linkedinWeb.getUrl() == null) return false;
     try {
@@ -1937,6 +2002,7 @@ public class MainActivity extends Activity {
     return labels[index][lang>=0 && lang<11 ? lang : 0];
   }
 
+[executed on device: instance-20260604-1918 (a7765734-3129-4de5-be49-77d0c678b0cf)]
   private String localizedMcpDiagnosticTitle() {
     String[] labels = {
       "MCP request diagnostics", "Diagnostic des requêtes MCP",
@@ -2270,3 +2336,5 @@ public class MainActivity extends Activity {
     });
   }
 }
+
+[executed on device: instance-20260604-1918 (a7765734-3129-4de5-be49-77d0c678b0cf)]
