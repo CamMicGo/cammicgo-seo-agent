@@ -499,7 +499,7 @@ public class MainActivity extends Activity {
     layers.setId(1, android.R.id.progress);
     progressBar.setProgressDrawable(layers);
 
-[executed on device: instance-20260604-1918 (a7765734-3129-4de5-be49-77d0c678b0cf)]    progressBar.setMax(100);
+    progressBar.setMax(100);
     p.addView(progressBar, new LinearLayout.LayoutParams(-1, dp(12)));
     progressStats = new LinearLayout(this);
     statDone = stat(progressStats, GREEN, t("stat_sent"));
@@ -1000,7 +1000,7 @@ public class MainActivity extends Activity {
             ui.postDelayed(() -> {
               if (id.equals(linkedinPendingAttachmentJob)) {
 
-[executed on device: instance-20260604-1918 (a7765734-3129-4de5-be49-77d0c678b0cf)]                linkedinPendingAttachment = null;
+                linkedinPendingAttachment = null;
                 linkedinPendingAttachmentJob = null;
                 finishLinkedInJob(id, null, "LinkedIn file chooser did not open");
               }
@@ -1501,7 +1501,7 @@ public class MainActivity extends Activity {
     });
   }
 
-[executed on device: instance-20260604-1918 (a7765734-3129-4de5-be49-77d0c678b0cf)]
+
   private boolean isLinkedInMessagingPage() {
     if (linkedinWeb == null || linkedinWeb.getUrl() == null) return false;
     try {
@@ -2002,7 +2002,7 @@ public class MainActivity extends Activity {
     return labels[index][lang>=0 && lang<11 ? lang : 0];
   }
 
-[executed on device: instance-20260604-1918 (a7765734-3129-4de5-be49-77d0c678b0cf)]
+
   private String localizedMcpDiagnosticTitle() {
     String[] labels = {
       "MCP request diagnostics", "Diagnostic des requêtes MCP",
@@ -2337,4 +2337,4 @@ public class MainActivity extends Activity {
   }
 }
 
-[executed on device: instance-20260604-1918 (a7765734-3129-4de5-be49-77d0c678b0cf)]
+
