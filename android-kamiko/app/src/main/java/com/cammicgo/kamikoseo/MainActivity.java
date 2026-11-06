@@ -162,8 +162,7 @@ public class MainActivity extends Activity {
   // assistant tab
   private EditText codeInput;
   private Button pairButton, connectButton, retryYoutubeButton;
-  private LinearLayout unpairedBox, pairedBox, historyList, notebookRequests, linkedinRequests, progressWaitingList;
-  private TextView progressPause;
+  private LinearLayout unpairedBox, pairedBox, historyList, notebookRequests, linkedinRequests;
   private View statusDot;
   private TextView statusLine, relayDetail;
   private TextView progressCount, progressLabel, progressCurrent, progressNote, progressFreshness, statDone, statWaiting, statFailed;
@@ -650,14 +649,6 @@ public class MainActivity extends Activity {
     p.addView(activityRow);
     progressSpinner.setTag(activityRow);
     activityRow.setVisibility(View.GONE);
-    progressPause = text(p, "", 13, AMBER, true);
-    progressPause.setPadding(dp(12), dp(10), dp(12), dp(10));
-    progressPause.setBackground(shape(Color.rgb(255, 247, 230), 12, Color.rgb(250, 214, 150)));
-    ((LinearLayout.LayoutParams) progressPause.getLayoutParams()).topMargin = dp(12);
-    progressPause.setVisibility(View.GONE);
-    progressWaitingList = new LinearLayout(this);
-    progressWaitingList.setOrientation(LinearLayout.VERTICAL);
-    p.addView(progressWaitingList, gapTop(10));
     progressCurrent = text(p, "", 13, INK, true);
     progressCurrent.setPadding(0, dp(12), 0, 0);
     progressCurrent.setMaxLines(2);
@@ -2348,13 +2339,6 @@ public class MainActivity extends Activity {
     try { String s = p.getString("progress", null); if (s != null) o = new JSONObject(s); } catch (Exception ignored) {}
     long pausedUntil = p.getLong("youtubePausedUntil", 0L);
     boolean ytPaused = paired && (pausedUntil > System.currentTimeMillis() || p.getBoolean("youtube429ManualPause", false));
-    if (progressPause != null) {
-      progressPause.setVisibility(ytPaused ? View.VISIBLE : View.GONE);
-      if (ytPaused) progressPause.setText(pausedUntil > System.currentTimeMillis()
-          ? "⏸  YouTube a limité ce téléphone (HTTP 429). Les transcriptions reprennent seules à " + DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(pausedUntil)) + ". Votre assistant en est informé : il ne relance pas en boucle."
-          : "⏸  YouTube a limité ce téléphone (HTTP 429). Touchez « Réessayer maintenant » pour reprendre.");
-    }
-    if (progressWaitingList != null) progressWaitingList.removeAllViews();
     if (o == null || o.optInt("total") == 0) {
       progressCount.setText("—");
       progressLabel.setText(paired ? t("no_request") : t("pair_to_start"));
@@ -2397,31 +2381,11 @@ public class MainActivity extends Activity {
         if (r.optString("videoId").equals(current) && !r.isNull("title")) currentTitle = r.optString("title");
       }
     }
-    // List the requests still waiting, with the assistant that asked for them (they reach the
-    // "sent to the assistant" list below only once the transcript has been delivered).
-    if (progressWaitingList != null && recent != null) {
-      for (int i = 0; i < recent.length(); i++) {
-        JSONObject r = recent.optJSONObject(i);
-        if (r == null) continue;
-        String st = r.optString("status");
-        if (!"pending".equals(st) && !"working".equals(st)) continue;
-        String title = r.isNull("title") ? r.optString("videoId") : r.optString("title");
-        String agent = r.isNull("agent") ? "" : r.optString("agent");
-        String state = "working".equals(st) ? "en cours" : ytPaused ? "en pause (YouTube 429)" : "en attente";
-        TextView row = text(progressWaitingList, ("working".equals(st) ? "▶  " : "⏳  ") + title + "\n" + (agent.isEmpty() ? "" : agent + " · ") + state, 13, INK, false);
-        row.setMaxLines(3);
-        row.setPadding(dp(12), dp(8), dp(12), dp(8));
-        row.setBackground(shape(Color.rgb(244, 247, 253), 10, Color.rgb(222, 230, 245)));
-        ((LinearLayout.LayoutParams) row.getLayoutParams()).topMargin = dp(6);
-        final String vid = r.optString("videoId");
-        row.setOnClickListener(v -> { try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=" + vid))); } catch (Exception ignored) {} });
-      }
-    }
     if (waiting > 0 && current != null) progressCurrent.setText(t("current", currentTitle != null ? currentTitle : current));
     else progressCurrent.setText(waiting == 0 ? t("all_done") : "");
 
     String note;
-    if (waiting > 0 && ytPaused) note = "";
+    if (waiting > 0 && ytPaused) note = fr() ? "Transcriptions suspendues par YouTube (429) : détail dans la liste ci-dessous." : "Transcripts paused by YouTube (429): details in the list below.";
     else if (waiting > 0 && !connected) note = t("stopped_resume");
     else if (waiting > 0) {
       String eta = eta(o.optString("startedAt", null), handled, waiting);
@@ -2534,7 +2498,10 @@ public class MainActivity extends Activity {
     String mcpDebugRaw = p.getString("mcpDebugHistory", "[]");
     String linkedinRaw = p.getString("linkedinAssistantHistory", "[]");
     long minute = System.currentTimeMillis() / 60_000;
-    String key = I18n.code(this) + ":" + raw.hashCode() + ":" + notebookRaw.hashCode() + ":" + mcpDebugRaw.hashCode() + ":" + linkedinRaw.hashCode() + ":" + minute;
+    String progressRaw = p.getString("progress", "");
+    long ytPausedUntil = p.getLong("youtubePausedUntil", 0L);
+    boolean ytManual = p.getBoolean("youtube429ManualPause", false);
+    String key = I18n.code(this) + ":" + raw.hashCode() + ":" + notebookRaw.hashCode() + ":" + mcpDebugRaw.hashCode() + ":" + linkedinRaw.hashCode() + ":" + progressRaw.hashCode() + ":" + ytPausedUntil + ":" + ytManual + ":" + minute;
     if (key.equals(historyShown)) return;
     historyShown = key;
     historyList.removeAllViews();
@@ -2591,6 +2558,34 @@ public class MainActivity extends Activity {
       h = new JSONArray();
       for (JSONObject item : ordered) h.put(item);
     } catch (Exception ignored) {}
+    // Transcript requests still waiting on this phone (from the server's progress): they are
+    // listed with the assistant that asked, and a 429 pause is explained in one card on top.
+    java.util.ArrayList<JSONObject> waitingTranscripts = new java.util.ArrayList<>();
+    try {
+      JSONArray recent = new JSONObject(progressRaw).optJSONArray("recent");
+      if (recent != null && System.currentTimeMillis() - p.getLong("progressAt", 0) < 120_000L) for (int i = 0; i < recent.length(); i++) {
+        JSONObject r = recent.optJSONObject(i);
+        if (r != null && ("pending".equals(r.optString("status")) || "working".equals(r.optString("status")))) waitingTranscripts.add(r);
+      }
+    } catch (Exception ignored) {}
+    boolean ytPaused = ytManual || ytPausedUntil > System.currentTimeMillis();
+    if (ytPaused) addYoutubePauseCard(waitingTranscripts, ytManual ? 0L : ytPausedUntil);
+    try {
+      JSONArray merged = new JSONArray();
+      for (JSONObject r : waitingTranscripts) {
+        JSONObject entry = new JSONObject();
+        entry.put("type", "transcript_waiting");
+        entry.put("title", (fr() ? "Transcription YouTube · " : "YouTube transcript · ") + (r.isNull("title") ? r.optString("videoId") : r.optString("title")));
+        entry.put("videoId", r.optString("videoId"));
+        entry.put("agentName", r.isNull("agent") ? "" : r.optString("agent"));
+        entry.put("status", "working".equals(r.optString("status")) ? "running" : "waiting");
+        entry.put("paused", ytPaused && !"working".equals(r.optString("status")));
+        try { entry.put("at", java.time.Instant.parse(r.optString("createdAt")).toEpochMilli()); } catch (Exception ex) { entry.put("at", System.currentTimeMillis()); }
+        merged.put(entry);
+      }
+      for (int i = 0; i < h.length(); i++) merged.put(h.get(i));
+      h = merged;
+    } catch (Exception ignored) {}
     clearHistory.setVisibility(h.length() == 0 ? View.GONE : View.VISIBLE);
     if (h.length() == 0) {
       TextView empty = text(historyList, t("history_empty"), 13, MUTED, false);
@@ -2607,6 +2602,7 @@ public class MainActivity extends Activity {
       boolean notebookEntry = "notebooklm".equals(e.optString("type"));
       boolean mcpDebugEntry = "mcp_debug".equals(e.optString("type"));
       boolean linkedinEntry = "linkedin_mcp".equals(e.optString("type"));
+      boolean waitingEntry = "transcript_waiting".equals(e.optString("type"));
       LinearLayout row = new LinearLayout(this);
       row.setGravity(Gravity.CENTER_VERTICAL);
       row.setPadding(dp(10), dp(9), dp(10), dp(9));
@@ -2648,13 +2644,21 @@ public class MainActivity extends Activity {
       origin.setCompoundDrawables(providerLogo, null, null, null);
       origin.setCompoundDrawablePadding(dp(5));
       String when = DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(e.optLong("at")));
-      String detail = linkedinEntry ? (localizedJobStatus(e.optString("status")) + " · " + when + (e.optString("file").isEmpty() ? "" : " · " + e.optString("file")) + (e.optString("error").isEmpty() ? "" : " · " + e.optString("error"))) : mcpDebugEntry ? ("MCP HTTP · " + when + " · " + ("fr".equals(I18n.code(this)) ? "Appuyer pour déboguer" : "Tap for diagnostics")) : notebookEntry ? ("NotebookLM · " + localizedJobStatus(e.optString("status")) + " · " + when) : ok ? t("segments", e.optInt("segments")) + " · " + when : when + " · " + e.optString("error", t("failed"));
-      TextView d = text(texts, detail, 12, ok || pending ? MUTED : RED, false);
+      String detail = waitingEntry ? ((e.optBoolean("paused") ? (fr() ? "En pause (YouTube 429)" : "Paused (YouTube 429)") : "running".equals(state) ? (fr() ? "En cours" : "In progress") : (fr() ? "En attente" : "Waiting")) + " · " + when) : linkedinEntry ? (localizedJobStatus(e.optString("status")) + " · " + when + (e.optString("file").isEmpty() ? "" : " · " + e.optString("file")) + (e.optString("error").isEmpty() ? "" : " · " + e.optString("error"))) : mcpDebugEntry ? ("MCP HTTP · " + when + " · " + ("fr".equals(I18n.code(this)) ? "Appuyer pour déboguer" : "Tap for diagnostics")) : notebookEntry ? ("NotebookLM · " + localizedJobStatus(e.optString("status")) + " · " + when) : ok ? t("segments", e.optInt("segments")) + " · " + when : when + " · " + e.optString("error", t("failed"));
+      TextView d = text(texts, detail, 12, waitingEntry && e.optBoolean("paused") ? AMBER : ok || pending ? MUTED : RED, false);
       d.setMaxLines(1); d.setEllipsize(TextUtils.TruncateAt.END);
       row.addView(texts, new LinearLayout.LayoutParams(0, -2, 1));
       final String vid = e.optString("videoId");
       final long at = e.optLong("at");
       row.setOnClickListener(v -> { if (linkedinEntry) { new AlertDialog.Builder(this).setTitle("Demande LinkedIn MCP").setMessage("ID : " + e.optString("jobId") + "\nÉtat : " + e.optString("status") + "\nErreur : " + e.optString("error", "aucune")).setPositiveButton("OK", null).show(); } else if (mcpDebugEntry) { JSONObject debug = e.optJSONObject("requestDebug"); new AlertDialog.Builder(this).setTitle("Diagnostic identité MCP (données masquées)").setMessage(debug == null ? "Métadonnées absentes pour cette requête." : debug.toString()).setPositiveButton("OK", (dialog, which) -> {}).show(); } else if (notebookEntry) selectTab(2); else startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=" + vid))); });
+      if (waitingEntry) {
+        // Live server state, not local history: nothing to remove.
+        historyList.addView(row);
+        View sep = new View(this); sep.setBackgroundColor(LINE);
+        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-1, dp(1)); sl.leftMargin = dp(44);
+        historyList.addView(sep, sl);
+        continue;
+      }
       row.setOnLongClickListener(v -> {
         new AlertDialog.Builder(this).setMessage(t("remove_q"))
             .setPositiveButton(t("remove"), (dlg, which) -> editHistory(vid, at))
@@ -2670,6 +2674,62 @@ public class MainActivity extends Activity {
         historyList.addView(sep, lp);
       }
     }
+  }
+
+  private boolean fr() { return "fr".equals(I18n.code(this)); }
+
+  /** Display name of the assistant that sent a request (same mapping as the activity rows). */
+  private String providerName(String agent) {
+    String id = agent == null ? "" : agent.toLowerCase(java.util.Locale.ROOT);
+    if (id.contains("antigravity")) return "Antigravity";
+    if (id.contains("cursor")) return "Cursor";
+    if (id.contains("codex")) return "Codex";
+    if (id.contains("chatgpt") || id.contains("openai")) return "ChatGPT";
+    if (id.contains("claude") || id.contains("anthropic")) return "Claude";
+    if (id.contains("gemini cli")) return "Gemini CLI";
+    if (id.contains("gemini")) return "Gemini";
+    return agent == null || agent.trim().isEmpty() ? (fr() ? "Assistant inconnu" : "Unknown assistant") : agent.trim();
+  }
+
+  /** Amber card on top of the activity list while YouTube rate-limits this phone (HTTP 429). */
+  private void addYoutubePauseCard(java.util.List<JSONObject> waiting, long resumesAt) {
+    boolean fr = fr();
+    LinearLayout card = new LinearLayout(this);
+    card.setOrientation(LinearLayout.VERTICAL);
+    card.setPadding(dp(14), dp(12), dp(14), dp(12));
+    card.setBackground(shape(Color.rgb(255, 247, 230), 14, Color.rgb(250, 214, 150)));
+    TextView title = text(card, "⏸  " + (fr ? "Transcriptions YouTube temporairement suspendues" : "YouTube transcripts temporarily paused"), 15, Color.rgb(146, 64, 14), true);
+    title.setPadding(0, 0, 0, dp(4));
+    text(card, fr ? "YouTube limite temporairement les demandes (erreur 429). Les transcriptions reprendront lorsque la limitation sera levée."
+        : "YouTube is temporarily limiting requests (error 429). Transcripts will resume once the limit is lifted.", 13, INK, false);
+    // Who asked, and what: assistant logo + name, request type.
+    java.util.LinkedHashMap<String, Integer> byAgent = new java.util.LinkedHashMap<>();
+    for (JSONObject r : waiting) { String a = providerName(r.isNull("agent") ? "" : r.optString("agent")); byAgent.put(a, byAgent.getOrDefault(a, 0) + 1); }
+    for (java.util.Map.Entry<String, Integer> en : byAgent.entrySet()) {
+      TextView who = text(card, en.getKey() + " · " + (fr ? "Transcription YouTube" : "YouTube transcript") + (en.getValue() > 1 ? " ×" + en.getValue() : ""), 13, INK, true);
+      who.setPadding(0, dp(8), 0, 0);
+      android.graphics.drawable.Drawable logo = AgentIcons.forProvider(this, en.getKey());
+      who.setCompoundDrawables(logo, null, null, null);
+      who.setCompoundDrawablePadding(dp(6));
+      who.setGravity(Gravity.CENTER_VERTICAL);
+    }
+    int n = waiting.size();
+    TextView count = text(card, (fr ? n + (n > 1 ? " transcriptions en attente" : " transcription en attente") + " · Aucune donnée perdue"
+        : n + (n == 1 ? " transcript waiting" : " transcripts waiting") + " · No data lost"), 13, MUTED, false);
+    count.setPadding(0, dp(8), 0, 0);
+    TextView nextLabel = text(card, fr ? "Prochaine tentative" : "Next attempt", 12, Color.rgb(146, 64, 14), true);
+    nextLabel.setPadding(0, dp(10), 0, 0);
+    text(card, resumesAt > System.currentTimeMillis()
+        ? (fr ? "Automatique vers " : "Automatic around ") + DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(resumesAt)) + (fr ? " (estimation : la durée exacte dépend de YouTube)" : " (estimate: the exact duration depends on YouTube)")
+        : (fr ? "À déterminer selon la durée de la limitation YouTube." : "Depends on how long YouTube keeps the limit."), 13, INK, false);
+    Button retry = toolButton(fr ? "Réessayer maintenant" : "Retry now", UiIcons.Kind.REFRESH);
+    LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(-2, dp(40));
+    rl.topMargin = dp(10);
+    card.addView(retry, rl);
+    retry.setOnClickListener(v -> { if (retryYoutubeButton != null) retryYoutubeButton.performClick(); });
+    LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(-1, -2);
+    cl.bottomMargin = dp(8);
+    historyList.addView(card, cl);
   }
 
   @Override protected void onResume() {
