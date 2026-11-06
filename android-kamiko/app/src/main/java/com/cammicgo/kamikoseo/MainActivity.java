@@ -585,6 +585,16 @@ public class MainActivity extends Activity {
     historyList.setOrientation(LinearLayout.VERTICAL);
     android.widget.ScrollView activityScroll = new android.widget.ScrollView(this);
     activityScroll.setFillViewport(false);
+    // The feed sits inside the page's own scroll view: keep its scroll bar visible and let it take the
+    // finger while it is touched, otherwise the outer page swallows the gesture and the list never scrolls.
+    activityScroll.setVerticalScrollBarEnabled(true);
+    activityScroll.setScrollbarFadingEnabled(false);
+    activityScroll.setNestedScrollingEnabled(true);
+    activityScroll.setOnTouchListener((v, e) -> {
+      int a = e.getActionMasked();
+      v.getParent().requestDisallowInterceptTouchEvent(a != android.view.MotionEvent.ACTION_UP && a != android.view.MotionEvent.ACTION_CANCEL);
+      return false;
+    });
     activityScroll.addView(historyList);
     h.addView(activityScroll, new LinearLayout.LayoutParams(-1, dp(360)));
     Button diagnostics = secondary(localizedMcpDiagnosticTitle());
@@ -1156,14 +1166,23 @@ public class MainActivity extends Activity {
     if ("attach".equals(op) && !withFile) { finishLinkedInJob(id, null, "No file given"); return; }
     liEnsureThread(id, participant, () -> {
       if (!withFile) { liSend(id, participant, text, null, null); return; }
-      liDownload(id, job, file -> liAttach(id, file, job.optString("attachmentName"), job.optString("attachmentMime"), attached -> {
-        if (!attached.optBoolean("attached")) { liFail(id, "File not attached: nothing was sent", attached); return; }
+      Runnable attachThenFinish = () -> liDownload(id, job, file -> liAttach(id, file, job.optString("attachmentName"), job.optString("attachmentMime"), attached -> {
+        if (!attached.optBoolean("attached")) {
+          // Leave the composer as it was: the text typed for this message is removed again.
+          if ("send".equals(op)) liClearText(text, () -> liFail(id, "File not attached: nothing was sent", attached));
+          else liFail(id, "File not attached: nothing was sent", attached);
+          return;
+        }
         if ("attach".equals(op)) {
           liDeleteJobFiles(id);
           try { attached.put("sent", false); attached.put("note", "In the composer only: nothing was sent."); } catch (Exception ignored) {}
           finishLinkedInJob(id, attached, null);
-        } else liSend(id, participant, text, file, attached);
+        } else liClickSend(id, participant, text, file, attached);
       }));
+      // LinkedIn mobile covers the composer with a full-screen preview once a file is attached:
+      // the text is written and checked first, while the composer is still visible.
+      if ("send".equals(op)) liTypeText(id, participant, text, attachThenFinish);
+      else attachThenFinish.run();
     });
   }
 
@@ -1323,6 +1342,50 @@ public class MainActivity extends Activity {
       }
       liWaitEvidence(id, name, base, triesLeft - 1, method, diag, file, mime, done);
     }), 1000);
+  }
+
+
+  /** Writes the approved text in the visible composer and checks it, without sending. */
+  private void liTypeText(String id, String participant, String text, Runnable next) {
+    String js = "const name=" + q(participant) + ",msg=" + q(text) + ";"
+      + "if(!headerHas(name))return JSON.stringify({error:'Recipient not verified'});"
+      + "const ev=evidence('');if(ev.remove>0)return JSON.stringify({error:'The composer already holds an attachment that was not approved: nothing was sent',evidence:ev});"
+      + "const editor=findEditor();if(!editor)return JSON.stringify({error:'Message composer not found',fields:[...document.querySelectorAll('textarea,[contenteditable],[role=\\\"textbox\\\"],input')].filter(visible).slice(0,8).map(e=>({tag:e.tagName.toLowerCase(),type:e.type||'',label:(e.getAttribute('aria-label')||e.getAttribute('placeholder')||'').slice(0,60)}))});"
+      + "editor.focus();"
+      + "if(editor.matches('textarea,input')){const p=editor.matches('textarea')?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(p,'value').set.call(editor,msg);}else editor.textContent=msg;"
+      + "editor.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:msg}));editor.dispatchEvent(new Event('change',{bubbles:true}));"
+      + "const actual=editor.matches('textarea,input')?editor.value:editor.innerText;"
+      + "if(actual.trim()!==msg.trim())return JSON.stringify({error:'Composer text verification failed'});"
+      + "return JSON.stringify({typed:true});";
+    liEval(js, r -> { if (r.optBoolean("typed")) next.run(); else liFail(id, r.optString("error", "Text not written") + (r.optString("error").contains("nothing") ? "" : ": nothing was sent"), r); });
+  }
+  /** Removes the text this job wrote (used when the file could not be attached). */
+  private void liClearText(String text, Runnable next) {
+    liEval("const msg=norm(" + q(text) + ");"
+      + "for(const e of document.querySelectorAll('textarea,[contenteditable=\"true\"],[contenteditable=\"\"],[role=\"textbox\"],input[type=\"text\"],input:not([type])')){"
+      + "const v=e.matches('textarea,input')?e.value:e.innerText;if(norm(v)!==msg)continue;"
+      + "if(e.matches('textarea,input')){const p=e.matches('textarea')?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(p,'value').set.call(e,'');}else e.textContent='';"
+      + "e.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'deleteContentBackward'}));}return JSON.stringify({cleared:true});", r -> next.run());
+  }
+  /** Sends once the file is shown: the text must still be in the composer (even if the preview hides it). */
+  private void liClickSend(String id, String participant, String text, java.io.File file, JSONObject attached) {
+    String name = attached.optString("name");
+    String js = "const msg=" + q(text) + ",fname=" + q(name) + ";"
+      + "const ev=evidence(fname);"
+      + "if(!(ev.imgs>0||ev.named>0||ev.remove>0))return JSON.stringify({error:'The file is no longer shown: nothing was sent',evidence:ev});"
+      + "if(ev.progress>0)return JSON.stringify({error:'LinkedIn is still uploading: nothing was sent'});"
+      + "const t=norm(msg).slice(0,60);"
+      + "const kept=[...document.querySelectorAll('textarea,[contenteditable=\"true\"],[contenteditable=\"\"],[role=\"textbox\"],input[type=\"text\"],input:not([type])')].some(e=>norm(e.matches('textarea,input')?e.value:e.innerText).includes(t));"
+      + "if(!kept)return JSON.stringify({error:'The text disappeared when the file was attached: nothing was sent'});"
+      + "const all=[...document.querySelectorAll('button,[role=\"button\"],input[type=\"submit\"]')].filter(visible);"
+      + "const buttons=all.filter(b=>/^(send|envoyer|send message|envoyer le message)$/i.test((b.getAttribute('aria-label')||b.getAttribute('title')||b.innerText||b.value||'').trim()));"
+      + "if(buttons.length!==1)return JSON.stringify({error:'Send button ambiguous or missing: nothing was sent',matches:buttons.length,buttons:all.map(b=>(b.getAttribute('aria-label')||b.title||b.innerText||'').trim().slice(0,40)).filter(Boolean).slice(0,30)});"
+      + "if(buttons[0].disabled||buttons[0].getAttribute('aria-disabled')==='true')return JSON.stringify({error:'Send button disabled: nothing was sent'});"
+      + "const before=items().length;buttons[0].click();return JSON.stringify({clicked:true,before});";
+    liEval(js, r -> {
+      if (!r.optBoolean("clicked")) { liClearText(text, () -> liFail(id, r.optString("error", "Send failed: nothing was sent"), r)); return; }
+      liVerifySent(id, participant, text, name, true, r.optInt("before"), attached, 20);
+    });
   }
 
   /** Writes and sends the text; with a file, only if it is still in the composer. Then checks the thread. */
