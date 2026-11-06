@@ -831,11 +831,49 @@ public class MainActivity extends Activity {
       }
     });
     linkedinWeb.setWebViewClient(new WebViewClient());
+    // Native buttons provide accessible touch targets instead of relying on tiny web icons.
+    LinearLayout attachmentRow = new LinearLayout(this);
+    attachmentRow.setOrientation(LinearLayout.HORIZONTAL);
+    attachmentRow.setPadding(dp(8), dp(2), dp(8), dp(2));
+    Button imageButton = secondary("Image");
+    Button fileButton = secondary("Pièce jointe");
+    imageButton.setAllCaps(false);
+    fileButton.setAllCaps(false);
+    imageButton.setContentDescription("Joindre une image au message LinkedIn");
+    fileButton.setContentDescription("Joindre un document au message LinkedIn");
+    attachmentRow.addView(imageButton, new LinearLayout.LayoutParams(0, dp(44), 1));
+    LinearLayout.LayoutParams fileButtonParams = new LinearLayout.LayoutParams(0, dp(44), 1);
+    fileButtonParams.leftMargin = dp(8);
+    attachmentRow.addView(fileButton, fileButtonParams);
+    imageButton.setOnClickListener(v -> openLinkedInAttachmentPicker(true));
+    fileButton.setOnClickListener(v -> openLinkedInAttachmentPicker(false));
+    root.addView(attachmentRow);
     root.addView(linkedinWeb, new LinearLayout.LayoutParams(-1, 0, 1));
     messages.setOnClickListener(v -> linkedinWeb.loadUrl("https://www.linkedin.com/messaging/"));
     network.setOnClickListener(v -> linkedinWeb.loadUrl("https://www.linkedin.com/mynetwork/"));
     search.setOnClickListener(v -> linkedinWeb.loadUrl("https://www.linkedin.com/search/results/people/"));
     linkedinWeb.loadUrl("https://www.linkedin.com/messaging/");
+  }
+
+  /** Activate LinkedIn's file input; the WebChromeClient opens the Android chooser. */
+  private void openLinkedInAttachmentPicker(boolean image) {
+    if (linkedinWeb == null || linkedinWeb.getUrl() == null || !linkedinWeb.getUrl().startsWith("https://www.linkedin.com/messaging/")) {
+      Toast.makeText(this, "Ouvrez une conversation LinkedIn avant de joindre un fichier", Toast.LENGTH_LONG).show();
+      return;
+    }
+    String js = "(function(image){"
+      + "const visible=e=>!!(e.offsetWidth||e.offsetHeight||e.getClientRects().length);"
+      + "const inputs=[...document.querySelectorAll('input[type=file]')];"
+      + "const suitable=inputs.filter(e=>{const a=(e.accept||'').toLowerCase();return image?(!a||a.includes('image')):(!a||!a.includes('image')||a.includes('pdf'));});"
+      + "if(suitable.length===1){suitable[0].click();return 'opened';}"
+      + "const labels=image?['image','photo','picture']:['attach','joindre','document','file','fichier','pièce jointe'];"
+      + "const buttons=[...document.querySelectorAll('button,[role=button]')].filter(visible).filter(e=>labels.some(k=>((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||'')).toLowerCase().includes(k)));"
+      + "if(buttons.length===1){buttons[0].click();return 'clicked';}"
+      + "return 'missing';})(" + (image ? "true" : "false") + ")";
+    linkedinWeb.evaluateJavascript(js, raw -> {
+      if (raw == null || raw.contains("missing"))
+        Toast.makeText(this, "Commande LinkedIn introuvable. Ouvrez une conversation et réessayez.", Toast.LENGTH_LONG).show();
+    });
   }
 
   /** Run only on the foreground Activity's WebView, after explicit opt-in. */
