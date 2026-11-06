@@ -211,6 +211,50 @@ async function handler(req:NextRequest){
     if(!a.confirm)return asText({status:'preview',profileUrl:a.profileUrl,note:'No invitation sent. Ask for explicit approval in a new user message.'});
     return linkedinDevice('invite',{profileUrl:a.profileUrl});
    });
+   // Private outgoing LinkedIn attachment staging; no message is sent by these tools.
+   const linkedinAttachment=async(kind:'image'|'document',filename:string,mime:string,base64:string)=>{
+    const types:Record<string,string>=kind==='image'
+     ?{'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif'}
+     :{'application/pdf':'pdf','text/plain':'txt','application/vnd.openxmlformats-officedocument.wordprocessingml.document':'docx','application/msword':'doc'};
+    const ext=types[mime];
+    if(!ext)return asText({status:'error',error:'Unsupported file type'});
+    if(!/^[A-Za-z0-9+/]+={0,2}$/.test(base64)||base64.length%4!==0)return asText({status:'error',error:'Invalid base64'});
+    const bytes=Buffer.from(base64,'base64');
+    if(bytes.length<1||bytes.length>5_000_000)return asText({status:'error',error:'File must be 1 byte to 5 MB'});
+    const valid=mime==='image/png'?bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))
+     :mime==='image/jpeg'?bytes[0]===255&&bytes[1]===216&&bytes[2]===255
+     :mime==='image/gif'?bytes.subarray(0,3).toString()==='GIF'
+     :mime==='image/webp'?bytes.subarray(0,4).toString()==='RIFF'&&bytes.subarray(8,12).toString()==='WEBP'
+     :mime==='application/pdf'?bytes.subarray(0,5).toString()==='%PDF-'
+     :mime==='application/vnd.openxmlformats-officedocument.wordprocessingml.document'?bytes[0]===80&&bytes[1]===75
+     :mime==='application/msword'?bytes.subarray(0,4).equals(Buffer.from([208,207,17,224]))
+     :true;
+    if(!valid)return asText({status:'error',error:'File signature does not match MIME type'});
+    const key=process.env.SUPABASE_SECRET_KEY;
+    if(!key)return asText({status:'error',error:'Private storage not configured'});
+    const base=process.env.SUPABASE_URL||'https://vfngxjsryklqldarkxhy.supabase.co';
+    const {randomUUID}=await import('node:crypto');
+    const attachmentId=randomUUID();
+    const storagePath=user.id+'/linkedin-outgoing/'+attachmentId+'.'+ext;
+    const response=await fetch(base+'/storage/v1/object/cmg-notebook-artifacts/'+storagePath,{method:'POST',headers:{apikey:key,Authorization:'Bearer '+key,'Content-Type':mime,'x-upsert':'false'},body:bytes,signal:AbortSignal.timeout(45000)});
+    if(!response.ok)return asText({status:'error',error:'Private storage upload failed',httpStatus:response.status});
+    return asText({status:'staged',attachmentId,kind,filename:filename.slice(0,180),mime,bytes:bytes.length,storagePath,attachedToLinkedIn:false,messageSent:false});
+   };
+   server.registerTool('linkedin_upload_image',{title:'Stage LinkedIn image in private storage',description:'Upload a JPEG, PNG, WebP or GIF (max 5 MB) from base64 to user-private CamMicGo storage. Does not attach or send a message.',inputSchema:z.object({filename:z.string().min(1).max(180),mime:z.enum(['image/png','image/jpeg','image/webp','image/gif']),base64:z.string().min(4).max(6_800_000)})},async a=>linkedinAttachment('image',a.filename,a.mime,a.base64));
+   server.registerTool('linkedin_upload_document',{title:'Stage LinkedIn document in private storage',description:'Upload PDF, DOC, DOCX or TXT (max 5 MB) from base64 to user-private CamMicGo storage. Does not attach or send a message.',inputSchema:z.object({filename:z.string().min(1).max(180),mime:z.enum(['application/pdf','text/plain','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document']),base64:z.string().min(4).max(6_800_000)})},async a=>linkedinAttachment('document',a.filename,a.mime,a.base64));
+   server.registerTool('linkedin_attachment_link',{title:'Get temporary download link for staged LinkedIn attachment',annotations:{readOnlyHint:true},description:'Sign a five-minute private download link for an attachment owned by this user. This does not attach to LinkedIn.',inputSchema:z.object({attachmentId:z.string().uuid(),mime:z.enum(['image/png','image/jpeg','image/webp','image/gif','application/pdf','text/plain','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document'])})},async a=>{
+    const ext:Record<string,string>={'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif','application/pdf':'pdf','text/plain':'txt','application/msword':'doc','application/vnd.openxmlformats-officedocument.wordprocessingml.document':'docx'};
+    const key=process.env.SUPABASE_SECRET_KEY;
+    if(!key)return asText({status:'error',error:'Storage unavailable'});
+    const base=process.env.SUPABASE_URL||'https://vfngxjsryklqldarkxhy.supabase.co';
+    const path=user.id+'/linkedin-outgoing/'+a.attachmentId+'.'+ext[a.mime];
+    const response=await fetch(base+'/storage/v1/object/sign/cmg-notebook-artifacts/'+path,{method:'POST',headers:{apikey:key,Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({expiresIn:300}),signal:AbortSignal.timeout(10000)});
+    if(!response.ok)return asText({status:'error',error:'Attachment unavailable',httpStatus:response.status});
+    const result=await response.json() as {signedURL?:string;signedUrl?:string};
+    const signed=result.signedURL||result.signedUrl;
+    if(!signed)return asText({status:'error',error:'Missing signed URL'});
+    return asText({status:'ready',attachmentId:a.attachmentId,downloadUrl:new URL(signed,base+'/storage/v1/').toString(),expiresInSeconds:300,attachedToLinkedIn:false});
+   });
    server.registerTool('linkedin_send_message',{title:'Send an approved LinkedIn message via Android',description:'First preview with confirm=false; send with confirm=true ONLY after explicit user approval of exact recipient and text in a NEW message. No signing key or confirmation table required. Android verifies the conversation.',inputSchema:z.object({participant:z.string().min(2).max(150),text:z.string().min(1).max(3000),confirm:z.boolean().optional().default(false)})},async a=>{
     if(!a.confirm)return asText({status:'preview',participant:a.participant,text:a.text,attachmentsSupported:false,note:'No message sent. Ask for explicit approval in a new user message.'});
     return linkedinDevice('send',{participant:a.participant,text:a.text});
