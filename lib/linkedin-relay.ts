@@ -1,5 +1,5 @@
 import {sb} from '@/lib/device-relay';
-export type LinkedInOperation='inbox'|'open'|'thread'|'back'|'feed'|'search'|'send'|'company_search'|'network_suggestions'|'invite';
+export type LinkedInOperation='inbox'|'open'|'thread'|'back'|'feed'|'search'|'send'|'company_search'|'network_suggestions'|'invite'|'attach';
 export async function enqueueLinkedIn(userId:string,operation:LinkedInOperation,payload:Record<string,string>={}){
  const rows=await sb<Array<{id:string}>>('/rest/v1/cmg_linkedin_jobs',{method:'POST',body:JSON.stringify({user_id:userId,operation,payload}),prefer:'return=representation'});
  return rows[0];
@@ -28,3 +28,5 @@ export async function signedLinkedInImage(userId:string,jobId:string,storagePath
  if(!signed||!signed.startsWith('/'))throw Error('Unable to sign image');
  return base+(signed.startsWith('/storage/v1/')?'':'/storage/v1')+signed;
 }
+
+[executed on device: instance-20260604-1918 (a7765734-3129-4de5-be49-77d0c678b0cf)]
