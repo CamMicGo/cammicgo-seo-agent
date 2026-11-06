@@ -85,6 +85,24 @@ public class MainActivity extends Activity {
   private View appHeader, appTabs;
   private WebView linkedinWeb;
   private android.webkit.ValueCallback<Uri[]> linkedinFileCallback;
+  // Cache only: never write LinkedIn relay attachments to Downloads or Gallery.
+  private void cleanLinkedInAttachmentCache(boolean all) {
+    try {
+      java.io.File dir = new java.io.File(getCacheDir(), "linkedin-shared");
+      java.io.File[] files = dir.listFiles();
+      if (files == null) return;
+      long now = System.currentTimeMillis();
+      for (java.io.File file : files) {
+        if (file.isFile() && file.getName().startsWith("linkedin-") &&
+            (all || now - file.lastModified() > 15 * 60 * 1000L)) file.delete();
+      }
+    } catch (Exception e) { android.util.Log.w("CamMicGoLinkedIn", "Cache cleanup failed", e); }
+  }
+  private void scheduleLinkedInCacheCleanup() {
+    // The WebView file chooser callback only acknowledges a URI; it does NOT prove
+    // LinkedIn finished reading/uploading the bytes. Keep a bounded grace period.
+    ui.postDelayed(() -> cleanLinkedInAttachmentCache(true), 15 * 60 * 1000L);
+  }
   private Uri linkedinPendingAttachment;
   private String linkedinPendingAttachmentJob;
   private boolean linkedinExpanded = false;
@@ -825,8 +843,11 @@ public class MainActivity extends Activity {
           linkedinPendingAttachment = null;
           linkedinPendingAttachmentJob = null;
           callback.onReceiveValue(new Uri[]{selected});
-          ui.postDelayed(() -> finishLinkedInJob(attachmentJob, new JSONObject(), null), 2000);
-          ui.postDelayed(() -> { try { java.io.File f = new java.io.File(getCacheDir(), "linkedin-shared"); java.io.File[] files = f.listFiles(); if (files != null) for (java.io.File item : files) if (item.getName().startsWith("linkedin-")) item.delete(); } catch (Exception ignored) {} }, 600000);
+          // The picker accepted the URI, not necessarily the upload. Do not delete yet.
+          JSONObject accepted = new JSONObject();
+          try { accepted.put("pickerAccepted", true); accepted.put("uploadConfirmed", false); } catch (Exception ignored) {}
+          ui.postDelayed(() -> finishLinkedInJob(attachmentJob, accepted, null), 2000);
+          scheduleLinkedInCacheCleanup();
           return true;
         }
         if (linkedinFileCallback != null) linkedinFileCallback.onReceiveValue(null);
@@ -894,6 +915,7 @@ public class MainActivity extends Activity {
 
   /** Run only on the foreground Activity's WebView, after explicit opt-in. */
   private void executeLinkedInJob(JSONObject job) {
+    cleanLinkedInAttachmentCache(false);
     String id = job.optString("id");
     String op = job.optString("operation");
     if (!linkedinMcpEnabled || linkedinWeb == null || id.isEmpty()) {
@@ -1005,6 +1027,7 @@ public class MainActivity extends Activity {
 
                 linkedinPendingAttachment = null;
                 linkedinPendingAttachmentJob = null;
+                cleanLinkedInAttachmentCache(true);
                 finishLinkedInJob(id, null, "LinkedIn file chooser did not open");
               }
             }, 9000);
@@ -1022,7 +1045,11 @@ public class MainActivity extends Activity {
         try {
           JSONObject result = new JSONObject(new JSONArray("[" + raw + "]").getString(0));
           if (!result.optBoolean("clicked")) finishLinkedInJob(id, result, result.optString("error", "Send failed"));
-          else finishLinkedInJob(id, result, null);
+          else {
+            // Allow LinkedIn's async upload to settle after the Send click.
+            ui.postDelayed(() -> cleanLinkedInAttachmentCache(true), 30000);
+            finishLinkedInJob(id, result, null);
+          }
         } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
       });
     } else if ("thread".equals(op)) {
