@@ -1348,7 +1348,7 @@ public class MainActivity extends Activity {
   /** Attached = LinkedIn shows something new for the file in the composer and no upload is running. */
   private void liWaitEvidence(String id, String name, JSONObject base, int triesLeft, String method, JSONObject diag, java.io.File file, String mime, LiJson done) {
     ui.postDelayed(() -> liEval("return JSON.stringify(evidence(" + q(name) + "));", now -> {
-      boolean seen = now.optInt("imgs") > base.optInt("imgs") || now.optInt("named") > base.optInt("named") || now.optInt("remove") > base.optInt("remove");
+      boolean seen = now.optInt("imgs") > base.optInt("imgs") || now.optInt("named") > base.optInt("named");
       boolean uploading = now.optInt("progress") > base.optInt("progress");
       if (seen && !uploading) {
         JSONObject out = new JSONObject();
@@ -1375,8 +1375,9 @@ public class MainActivity extends Activity {
       // An unsent attachment left in the composer (an earlier attempt) is removed once, never sent with this message.
       + "if(ev.remove>0){const reg=regionOf(findEditor());const rm=[...reg.querySelectorAll('button,[role=button]')].filter(b=>{const l=norm(b.getAttribute('aria-label')||b.title||b.innerText);return /remove|supprimer|retirer|delete|effacer|annuler/.test(l)&&/attach|pi\\u00e8ce|piece|image|photo|fichier|file|m\\u00e9dia|media/.test(l)});"
       + "const labels=rm.map(b=>norm(b.getAttribute('aria-label')||b.title||b.innerText).slice(0,60));"
-      + "if(" + attempt + ">0)return JSON.stringify({error:'The composer still holds an attachment that was not approved: nothing was sent',evidence:ev,buttons:labels});"
-      + "rm.forEach(b=>b.click());return JSON.stringify({leftoverRemoved:rm.length,buttons:labels});}"
+      + "if(" + attempt + ">0&&(ev.imgs>0||ev.named>0))return JSON.stringify({error:'The composer still holds an attachment that was not approved: nothing was sent',evidence:ev,buttons:labels});"
+      + "if(" + attempt + "===0)"
+      + "{rm.forEach(b=>b.click());return JSON.stringify({leftoverRemoved:rm.length,buttons:labels});}}"
       + "const editor=findEditor();if(!editor)return JSON.stringify({error:'Message composer not found',fields:[...document.querySelectorAll('textarea,[contenteditable],[role=\\\"textbox\\\"],input')].filter(visible).slice(0,8).map(e=>({tag:e.tagName.toLowerCase(),type:e.type||'',label:(e.getAttribute('aria-label')||e.getAttribute('placeholder')||'').slice(0,60)}))});"
       + "editor.focus();"
       + "if(editor.matches('textarea,input')){const p=editor.matches('textarea')?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(p,'value').set.call(editor,msg);}else editor.textContent=msg;"
@@ -1404,7 +1405,7 @@ public class MainActivity extends Activity {
     String name = attached.optString("name");
     String js = "const msg=" + q(text) + ",fname=" + q(name) + ";"
       + "const ev=evidence(fname);"
-      + "if(!(ev.imgs>0||ev.named>0||ev.remove>0))return JSON.stringify({error:'The file is no longer shown: nothing was sent',evidence:ev});"
+      + "if(!(ev.imgs>0||ev.named>0))return JSON.stringify({error:'The file is no longer shown: nothing was sent',evidence:ev});"
       + "if(ev.progress>0)return JSON.stringify({error:'LinkedIn is still uploading: nothing was sent'});"
       + "const t=norm(msg).slice(0,60);"
       + "const kept=[...document.querySelectorAll('textarea,[contenteditable=\"true\"],[contenteditable=\"\"],[role=\"textbox\"],input[type=\"text\"],input:not([type])')].some(e=>norm(e.matches('textarea,input')?e.value:e.innerText).includes(t));"
@@ -1428,7 +1429,7 @@ public class MainActivity extends Activity {
       + "if(!headerHas(name))return JSON.stringify({error:'Recipient not verified'});"
       + "const ev=evidence(fname);"
       + "if(withFile&&!(ev.imgs>0||ev.named>0||ev.remove>0))return JSON.stringify({error:'The file is no longer in the composer: nothing was sent',evidence:ev});"
-      + "if(!withFile&&ev.remove>0)return JSON.stringify({error:'The composer already holds an attachment that was not approved: nothing was sent',evidence:ev});"
+      + "if(!withFile&&(ev.imgs>0||ev.named>0))return JSON.stringify({error:'The composer already holds an attachment that was not approved: nothing was sent',evidence:ev});"
       + "if(ev.progress>0)return JSON.stringify({error:'LinkedIn is still uploading: nothing was sent'});"
       + "const editor=findEditor();if(!editor)return JSON.stringify({error:'Message composer not found',fields:[...document.querySelectorAll('textarea,[contenteditable],[role=\\\"textbox\\\"],input')].filter(visible).slice(0,8).map(e=>({tag:e.tagName.toLowerCase(),type:e.type||'',label:(e.getAttribute('aria-label')||e.getAttribute('placeholder')||'').slice(0,60)}))});"
       + "const scope=document.querySelector('main')||document;"
