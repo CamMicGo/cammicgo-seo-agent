@@ -172,7 +172,7 @@ async function handler(req:NextRequest){
    // These tools provide a truthful, user-supplied conversation workflow without
    // harvesting browser cookies, scraping private endpoints or fabricating messages.
    // LinkedIn Android relay: explicit opt-in on the device; read/navigation only, never sends messages.
-   const linkedinDevice=async(operation:'inbox'|'open'|'thread'|'back'|'feed'|'search'|'company_search'|'network_suggestions'|'invite'|'send',payload:Record<string,string>={})=>{
+   const linkedinDevice=async(operation:'inbox'|'open'|'thread'|'back'|'feed'|'search'|'company_search'|'network_suggestions'|'invite'|'send'|'attach',payload:Record<string,string>={})=>{
     const liRelay=await import('@/lib/linkedin-relay');
     const devices=await relay.listDevices(user.id);
     if(!devices.some(relay.isOnline))return asText({status:'device_offline',message:'Connectez et ouvrez CamMicGo Android, puis activez le contrôle LinkedIn MCP.'});
@@ -254,6 +254,29 @@ async function handler(req:NextRequest){
     const signed=result.signedURL||result.signedUrl;
     if(!signed)return asText({status:'error',error:'Missing signed URL'});
     return asText({status:'ready',attachmentId:a.attachmentId,downloadUrl:new URL(signed.startsWith('/storage/v1/')?signed:'/storage/v1/'+(signed.startsWith('/')?signed.slice(1):signed),base).toString(),expiresInSeconds:300,attachedToLinkedIn:false});
+   });
+   server.registerTool('linkedin_attach_file',{title:'Attach staged file in LinkedIn Android',description:'Download staged image or document into the private Android app cache and attach to the open LinkedIn thread. Does not send a message. Staging is removed after Android reports completion.',inputSchema:z.object({attachmentId:z.string().uuid(),mime:z.enum(['image/png','image/jpeg','image/webp','image/gif','application/pdf','text/plain','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document'])})},async a=>{
+    const ext:Record<string,string>={'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif','application/pdf':'pdf','text/plain':'txt','application/msword':'doc','application/vnd.openxmlformats-officedocument.wordprocessingml.document':'docx'};
+    const key=process.env.SUPABASE_SECRET_KEY;
+    if(!key)return asText({status:'error',error:'Storage unavailable'});
+    const base=process.env.SUPABASE_URL||'https://vfngxjsryklqldarkxhy.supabase.co';
+    const path=user.id+'/linkedin-outgoing/'+a.attachmentId+'.'+ext[a.mime];
+    const headers={apikey:key,Authorization:'Bearer '+key,'Content-Type':'application/json'};
+    const response=await fetch(base+'/storage/v1/object/sign/cmg-notebook-artifacts/'+path,{method:'POST',headers,body:JSON.stringify({expiresIn:300})});
+    if(!response.ok)return asText({status:'error',error:'Staged attachment not found'});
+    const result=await response.json() as {signedURL?:string;signedUrl?:string};
+    const signed=result.signedURL||result.signedUrl;
+    if(!signed)return asText({status:'error',error:'Signing failed'});
+    const downloadUrl=new URL(signed.startsWith('/storage/v1/')?signed:'/storage/v1/'+(signed.startsWith('/')?signed.slice(1):signed),base).toString();
+    const outcome=await linkedinDevice('attach',{downloadUrl,mime:a.mime,attachmentId:a.attachmentId});
+    // Remove staging after confirmed Android picker acceptance; pending jobs remain retryable.
+    const outcomeText=outcome.content?.find(c=>c.type==='text')?.text;
+    let completed=false;
+    try{completed=JSON.parse(outcomeText||'{}').status==='done';}catch{}
+    if(completed){
+     await fetch(base+'/storage/v1/object/cmg-notebook-artifacts/'+path,{method:'DELETE',headers:{apikey:key,Authorization:'Bearer '+key}}).catch(()=>{});
+    }
+    return outcome;
    });
    server.registerTool('linkedin_send_message',{title:'Send an approved LinkedIn message via Android',description:'First preview with confirm=false; send with confirm=true ONLY after explicit user approval of exact recipient and text in a NEW message. No signing key or confirmation table required. Android verifies the conversation.',inputSchema:z.object({participant:z.string().min(2).max(150),text:z.string().min(1).max(3000),confirm:z.boolean().optional().default(false)})},async a=>{
     if(!a.confirm)return asText({status:'preview',participant:a.participant,text:a.text,attachmentsSupported:false,note:'No message sent. Ask for explicit approval in a new user message.'});
@@ -425,7 +448,8 @@ async function handler(req:NextRequest){
     const period=yta.resolvePeriod(args);if('error' in period)return asText(period);
     const ids=yta.channelIds(args.channelId);
     const cur=await ytReport({ids,...period,metrics:yta.BASIC_METRICS});if(cur.error)return ytFail(cur);
-    const totals=yta.friendlyTotals(yta.rowsOf(cur)[0]);
+
+[executed on device: instance-20260604-1918 (a7765734-3129-4de5-be49-77d0c678b0cf)]    const totals=yta.friendlyTotals(yta.rowsOf(cur)[0]);
     const out:Record<string,unknown>={channel:args.channelId??'MINE',period:{start:period.startDate,end:period.endDate,days:period.days},totals};
     const prev=yta.previousPeriod(period);
     const [p,f,d]=await Promise.all([
@@ -875,7 +899,8 @@ async function handler(req:NextRequest){
    };
    const profileOut=(p:sci.AuthorProfile)=>({openAlexId:p.id,name:p.name,orcid:p.orcid,institution:p.institution,country:p.country,works:p.works,citations:p.citations,hIndex:p.hIndex,i10Index:p.i10Index,topics:p.topics,lastYears:p.lastYears,alternativeNames:p.alternativeNames.length?p.alternativeNames:undefined,url:p.url});
 
-   server.registerTool('science_author_works',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Complete publication list of a researcher',
+
+[executed on device: instance-20260604-1918 (a7765734-3129-4de5-be49-77d0c678b0cf)]   server.registerTool('science_author_works',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Complete publication list of a researcher',
     description:'ALL publications of one researcher, found by identity (not by text search): give an OpenAlex author ID (A…), an ORCID (0000-0002-…), a Semantic Scholar author ID, or a name (a name is used only if exactly one profile matches; otherwise candidates are returned so the user can choose). Works from OpenAlex plus HAL deposits linked to the ORCID; preprint/published versions and duplicates are merged; newest first by default; filter by years or topic words. Returns one page (pageSize) plus stable export links to the COMPLETE list in BibTeX, RIS (Zotero/EndNote), CSV, Markdown (NotebookLM) and CSL-JSON that always regenerate the up-to-date list. To save one in Drive, pass its link to drive_upload_file (source.type="url"). If OpenAlex split one person into several profiles, pass the extra IDs in extraAuthorIds.',
     inputSchema:z.object({author:z.string().min(2).max(200).describe('OpenAlex ID (A…), ORCID, Semantic Scholar author ID or full name'),extraAuthorIds:z.array(z.string().regex(/^A\d{4,12}$/i)).max(4).optional(),
      sort:workSort,from:z.string().regex(/^\d{4}(-\d{2}-\d{2})?$/).optional().describe('Year or date'),to:z.string().regex(/^\d{4}(-\d{2}-\d{2})?$/).optional(),
@@ -1292,3 +1317,5 @@ export const POST=handler;
 // Some remote connector validators probe HEAD before negotiating MCP over POST.
 // This confirms route existence only; it does not imply OAuth or private Google tools are enabled.
 export function HEAD(){return new NextResponse(null,{status:200,headers:{'Cache-Control':'no-store','Allow':'HEAD, POST, GET'}})}
+
+[executed on device: instance-20260604-1918 (a7765734-3129-4de5-be49-77d0c678b0cf)]
