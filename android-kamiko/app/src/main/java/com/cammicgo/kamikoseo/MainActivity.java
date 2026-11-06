@@ -1287,7 +1287,7 @@ public class MainActivity extends Activity {
   private void liInject(String id, java.io.File file, String name, String mime, JSONObject base, boolean revealed, LiJson done) {
     boolean image = mime.startsWith("image/");
     String js = "const image=" + image + ";const inputs=[...document.querySelectorAll('input[type=file]')];"
-      + "const score=e=>{const a=(e.accept||'').toLowerCase();let s=0;if(e.disabled)return -9;const imageOnly=/image/.test(a)&&!/pdf|doc|text|application|video|\\*/.test(a);if(image){if(!imageOnly&&(!a||/image|\\*/.test(a)))s+=6;else if(!imageOnly)s+=4;else s+=2;}else{if(/pdf|doc|text|application|\\*/.test(a))s+=5;else if(!a)s+=2;else if(imageOnly)s-=5;}const ed=findEditor();if(ed&&regionOf(ed).contains(e))s+=3;return s};"
+      + "const score=e=>{const a=(e.accept||'').toLowerCase();let s=0;if(e.disabled)return -9;if(image){if(/image/.test(a))s+=5;else if(!a||a.includes('*'))s+=2;}else{if(/pdf|doc|text|application|\\*/.test(a))s+=5;else if(!a)s+=2;else if(/^image\\//.test(a)&&!a.includes(','))s-=5;}const ed=findEditor();if(ed&&regionOf(ed).contains(e))s+=3;return s};"
       + "const ranked=inputs.map(e=>({e,s:score(e)})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s);"
       + "const diag=inputs.map(e=>({accept:e.accept||'',multiple:e.multiple,visible:visible(e)}));"
       + "if(!ranked.length)return JSON.stringify({injected:false,reason:'no_file_input',inputs:diag});"
@@ -1300,7 +1300,7 @@ public class MainActivity extends Activity {
       if (r.optBoolean("injected")) { liStep(id, "verifying"); liWaitEvidence(id, name, base, 25, "datatransfer", r, file, mime, done); return; }
       if (!revealed && "no_file_input".equals(r.optString("reason"))) {
         // Some layouts create the input only once the attach menu is open: open it, then try again.
-        liEval("const re=" + "/attach|joindre|pi\\u00e8ce|piece|fichier|file|trombone|paperclip/" + ";"
+        liEval("const re=" + (image ? "/photo|image|picture|galerie|gallery/" : "/attach|joindre|document|fichier|file|pi\\u00e8ce/") + ";"
           + "const m=[...document.querySelectorAll('button,[role=button]')].filter(visible).filter(b=>re.test(norm(b.getAttribute('aria-label')||b.title||b.innerText)));"
           + "if(m.length)m[0].click();return JSON.stringify({clicked:m.length});",
           c -> ui.postDelayed(() -> liInject(id, file, name, mime, base, true, done), 900));
@@ -1312,7 +1312,7 @@ public class MainActivity extends Activity {
   /** Fallback: a real tap on LinkedIn's attach button opens the chooser, which receives the cached file. */
   private void liChooserFallback(String id, java.io.File file, String name, String mime, JSONObject base, JSONObject diag, LiJson done) {
     boolean image = mime.startsWith("image/");
-    liEval("const re=" + "/attach|joindre|pi\\u00e8ce|piece|fichier|file|trombone|paperclip/" + ";"
+    liEval("const re=" + (image ? "/photo|image|picture|galerie|gallery/" : "/attach|joindre|document|fichier|file|pi\\u00e8ce/") + ";"
       + "const all=[...document.querySelectorAll('button,[role=button],label')].filter(visible);"
       + "const m=all.filter(b=>re.test(norm(b.getAttribute('aria-label')||b.title||b.innerText)));"
       + "if(!m.length)return JSON.stringify({found:0,labels:all.map(b=>norm(b.getAttribute('aria-label')||b.title||b.innerText).slice(0,40)).filter(Boolean).slice(0,40)});"
