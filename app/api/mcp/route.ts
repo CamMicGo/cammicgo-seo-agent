@@ -240,8 +240,28 @@ async function handler(req:NextRequest){
     if(!response.ok)return asText({status:'error',error:'Private storage upload failed',httpStatus:response.status});
     return asText({status:'staged',attachmentId,kind,filename:filename.slice(0,180),mime,bytes:bytes.length,storagePath,attachedToLinkedIn:false,messageSent:false});
    };
-   server.registerTool('linkedin_upload_image',{title:'Stage LinkedIn image in private storage',description:'Upload a JPEG, PNG, WebP or GIF (max 5 MB) from base64 to user-private CamMicGo storage. Does not attach or send a message.',inputSchema:z.object({filename:z.string().min(1).max(180),mime:z.enum(['image/png','image/jpeg','image/webp','image/gif']),base64:z.string().min(4).max(6_800_000)})},async a=>linkedinAttachment('image',a.filename,a.mime,a.base64));
-   server.registerTool('linkedin_upload_document',{title:'Stage LinkedIn document in private storage',description:'Upload PDF, DOC, DOCX or TXT (max 5 MB) from base64 to user-private CamMicGo storage. Does not attach or send a message.',inputSchema:z.object({filename:z.string().min(1).max(180),mime:z.enum(['application/pdf','text/plain','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document']),base64:z.string().min(4).max(6_800_000)})},async a=>linkedinAttachment('document',a.filename,a.mime,a.base64));
+   // Accept a short-lived HTTPS file URL as an alternative to passing multi-megabyte base64 through MCP.
+   // Only trusted ChatGPT file-host domains are accepted; no arbitrary URL fetch or redirects.
+   const linkedinAttachmentFromUrl=async(kind:'image'|'document',filename:string,mime:string,sourceUrl:string)=>{
+    let parsed:URL;
+    try{parsed=new URL(sourceUrl);}catch{return asText({status:'error',error:'Invalid source URL'});}
+    if(parsed.protocol!=='https:'||parsed.port||parsed.username||parsed.password||!['sdmntprnortheu.oaiusercontent.com','files.oaiusercontent.com'].includes(parsed.hostname))
+     return asText({status:'error',error:'Only approved HTTPS ChatGPT file URLs are accepted'});
+    try{
+     const response=await fetch(parsed.toString(),{redirect:'error',signal:AbortSignal.timeout(20000)});
+     if(!response.ok)return asText({status:'error',error:'File URL unavailable',httpStatus:response.status});
+     const declared=Number(response.headers.get('content-length')||'0');
+     if(declared>5_000_000)return asText({status:'error',error:'File exceeds 5 MB'});
+     const reader=response.body?.getReader();
+     if(!reader)return asText({status:'error',error:'Empty file response'});
+     const chunks:Uint8Array[]=[];let size=0;
+     while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>5_000_000){await reader.cancel();return asText({status:'error',error:'File exceeds 5 MB'});}chunks.push(value);}
+     const bytes=Buffer.concat(chunks.map(c=>Buffer.from(c)));
+     return linkedinAttachment(kind,filename,mime,bytes.toString('base64'));
+    }catch{return asText({status:'error',error:'Unable to retrieve source file'});}
+   };
+   server.registerTool('linkedin_upload_image',{title:'Stage LinkedIn image in private storage',description:'Stage an image (max 5 MB) using either base64 or a short-lived HTTPS ChatGPT file URL (sourceUrl). Does not attach or send.',inputSchema:z.object({filename:z.string().min(1).max(180),mime:z.enum(['image/png','image/jpeg','image/webp','image/gif']),base64:z.string().min(4).max(6_800_000).optional(),sourceUrl:z.string().url().max(3000).optional()}).refine(a=>Boolean(a.base64)!==Boolean(a.sourceUrl),{message:'Provide exactly one of base64 or sourceUrl'})},async a=>a.sourceUrl?linkedinAttachmentFromUrl('image',a.filename,a.mime,a.sourceUrl):linkedinAttachment('image',a.filename,a.mime,a.base64!));
+   server.registerTool('linkedin_upload_document',{title:'Stage LinkedIn document in private storage',description:'Stage a document (max 5 MB) using either base64 or a short-lived HTTPS ChatGPT file URL (sourceUrl). Does not attach or send.',inputSchema:z.object({filename:z.string().min(1).max(180),mime:z.enum(['application/pdf','text/plain','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document']),base64:z.string().min(4).max(6_800_000).optional(),sourceUrl:z.string().url().max(3000).optional()}).refine(a=>Boolean(a.base64)!==Boolean(a.sourceUrl),{message:'Provide exactly one of base64 or sourceUrl'})},async a=>a.sourceUrl?linkedinAttachmentFromUrl('document',a.filename,a.mime,a.sourceUrl):linkedinAttachment('document',a.filename,a.mime,a.base64!));
    server.registerTool('linkedin_attachment_link',{title:'Get temporary download link for staged LinkedIn attachment',annotations:{readOnlyHint:true},description:'Sign a five-minute private download link for an attachment owned by this user. This does not attach to LinkedIn.',inputSchema:z.object({attachmentId:z.string().uuid(),mime:z.enum(['image/png','image/jpeg','image/webp','image/gif','application/pdf','text/plain','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document'])})},async a=>{
     const ext:Record<string,string>={'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif','application/pdf':'pdf','text/plain':'txt','application/msword':'doc','application/vnd.openxmlformats-officedocument.wordprocessingml.document':'docx'};
     const key=process.env.SUPABASE_SECRET_KEY;
