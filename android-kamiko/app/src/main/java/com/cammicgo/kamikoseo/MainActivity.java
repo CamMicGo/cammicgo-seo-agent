@@ -1411,7 +1411,7 @@ public class MainActivity extends Activity {
       + "const kept=[...document.querySelectorAll('textarea,[contenteditable=\"true\"],[contenteditable=\"\"],[role=\"textbox\"],input[type=\"text\"],input:not([type])')].some(e=>norm(e.matches('textarea,input')?e.value:e.innerText).includes(t));"
       + "if(!kept)return JSON.stringify({error:'The text disappeared when the file was attached: nothing was sent'});"
       + "const all=[...document.querySelectorAll('button,[role=\"button\"],input[type=\"submit\"]')].filter(visible);"
-      + "const buttons=all.filter(b=>/^(send|envoyer|send message|envoyer le message)$/i.test((b.getAttribute('aria-label')||b.getAttribute('title')||b.innerText||b.value||'').trim()));"
+      + "const buttons=all.filter(b=>/^(send|envoyer)( (le |un |a |the )?message)?$/i.test((b.getAttribute('aria-label')||b.getAttribute('title')||b.innerText||b.value||'').trim()));"
       + "if(buttons.length!==1)return JSON.stringify({error:'Send button ambiguous or missing: nothing was sent',matches:buttons.length,buttons:all.map(b=>(b.getAttribute('aria-label')||b.title||b.innerText||'').trim().slice(0,40)).filter(Boolean).slice(0,30)});"
       + "if(buttons[0].disabled||buttons[0].getAttribute('aria-disabled')==='true')return JSON.stringify({error:'Send button disabled: nothing was sent'});"
       + "const before=items().length;buttons[0].click();return JSON.stringify({clicked:true,before});";
@@ -1433,7 +1433,7 @@ public class MainActivity extends Activity {
       + "if(ev.progress>0)return JSON.stringify({error:'LinkedIn is still uploading: nothing was sent'});"
       + "const editor=findEditor();if(!editor)return JSON.stringify({error:'Message composer not found',fields:[...document.querySelectorAll('textarea,[contenteditable],[role=\\\"textbox\\\"],input')].filter(visible).slice(0,8).map(e=>({tag:e.tagName.toLowerCase(),type:e.type||'',label:(e.getAttribute('aria-label')||e.getAttribute('placeholder')||'').slice(0,60)}))});"
       + "const scope=document.querySelector('main')||document;"
-      + "const buttons=[...scope.querySelectorAll('button,[role=\"button\"],input[type=\"submit\"]')].filter(visible).filter(b=>/^(send|envoyer|send message|envoyer le message)$/i.test((b.getAttribute('aria-label')||b.getAttribute('title')||b.innerText||b.value||'').trim()));"
+      + "const buttons=[...scope.querySelectorAll('button,[role=\"button\"],input[type=\"submit\"]')].filter(visible).filter(b=>/^(send|envoyer)( (le |un |a |the )?message)?$/i.test((b.getAttribute('aria-label')||b.getAttribute('title')||b.innerText||b.value||'').trim()));"
       + "if(buttons.length!==1)return JSON.stringify({error:'Send button ambiguous or missing',matches:buttons.length});"
       + "const before=items().length;editor.focus();"
       + "if(editor.matches('textarea,input')){const p=editor.matches('textarea')?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(p,'value').set.call(editor,msg);}else editor.textContent=msg;"
