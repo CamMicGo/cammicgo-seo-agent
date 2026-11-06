@@ -43,3 +43,14 @@ test('cleanFileName keeps the name, drops paths and forces the extension', () =>
  assert.equal(cf.cleanFileName(null,'jpg','image'),'image.jpg');
  assert.ok(cf.cleanFileName('a'.repeat(300),'png').length<=114);
 });
+
+import {jobState} from '../lib/linkedin.ts';
+test('LinkedIn job states are explicit: queued, running, stalled, expired', () => {
+ const now=Date.parse('2026-11-06T12:00:00Z');
+ assert.equal(jobState({status:'pending',error:null,claimed_at:null},now),'queued');
+ assert.equal(jobState({status:'claimed',error:null,claimed_at:'2026-11-06T11:59:00Z'},now),'running');
+ assert.equal(jobState({status:'claimed',error:null,claimed_at:'2026-11-06T11:50:00Z'},now),'stalled');
+ assert.equal(jobState({status:'error',error:'expired: the phone never picked up',claimed_at:null},now),'expired');
+ assert.equal(jobState({status:'error',error:'Message composer not found',claimed_at:'2026-11-06T11:59:00Z'},now),'error');
+ assert.equal(jobState({status:'done',error:null,claimed_at:'2026-11-06T11:59:00Z'},now),'done');
+});

@@ -58,6 +58,7 @@ public final class RelayClient {
       JSONObject progress = res.optJSONObject("progress");
       prefs(c).edit().putString("progress", progress == null ? null : progress.toString())
           .putLong("progressAt", System.currentTimeMillis()).apply();
+      notifyLinkedIn(c, res.optJSONObject("linkedin"));
       return res;
     } catch (IOException e) {
       throw e;
@@ -144,5 +145,63 @@ public final class RelayClient {
       while ((n = s.read(buf)) != -1) { b.write(buf, 0, n); if (b.size() > 1_000_000) throw new IOException("Réponse trop volumineuse."); }
       return new String(b.toByteArray(), StandardCharsets.UTF_8);
     }
+  }
+
+  /**
+   * A LinkedIn command waits on the server (seen without claiming it). LinkedIn commands only run in the open
+   * app, with "LinkedIn MCP" allowed: show the waiting command in the app's list and, when the app cannot pick
+   * it up by itself, post a notification that opens the LinkedIn tab.
+   */
+  static void notifyLinkedIn(Context c, JSONObject linkedin) {
+    try {
+      android.app.NotificationManager nm = (android.app.NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+      JSONObject next = linkedin == null ? null : linkedin.optJSONObject("next");
+      // Waiting commands older than the server deadline (10 min) were never picked up: show them as expired.
+      android.content.SharedPreferences hp = prefs(c);
+      org.json.JSONArray hist = new org.json.JSONArray(hp.getString("linkedinAssistantHistory", "[]"));
+      boolean changed = false;
+      for (int i = 0; i < hist.length(); i++) {
+        JSONObject o = hist.optJSONObject(i);
+        if (o != null && "waiting".equals(o.optString("status")) && System.currentTimeMillis() - o.optLong("at") > 10 * 60_000L
+            && (next == null || !next.optString("id").equals(o.optString("id")))) { o.put("status", "expired"); changed = true; }
+      }
+      if (changed) hp.edit().putString("linkedinAssistantHistory", hist.toString()).apply();
+      if (next == null) { if (nm != null) nm.cancel(4243); return; }
+      String id = next.optString("id");
+      String op = next.optString("operation");
+      String target = next.isNull("participant") ? "" : next.optString("participant", "");
+      String file = next.isNull("file") ? "" : next.optString("file", "");
+      String agent = next.isNull("agentName") ? "" : next.optString("agentName", "");
+      android.content.SharedPreferences p = prefs(c);
+      org.json.JSONArray list = new org.json.JSONArray(p.getString("linkedinAssistantHistory", "[]"));
+      boolean known = false;
+      for (int i = 0; i < list.length(); i++) { JSONObject o = list.optJSONObject(i); if (o != null && id.equals(o.optString("id"))) known = true; }
+      if (!known) {
+        JSONObject item = new JSONObject();
+        item.put("id", id); item.put("operation", op); item.put("agentName", agent); item.put("status", "waiting");
+        item.put("error", ""); item.put("at", System.currentTimeMillis());
+        if (!target.isEmpty()) item.put("target", target.length() > 80 ? target.substring(0, 80) : target);
+        if (!file.isEmpty()) item.put("file", file);
+        list.put(item);
+        p.edit().putString("linkedinAssistantHistory", list.toString()).apply();
+      }
+      if (nm == null || (MainActivity.foreground && MainActivity.linkedinControlOn)) return;
+      if (id.equals(p.getString("linkedinNotified", ""))) return;
+      p.edit().putString("linkedinNotified", id).apply();
+      boolean fr = "fr".equals(I18n.code(c));
+      if (android.os.Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel("linkedin") == null)
+        nm.createNotificationChannel(new android.app.NotificationChannel("linkedin", "LinkedIn MCP", android.app.NotificationManager.IMPORTANCE_HIGH));
+      android.content.Intent open = new android.content.Intent(c, MainActivity.class).putExtra("openLinkedIn", true)
+          .addFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP | android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP);
+      android.app.PendingIntent pi = android.app.PendingIntent.getActivity(c, 7, open, android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
+      String what = (agent.isEmpty() ? (fr ? "Votre assistant" : "Your assistant") : agent) + " · LinkedIn " + op
+          + (target.isEmpty() ? "" : " · " + target) + (file.isEmpty() ? "" : " · " + file);
+      String how = fr ? "Ouvrez CamMicGo (onglet LinkedIn, « LinkedIn MCP » autorisé) pour l'exécuter. Sans cela, la demande expire dans 10 minutes sans rien faire."
+          : "Open CamMicGo (LinkedIn tab, \"LinkedIn MCP\" allowed) to run it. Otherwise it expires in 10 minutes without doing anything.";
+      android.app.Notification.Builder b = android.os.Build.VERSION.SDK_INT >= 26 ? new android.app.Notification.Builder(c, "linkedin") : new android.app.Notification.Builder(c);
+      nm.notify(4243, b.setSmallIcon(android.R.drawable.stat_notify_chat).setContentTitle(fr ? "Demande LinkedIn en attente" : "LinkedIn request waiting")
+          .setContentText(what).setStyle(new android.app.Notification.BigTextStyle().bigText(what + "\n" + how))
+          .setAutoCancel(true).setContentIntent(pi).build());
+    } catch (Exception ignored) { /* notification is best effort */ }
   }
 }

@@ -15,6 +15,8 @@ export async function GET(req:NextRequest){
   const job=claiming&&!notebook?await claimJob(device):null;
   const transcriptAgent=job?await sb<Array<{agent_name:string|null}>>('/rest/v1/cmg_transcript_jobs?id=eq.'+job.id+'&user_id=eq.'+device.user_id+'&select=agent_name').then(rows=>rows[0]?.agent_name||'Assistant inconnu').catch(()=> 'Assistant inconnu'):null;
   const progress=await deviceProgress(device.user_id).catch(()=>null);
-  return NextResponse.json({device:{id:device.id,name:device.name},job:notebook?{id:notebook.id,type:'notebooklm_'+notebook.operation,...notebook.payload}:job?{id:job.id,type:'transcript',videoId:job.video_id,language:job.language,agentName:transcriptAgent}:null,progress,pollAfterMs:job?1500:4000},{headers:noStore});
+  // A LinkedIn command waiting for the app (peek only, never claimed here): the background relay notifies the user.
+  const liNext=await import('@/lib/linkedin-relay').then(m=>m.peekLinkedIn(device.user_id)).catch(()=>null);
+  return NextResponse.json({device:{id:device.id,name:device.name},linkedin:liNext?{next:{id:liNext.id,operation:liNext.operation,participant:liNext.participant,file:liNext.file,agentName:liNext.agent,createdAt:liNext.created_at,expiresAt:liNext.expires_at}}:{next:null},job:notebook?{id:notebook.id,type:'notebooklm_'+notebook.operation,...notebook.payload}:job?{id:job.id,type:'transcript',videoId:job.video_id,language:job.language,agentName:transcriptAgent}:null,progress,pollAfterMs:job?1500:4000},{headers:noStore});
  }catch(e){return NextResponse.json({error:e instanceof Error?e.message:'Relay unavailable'},{status:503,headers:noStore})}
 }

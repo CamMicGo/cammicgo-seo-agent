@@ -116,18 +116,34 @@ public class MainActivity extends Activity {
   private LinearLayout linkedinActions;
   private boolean linkedinMcpEnabled = false;
   private boolean linkedinPollBusy = false;
+  /** Read by the background relay: notify only when the app cannot pick LinkedIn commands up itself. */
+  static volatile boolean foreground = false, linkedinControlOn = false;
+  private String linkedinBusyJob;
+  private long linkedinBusySince;
   private Button linkedinMcpControlButton;
   private String linkedinLastPollError = "";
   private final Runnable linkedinPoll = new Runnable() {
     @Override public void run() {
+      linkedinControlOn = linkedinMcpEnabled;
       if (!linkedinMcpEnabled || linkedinWeb == null) return;
+      // Watchdog: a job that never reports back (page frozen, callback lost) must not block the queue forever.
+      if (linkedinPollBusy && linkedinBusyJob != null && System.currentTimeMillis() - linkedinBusySince > 240_000) {
+        String stuck = linkedinBusyJob;
+        liDeleteJobFiles(stuck);
+        finishLinkedInJob(stuck, null, "Interrupted on the phone: no confirmed result. Check the LinkedIn conversation before trying again.");
+      }
       if (!linkedinPollBusy && RelayClient.token(MainActivity.this) != null) {
         linkedinPollBusy = true;
         worker.execute(() -> {
           try {
             JSONObject response = new JSONObject(RelayClient.request("GET", "/api/devices/linkedin", RelayClient.token(MainActivity.this), null));
             JSONObject job = response.optJSONObject("job");
-            if (job != null) ui.post(() -> { recordLinkedInActivity(job.optString("id"), job.optString("operation"), "received", "", job.optString("agentName", "")); executeLinkedInJob(job); });
+            if (job != null) ui.post(() -> {
+              linkedinBusyJob = job.optString("id"); linkedinBusySince = System.currentTimeMillis();
+              recordLinkedInActivity(job.optString("id"), job.optString("operation"), "received", "", job.optString("agentName", ""));
+              liExtras(job.optString("id"), job.optString("participant", job.optString("keywords", "")), job.optString("attachmentName", ""));
+              executeLinkedInJob(job);
+            });
             else ui.post(() -> linkedinPollBusy = false);
           } catch (Exception e) { ui.post(() -> { linkedinLastPollError = e.toString(); linkedinPollBusy = false; }); }
         });
@@ -1166,8 +1182,9 @@ public class MainActivity extends Activity {
     if (participant.length() < 2 || participant.length() > 150) { finishLinkedInJob(id, null, "Recipient required"); return; }
     if ("send".equals(op) && (text.isEmpty() || text.length() > 3000)) { finishLinkedInJob(id, null, "Invalid text"); return; }
     if ("attach".equals(op) && !withFile) { finishLinkedInJob(id, null, "No file given"); return; }
+    liStep(id, "opening");
     liEnsureThread(id, participant, () -> {
-      if (!withFile) { liSend(id, participant, text, null, null); return; }
+      if (!withFile) { liStep(id, "sending"); liSend(id, participant, text, null, null); return; }
       Runnable attachThenFinish = () -> liDownload(id, job, file -> liAttach(id, file, job.optString("attachmentName"), job.optString("attachmentMime"), attached -> {
         if (!attached.optBoolean("attached")) {
           // Leave the composer as it was: the text typed for this message is removed again.
@@ -1183,7 +1200,7 @@ public class MainActivity extends Activity {
       }));
       // LinkedIn mobile covers the composer with a full-screen preview once a file is attached:
       // the text is written and checked first, while the composer is still visible.
-      if ("send".equals(op)) liTypeText(id, participant, text, attachThenFinish);
+      if ("send".equals(op)) { liStep(id, "writing"); liTypeText(id, participant, text, attachThenFinish); }
       else attachThenFinish.run();
     });
   }
@@ -1216,6 +1233,7 @@ public class MainActivity extends Activity {
     String name = job.optString("attachmentName", "file").replaceAll("[\\\\/\\u0000-\\u001f:*?\"<>|]", " ").trim();
     long expected = job.optLong("attachmentBytes", -1);
     String sha = job.optString("attachmentSha256", "").toLowerCase();
+    liStep(id, "downloading");
     if (!java.util.Arrays.asList(LI_ATTACH_TYPES).contains(mime) || expected < 1 || expected > 5_000_000 || !sha.matches("[0-9a-f]{64}") || name.isEmpty()) {
       liFail(id, "Invalid attachment description", null); return;
     }
@@ -1252,6 +1270,7 @@ public class MainActivity extends Activity {
 
   /** Puts the file into LinkedIn's composer and waits until LinkedIn shows it, uploaded. */
   private void liAttach(String id, java.io.File file, String name, String mime, LiJson done) {
+    liStep(id, "attaching");
     liEval("return JSON.stringify(evidence(" + q(name) + "));", base -> {
       String b64;
       try { b64 = android.util.Base64.encodeToString(java.nio.file.Files.readAllBytes(file.toPath()), android.util.Base64.NO_WRAP); }
@@ -1278,7 +1297,7 @@ public class MainActivity extends Activity {
       + "const t=ranked[0].e;t.files=dt.files;t.dispatchEvent(new Event('input',{bubbles:true}));t.dispatchEvent(new Event('change',{bubbles:true}));"
       + "return JSON.stringify({injected:t.files.length===1,accept:t.accept||'',inputs:diag});";
     liEval(js, r -> {
-      if (r.optBoolean("injected")) { liWaitEvidence(id, name, base, 25, "datatransfer", r, file, mime, done); return; }
+      if (r.optBoolean("injected")) { liStep(id, "verifying"); liWaitEvidence(id, name, base, 25, "datatransfer", r, file, mime, done); return; }
       if (!revealed && "no_file_input".equals(r.optString("reason"))) {
         // Some layouts create the input only once the attach menu is open: open it, then try again.
         liEval("const re=" + (image ? "/photo|image|picture|galerie|gallery/" : "/attach|joindre|document|fichier|file|pi\\u00e8ce/") + ";"
@@ -1381,6 +1400,7 @@ public class MainActivity extends Activity {
   }
   /** Sends once the file is shown: the text must still be in the composer (even if the preview hides it). */
   private void liClickSend(String id, String participant, String text, java.io.File file, JSONObject attached) {
+    liStep(id, "sending");
     String name = attached.optString("name");
     String js = "const msg=" + q(text) + ",fname=" + q(name) + ";"
       + "const ev=evidence(fname);"
@@ -1599,6 +1619,7 @@ public class MainActivity extends Activity {
 
   private void finishLinkedInJob(String id, JSONObject result, String error) {
     recordLinkedInActivity(id, "", error == null ? "done" : "failed", error == null ? "" : error, "");
+    if (id != null && id.equals(linkedinBusyJob)) linkedinBusyJob = null;
     linkedinPollBusy = false;
     worker.execute(() -> {
       try {
@@ -1611,6 +1632,24 @@ public class MainActivity extends Activity {
       } catch (Exception e) { android.util.Log.w("CamMicGoLinkedIn", "Relay result failed", e); }
     });
   }
+
+  /** Recipient (or search words) and file name shown in the activity list; never message text. */
+  private void liExtras(String id, String target, String file) {
+    try {
+      SharedPreferences prefs = RelayClient.prefs(this);
+      JSONArray list = new JSONArray(prefs.getString("linkedinAssistantHistory", "[]"));
+      for (int i = 0; i < list.length(); i++) {
+        JSONObject o = list.optJSONObject(i);
+        if (o == null || !id.equals(o.optString("id"))) continue;
+        if (target != null && !target.isEmpty()) o.put("target", target.length() > 80 ? target.substring(0, 80) : target);
+        if (file != null && !file.isEmpty()) o.put("file", file);
+      }
+      prefs.edit().putString("linkedinAssistantHistory", list.toString()).apply();
+      ui.post(() -> { historyShown = null; if (historyList != null) refreshHistory(prefs); });
+    } catch (Exception ignored) {}
+  }
+  /** Current step of a running job, shown live in the activity list. */
+  private void liStep(String id, String step) { recordLinkedInActivity(id, "", step, "", ""); }
 
   /** Only operation metadata is retained, never LinkedIn messages or credentials. */
   private void recordLinkedInActivity(String id, String operation, String status, String error, String agentName) {
@@ -2401,6 +2440,17 @@ public class MainActivity extends Activity {
     String[] pending = {"Pending","En attente","Pendiente","Ausstehend","Pendente","In attesa","Ожидание","等待中","保留中","대기 중","قيد الانتظار"};
     String[] working = {"In progress","En cours","En curso","In Bearbeitung","Em andamento","In corso","Выполняется","进行中","処理中","진행 중","قيد التنفيذ"};
     int lang = I18n.index(this);
+    String[][] steps = {
+      {"waiting", "Waiting for the app", "En attente de l'application", "Esperando la app", "Wartet auf die App", "Aguardando o app", "In attesa dell'app", "Ожидает приложение", "等待应用", "アプリ待ち", "앱 대기 중", "بانتظار التطبيق"},
+      {"received", "Received by Android", "Reçue par Android", "Recibida por Android", "Von Android empfangen", "Recebida pelo Android", "Ricevuta da Android", "Получено Android", "Android 已接收", "Android が受信", "Android 수신", "استلمها Android"},
+      {"opening", "Opening the conversation", "Ouverture de la conversation", "Abriendo la conversación", "Unterhaltung wird geöffnet", "Abrindo a conversa", "Apertura della conversazione", "Открытие беседы", "正在打开对话", "会話を開いています", "대화 여는 중", "فتح المحادثة"},
+      {"downloading", "Downloading the file", "Téléchargement du fichier", "Descargando el archivo", "Datei wird geladen", "Baixando o arquivo", "Download del file", "Загрузка файла", "正在下载文件", "ファイルを取得中", "파일 다운로드 중", "تنزيل الملف"},
+      {"attaching", "Attaching the file", "Ajout de la pièce jointe", "Adjuntando el archivo", "Anhang wird hinzugefügt", "Anexando o arquivo", "Aggiunta dell'allegato", "Прикрепление файла", "正在添加附件", "添付中", "첨부 중", "إرفاق الملف"},
+      {"verifying", "Checking the attachment", "Vérification de la pièce jointe", "Comprobando el adjunto", "Anhang wird geprüft", "Verificando o anexo", "Verifica dell'allegato", "Проверка вложения", "正在检查附件", "添付を確認中", "첨부 확인 중", "التحقق من المرفق"},
+      {"writing", "Writing the message", "Rédaction du message", "Escribiendo el mensaje", "Nachricht wird geschrieben", "Escrevendo a mensagem", "Scrittura del messaggio", "Ввод сообщения", "正在输入消息", "メッセージ入力中", "메시지 작성 중", "كتابة الرسالة"},
+      {"sending", "Sending the message", "Envoi du message", "Enviando el mensaje", "Nachricht wird gesendet", "Enviando a mensagem", "Invio del messaggio", "Отправка сообщения", "正在发送消息", "送信中", "메시지 전송 중", "إرسال الرسالة"},
+      {"expired", "Expired (never picked up)", "Expirée (jamais récupérée)", "Caducada (no recogida)", "Abgelaufen (nie abgeholt)", "Expirada (não recebida)", "Scaduta (mai ricevuta)", "Истекло (не получено)", "已过期（未接收）", "期限切れ（未受信）", "만료됨(수신 안 됨)", "منتهية (لم تُستلم)"}};
+    for (String[] row : steps) if (row[0].equals(status)) return row[1 + Math.max(0, Math.min(10, lang))];
     if ("done".equals(status) || "completed".equals(status)) return completed[lang];
     if ("failed".equals(status) || "error".equals(status)) return failed[lang];
     if ("pending".equals(status) || "queued".equals(status) || "received".equals(status)) return pending[lang];
@@ -2442,7 +2492,9 @@ public class MainActivity extends Activity {
         if (job == null) continue;
         JSONObject entry = new JSONObject();
         entry.put("type", "linkedin_mcp");
-        entry.put("title", "LinkedIn · " + job.optString("operation", "demande"));
+        String target = job.optString("target", "");
+        entry.put("title", "LinkedIn · " + job.optString("operation", "demande") + (target.isEmpty() ? "" : " · " + target));
+        entry.put("file", job.optString("file", ""));
         entry.put("status", job.optString("status"));
         entry.put("at", job.optLong("at"));
         entry.put("error", job.optString("error", ""));
@@ -2481,7 +2533,7 @@ public class MainActivity extends Activity {
       if (e == null) continue;
       String state = e.optString("status");
       boolean ok = "done".equals(state);
-      boolean pending = "pending".equals(state) || "received".equals(state) || "queued".equals(state) || "running".equals(state) || "in_progress".equals(state);
+      boolean pending = java.util.Arrays.asList("pending", "received", "queued", "running", "in_progress", "waiting", "opening", "downloading", "attaching", "verifying", "writing", "sending").contains(state);
       boolean notebookEntry = "notebooklm".equals(e.optString("type"));
       boolean mcpDebugEntry = "mcp_debug".equals(e.optString("type"));
       boolean linkedinEntry = "linkedin_mcp".equals(e.optString("type"));
@@ -2526,7 +2578,7 @@ public class MainActivity extends Activity {
       origin.setCompoundDrawables(providerLogo, null, null, null);
       origin.setCompoundDrawablePadding(dp(5));
       String when = DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(e.optLong("at")));
-      String detail = linkedinEntry ? ("LinkedIn MCP · " + localizedJobStatus(e.optString("status")) + " · " + when) : mcpDebugEntry ? ("MCP HTTP · " + when + " · " + ("fr".equals(I18n.code(this)) ? "Appuyer pour déboguer" : "Tap for diagnostics")) : notebookEntry ? ("NotebookLM · " + localizedJobStatus(e.optString("status")) + " · " + when) : ok ? t("segments", e.optInt("segments")) + " · " + when : when + " · " + e.optString("error", t("failed"));
+      String detail = linkedinEntry ? (localizedJobStatus(e.optString("status")) + " · " + when + (e.optString("file").isEmpty() ? "" : " · " + e.optString("file")) + (e.optString("error").isEmpty() ? "" : " · " + e.optString("error"))) : mcpDebugEntry ? ("MCP HTTP · " + when + " · " + ("fr".equals(I18n.code(this)) ? "Appuyer pour déboguer" : "Tap for diagnostics")) : notebookEntry ? ("NotebookLM · " + localizedJobStatus(e.optString("status")) + " · " + when) : ok ? t("segments", e.optInt("segments")) + " · " + when : when + " · " + e.optString("error", t("failed"));
       TextView d = text(texts, detail, 12, ok || pending ? MUTED : RED, false);
       d.setMaxLines(1); d.setEllipsize(TextUtils.TruncateAt.END);
       row.addView(texts, new LinearLayout.LayoutParams(0, -2, 1));
@@ -2552,6 +2604,7 @@ public class MainActivity extends Activity {
 
   @Override protected void onResume() {
     super.onResume();
+    foreground = true;
     historyShown = null;
     // A persisted connected=true flag does not mean Android kept the service alive.
     SharedPreferences p=RelayClient.prefs(this);
@@ -2566,6 +2619,7 @@ public class MainActivity extends Activity {
     }
   }
   @Override protected void onPause() {
+    foreground = false;
     ui.removeCallbacks(refresher);
     ui.removeCallbacks(linkedinPoll);
     // Do not revoke the user's explicit consent on tab switches or temporary pauses.
@@ -2579,6 +2633,13 @@ public class MainActivity extends Activity {
   @Override protected void onDestroy() { worker.shutdownNow(); super.onDestroy(); }
 
   private void handleShare(Intent intent) {
+    // Tapped the "LinkedIn command waiting" notification: show the LinkedIn tab and its control.
+    if (intent != null && intent.getBooleanExtra("openLinkedIn", false)) {
+      intent.removeExtra("openLinkedIn");
+      selectTab(3);
+      if (!linkedinMcpEnabled) Toast.makeText(this, "fr".equals(I18n.code(this)) ? "Autorisez « LinkedIn MCP » pour exécuter la demande de l'assistant." : "Allow \"LinkedIn MCP\" to run the assistant's request.", Toast.LENGTH_LONG).show();
+      return;
+    }
     if (intent != null && Intent.ACTION_SEND.equals(intent.getAction()) && "text/plain".equals(intent.getType())) {
       String t = intent.getStringExtra(Intent.EXTRA_TEXT);
       if (t != null) { selectTab(1); urlInput.setText(t); if (TranscriptFetcher.videoId(t) != null) extract(); }
