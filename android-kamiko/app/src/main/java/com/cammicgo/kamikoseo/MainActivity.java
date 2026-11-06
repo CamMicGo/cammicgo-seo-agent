@@ -705,12 +705,19 @@ public class MainActivity extends Activity {
     Button diagnostics = secondary(localizedMcpDiagnosticTitle());
     diagnostics.setOnClickListener(v -> {
       SharedPreferences prefs = RelayClient.prefs(this);
-      String report = "Contrôle LinkedIn : " + (linkedinMcpEnabled ? "activé" : "désactivé")
+      long until = prefs.getLong("youtubePausedUntil", 0L);
+      String report = "CamMicGo SEO MCP " + appVersion() + " · " + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL + " · Android " + android.os.Build.VERSION.RELEASE
+          + "\nGénéré : " + java.time.ZonedDateTime.now().withNano(0)
+          + "\nMode connecté : " + (prefs.getBoolean("connected", false) ? "actif" : "arrêté")
+          + " · dernier contact serveur : " + (prefs.getLong("lastSync", 0) > 0 ? DateFormat.getTimeInstance(DateFormat.MEDIUM).format(new Date(prefs.getLong("lastSync", 0))) : "jamais")
+          + "\nStatut relais : " + prefs.getString("status", "—")
+          + "\nPause YouTube (429) : " + (prefs.getBoolean("youtube429ManualPause", false) ? "manuelle" : until > System.currentTimeMillis() ? "jusqu'à " + DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(until)) : "non")
+          + "\nContrôle LinkedIn : " + (linkedinMcpEnabled ? "activé" : "désactivé")
           + "\nDernière erreur : " + (linkedinLastPollError.isEmpty() ? "aucune" : linkedinLastPollError)
-          + "\nTâches LinkedIn : " + prefs.getString("linkedinAssistantHistory", "[]")
-          + "\nMétadonnées MCP : " + prefs.getString("mcpDebugHistory", "[]");
-      new AlertDialog.Builder(this).setTitle(localizedMcpDiagnosticTitle())
-          .setMessage(report).setPositiveButton("OK", null).show();
+          + "\n\nDemandes de transcription : " + prettyJson(prefs.getString("progress", "null"))
+          + "\n\nTâches LinkedIn : " + prettyJson(prefs.getString("linkedinAssistantHistory", "[]"))
+          + "\n\nMétadonnées MCP : " + prettyJson(prefs.getString("mcpDebugHistory", "[]"));
+      showDiagnostic(localizedMcpDiagnosticTitle(), report);
     });
     h.addView(diagnostics, new LinearLayout.LayoutParams(-1, -2));
     clearHistory = flat(t("clear_list"), RED);
@@ -2650,7 +2657,7 @@ public class MainActivity extends Activity {
       row.addView(texts, new LinearLayout.LayoutParams(0, -2, 1));
       final String vid = e.optString("videoId");
       final long at = e.optLong("at");
-      row.setOnClickListener(v -> { if (linkedinEntry) { new AlertDialog.Builder(this).setTitle("Demande LinkedIn MCP").setMessage("ID : " + e.optString("jobId") + "\nÉtat : " + e.optString("status") + "\nErreur : " + e.optString("error", "aucune")).setPositiveButton("OK", null).show(); } else if (mcpDebugEntry) { JSONObject debug = e.optJSONObject("requestDebug"); new AlertDialog.Builder(this).setTitle("Diagnostic identité MCP (données masquées)").setMessage(debug == null ? "Métadonnées absentes pour cette requête." : debug.toString()).setPositiveButton("OK", (dialog, which) -> {}).show(); } else if (notebookEntry) selectTab(2); else startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=" + vid))); });
+      row.setOnClickListener(v -> { if (linkedinEntry) { showDiagnostic("Demande LinkedIn MCP", "ID : " + e.optString("jobId") + "\nÉtat : " + e.optString("status") + "\nErreur : " + e.optString("error", "aucune")); } else if (mcpDebugEntry) { JSONObject debug = e.optJSONObject("requestDebug"); showDiagnostic("Diagnostic identité MCP (données masquées)", debug == null ? "Métadonnées absentes pour cette requête." : prettyJson(debug.toString())); } else if (notebookEntry) selectTab(2); else startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=" + vid))); });
       if (waitingEntry) {
         // Live server state, not local history: nothing to remove.
         historyList.addView(row);
@@ -2677,6 +2684,40 @@ public class MainActivity extends Activity {
   }
 
   private boolean fr() { return "fr".equals(I18n.code(this)); }
+
+  private String appVersion() {
+    try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception e) { return "?"; }
+  }
+
+  private static String prettyJson(String raw) {
+    try { String t = raw == null ? "" : raw.trim(); return t.startsWith("[") ? new JSONArray(t).toString(2) : t.startsWith("{") ? new JSONObject(t).toString(2) : raw; }
+    catch (Exception e) { return raw; }
+  }
+
+  /** Diagnostic dialog with selectable text, Copy and Share (the content is already redacted: no tokens, no request bodies). */
+  private void showDiagnostic(String title, String report) {
+    boolean fr = fr();
+    AlertDialog dialog = new AlertDialog.Builder(this).setTitle(title).setMessage(report)
+        .setPositiveButton("OK", null)
+        .setNeutralButton(fr ? "Copier" : "Copy", null)
+        .setNegativeButton(fr ? "Partager" : "Share", null).create();
+    dialog.setOnShowListener(d -> {
+      TextView msg = dialog.findViewById(android.R.id.message);
+      if (msg != null) { msg.setTextIsSelectable(true); msg.setTextSize(12); msg.setTypeface(Typeface.MONOSPACE); }
+      // Copy keeps the dialog open so the user can still read it.
+      dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
+        android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        if (cm != null) cm.setPrimaryClip(android.content.ClipData.newPlainText(title, title + "\n\n" + report));
+        Toast.makeText(this, fr ? "Diagnostic copié : collez-le où vous voulez." : "Diagnostics copied.", Toast.LENGTH_SHORT).show();
+      });
+      dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(v -> {
+        Intent send = new Intent(Intent.ACTION_SEND).setType("text/plain")
+            .putExtra(Intent.EXTRA_SUBJECT, title).putExtra(Intent.EXTRA_TEXT, title + "\n\n" + report);
+        try { startActivity(Intent.createChooser(send, fr ? "Partager le diagnostic" : "Share diagnostics")); } catch (Exception ignored) {}
+      });
+    });
+    dialog.show();
+  }
 
   /** Display name of the assistant that sent a request (same mapping as the activity rows). */
   private String providerName(String agent) {
