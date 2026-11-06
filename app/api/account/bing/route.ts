@@ -1,0 +1,33 @@
+import {NextRequest,NextResponse} from 'next/server';
+import {verifySupabaseMcpUser} from '@/lib/supabase-mcp-auth';
+import {bingKeySummary,deleteBingKey,saveBingKey,validateBingKey,verifyBingKey} from '@/lib/bing';
+export const runtime='nodejs';
+const noStore={'Cache-Control':'no-store'};
+const sameOrigin=(req:NextRequest)=>{const o=req.headers.get('origin');return !o||o===req.nextUrl.origin;};
+const user=(req:NextRequest)=>verifySupabaseMcpUser(req.headers.get('authorization'));
+
+/** Saved Bing Webmaster key of the signed-in user (hint only). */
+export async function GET(req:NextRequest){
+ const u=await user(req);if(!u)return NextResponse.json({error:'unauthorized'},{status:401,headers:noStore});
+ try{return NextResponse.json({key:await bingKeySummary(u.id)},{headers:noStore});}
+ catch(e){return NextResponse.json({error:e instanceof Error?e.message:'unavailable'},{status:503,headers:noStore})}
+}
+
+/** Saves the key after asking Bing whether it works. */
+export async function POST(req:NextRequest){
+ if(!sameOrigin(req))return NextResponse.json({error:'origin'},{status:403,headers:noStore});
+ const u=await user(req);if(!u)return NextResponse.json({error:'unauthorized'},{status:401,headers:noStore});
+ const body=await req.json().catch(()=>({})) as {key?:unknown};
+ const key=validateBingKey(body.key);if(!key)return NextResponse.json({error:'invalid_key_format'},{status:400,headers:noStore});
+ const check=await verifyBingKey(key);
+ if(check==='invalid')return NextResponse.json({error:'key_rejected'},{status:400,headers:noStore});
+ try{await saveBingKey(u.id,key,check==='ok');return NextResponse.json({ok:true,verified:check==='ok',key:await bingKeySummary(u.id)},{headers:noStore});}
+ catch(e){return NextResponse.json({error:e instanceof Error?e.message:'unavailable'},{status:503,headers:noStore})}
+}
+
+export async function DELETE(req:NextRequest){
+ if(!sameOrigin(req))return NextResponse.json({error:'origin'},{status:403,headers:noStore});
+ const u=await user(req);if(!u)return NextResponse.json({error:'unauthorized'},{status:401,headers:noStore});
+ try{await deleteBingKey(u.id);return NextResponse.json({ok:true,key:null},{headers:noStore});}
+ catch(e){return NextResponse.json({error:e instanceof Error?e.message:'unavailable'},{status:503,headers:noStore})}
+}

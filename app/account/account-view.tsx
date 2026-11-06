@@ -6,6 +6,7 @@ import {accountCopy} from '@/lib/copy/account';
 import {supabaseBrowser,supabaseConfigured} from '@/lib/supabase-browser';
 import DriveStorage from './drive-storage';
 import ScienceKeys from './science-keys';
+import BingKey from './bing-key';
 import LinkedInConnect from './linkedin-connect';
 
 type Client={projectId:string|null;clientId:string;secretHint:string;verifiedAt:string|null;updatedAt:string};
@@ -138,6 +139,7 @@ export default function AccountView(){
    <DriveStorage token={token} googleConnected={!!acc?.google.connected}/>
 
    <LinkedInConnect token={token}/>
+   <BingKey token={token}/>
    <ScienceKeys token={token}/>
   </>}
 

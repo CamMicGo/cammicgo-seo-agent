@@ -1,4 +1,5 @@
 import {createMcpHandler} from 'mcp-handler';
+import type {BRow} from '@/lib/bing-core';
 import {createHash} from 'node:crypto';
 import {z} from 'zod';
 import {NextRequest,NextResponse,after} from 'next/server';
@@ -32,6 +33,7 @@ const SERVER_INSTRUCTIONS=[
  'Google Ads: ads_accounts, ads_report (read-only) and ads_create_paused_campaign. Campaigns are always created PAUSED with a total budget that is never exceeded over a fixed period: first call it with confirm=false, show the validated summary, and use confirm=true only after the user explicitly approves. Never promise that a campaign is live: the user enables it in Google Ads. Keyword Planner read-only tools: ads_keyword_ideas and ads_keyword_historical_metrics (Basic access required).',
  'Google Drive: drive_list_files (inTrash=true for the trash), drive_search_files, drive_read_file (bounded text windows: continue with offset=nextOffset, never paste whole documents) and drive_storage_quota are read-only. drive_create_folder and drive_upload_file create NEW items only (never overwrite; sources: your text, a small file, a CamMicGo export or a public https file such as a paper PDF). drive_trash_file never deletes permanently: ALWAYS call it first with confirm=false, show the exact list to the user, and call confirm=true only after the user explicitly says yes in a new message; never trash anything on your own initiative. drive_restore_file undoes it.',
  'Science: science_search (topic words across OpenAlex, Semantic Scholar, arXiv, PubMed, HAL; merged; NOT for author names), science_latest (newest papers on a topic), science_author / science_author_works (a researcher\'s COMPLETE list by OpenAlex ID, ORCID or name, de-duplicated, with BibTeX/RIS/CSV/Markdown exports), science_paper (details), science_citations (who cites a paper / its references), science_fulltext (legal open-access full text, in windows) and science_verify_references (detects invented or wrong citations). Cite papers with their links; never invent references: verify uncertain ones with science_verify_references. If keyTip is present, mention once that free personal keys raise the limits.',
+ 'Bing Webmaster Tools (user\'s own API key saved at https://seo.cammicgo.com/account): bing_sites first, then bing_search_performance, bing_queries, bing_pages, bing_crawl, bing_sitemaps, bing_url_info, bing_inbound_links and bing_keyword_research (Bing search volumes and related keywords for any keyword, any country) are read-only; bing_submit_urls and bing_submit_sitemap ask Bing to crawl pages of the user\'s own site. If a tool answers bing_not_connected, relay its messageForUser.',
  'Whole channels: youtube_channel_batch builds ONE document (details + full transcripts of every video) with a stable URL, ideal as a single NotebookLM source; follow it with youtube_batch_status. Never paste whole documents into the chat.',
 ].join(' ');
 
@@ -1361,6 +1363,80 @@ async function handler(req:NextRequest){
     if(r.error)return asText(r);
     return asText({siteUrl:args.siteUrl,sitemaps:(r.sitemap??[]).map(x=>({path:x.path,type:x.type??null,index:!!x.isSitemapsIndex,lastSubmitted:x.lastSubmitted?.slice(0,10)??null,lastDownloaded:x.lastDownloaded?.slice(0,10)??null,pending:!!x.isPending,errors:Number(x.errors??0),warnings:Number(x.warnings??0),urls:(x.contents??[]).map(c=>({type:c.type,submitted:Number(c.submitted??0)}))}))});
    });
+   // ---------- Bing Webmaster Tools (the user's own API key, stored encrypted) ----------
+   const bingSiteArg=z.string().min(1).max(300).describe('Site exactly as registered in Bing Webmaster Tools, e.g. https://www.example.com/ (call bing_sites first).');
+   const withBing=async(fn:(key:string,b:typeof import('@/lib/bing'))=>Promise<unknown>)=>{
+    const b=await import('@/lib/bing');const key=await b.userBingKey(user.id).catch(()=>null);
+    if(!key)return asText({error:'bing_not_connected',messageForUser:'Connect Bing Webmaster Tools first: open https://seo.cammicgo.com/account, section "Bing Webmaster Tools", and paste your API key (in Bing Webmaster Tools: Settings › API access › API Key › Generate).'});
+    const out=await fn(key,b) as {ok?:boolean;error?:string}|unknown;
+    const e=out as {ok?:boolean;error?:string;message?:string};
+    if(e&&e.ok===false){return asText({error:e.error,message:e.message,hint:e.error==='bing_key_rejected'?'The saved Bing key was rejected: ask the user to generate a new one and save it at https://seo.cammicgo.com/account.':'Check the siteUrl with bing_sites (Bing expects the exact registered URL, usually with a trailing slash).'})}
+    return asText(out);
+   };
+   const siteOf=(b:typeof import('@/lib/bing'),v:string)=>b.bingSiteUrl(v)??v;
+   const sameHost=(site:string,u:string)=>{try{return new URL(u).host===new URL(site).host}catch{return false}};
+   server.registerTool('bing_sites',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Bing Webmaster sites',description:'Sites of the user\'s Bing Webmaster Tools account with their verification status. Use the exact URL in the other bing_* tools.',inputSchema:z.object({})},async()=>withBing(async(key,b)=>{
+    const r=await b.bingCall<Array<{Url?:string;IsVerified?:boolean}>>(key,'GetUserSites');if(!r.ok)return r;
+    return {sites:(r.data??[]).map(s=>({siteUrl:s.Url,verified:!!s.IsVerified}))};
+   }));
+   server.registerTool('bing_search_performance',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Bing search performance',description:'Daily Bing clicks and impressions for a site, with totals compared with the previous period of the same length.',inputSchema:z.object({siteUrl:bingSiteArg,days:z.number().int().min(7).max(180).default(28)})},async a=>withBing(async(key,b)=>{
+    const r=await b.bingCall<Array<{Date?:string;Clicks?:number;Impressions?:number}>>(key,'GetRankAndTrafficStats',{siteUrl:siteOf(b,a.siteUrl)});if(!r.ok)return r;
+    const rows=(r.data??[]).map(x=>({date:b.bingDate(x.Date),clicks:Number(x.Clicks??0),impressions:Number(x.Impressions??0)})).filter(x=>x.date).sort((x,y)=>String(x.date).localeCompare(String(y.date)));
+    const last=rows.length?Date.parse(String(rows[rows.length-1].date)):Date.now(),start=last-(a.days-1)*86400000,prevStart=start-a.days*86400000;
+    const cur=rows.filter(x=>Date.parse(String(x.date))>=start),prev=rows.filter(x=>{const t=Date.parse(String(x.date));return t>=prevStart&&t<start});
+    const sum=(l:typeof rows)=>({clicks:l.reduce((s,x)=>s+x.clicks,0),impressions:l.reduce((s,x)=>s+x.impressions,0)});
+    return {siteUrl:siteOf(b,a.siteUrl),period:{from:cur[0]?.date??null,to:cur[cur.length-1]?.date??null,...sum(cur)},previousPeriod:prev.length?sum(prev):null,daily:cur};
+   }));
+   server.registerTool('bing_queries',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Bing search queries',description:'Search queries that showed the site in Bing, aggregated over the period: clicks, impressions, CTR and average position. Give page to see the queries of one page.',inputSchema:z.object({siteUrl:bingSiteArg,page:z.string().url().optional(),days:z.number().int().min(7).max(180).default(90),limit:z.number().int().min(1).max(500).default(50),sortBy:z.enum(['clicks','impressions']).default('clicks')})},async a=>withBing(async(key,b)=>{
+    const site=siteOf(b,a.siteUrl);const r=a.page?await b.bingCall<BRow[]>(key,'GetPageQueryStats',{siteUrl:site,page:a.page}):await b.bingCall<BRow[]>(key,'GetQueryStats',{siteUrl:site});if(!r.ok)return r;
+    const agg=b.aggregateStats(r.data??[],a.days,a.limit,a.sortBy);return {siteUrl:site,page:a.page??null,days:a.days,totalQueries:agg.total,queries:agg.rows.map(x=>({query:x.key,clicks:x.clicks,impressions:x.impressions,ctr:x.ctr,position:x.position}))};
+   }));
+   server.registerTool('bing_pages',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Bing top pages',description:'Pages of the site shown in Bing, aggregated over the period: clicks, impressions, CTR and average position. Give query to see the pages ranking for one query.',inputSchema:z.object({siteUrl:bingSiteArg,query:z.string().min(1).max(200).optional(),days:z.number().int().min(7).max(180).default(90),limit:z.number().int().min(1).max(500).default(50),sortBy:z.enum(['clicks','impressions']).default('clicks')})},async a=>withBing(async(key,b)=>{
+    const site=siteOf(b,a.siteUrl);const r=a.query?await b.bingCall<BRow[]>(key,'GetQueryPageStats',{siteUrl:site,query:a.query}):await b.bingCall<BRow[]>(key,'GetPageStats',{siteUrl:site});if(!r.ok)return r;
+    const agg=b.aggregateStats(r.data??[],a.days,a.limit,a.sortBy);return {siteUrl:site,query:a.query??null,days:a.days,totalPages:agg.total,pages:agg.rows.map(x=>({page:x.key,clicks:x.clicks,impressions:x.impressions,ctr:x.ctr,position:x.position}))};
+   }));
+   server.registerTool('bing_crawl',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Bing crawl and index status',description:'How Bingbot crawls the site (pages crawled, indexed, HTTP codes, robots.txt blocks, errors per day) and the URLs with crawl issues.',inputSchema:z.object({siteUrl:bingSiteArg,issuesLimit:z.number().int().min(0).max(200).default(30)})},async a=>withBing(async(key,b)=>{
+    const site=siteOf(b,a.siteUrl);const [st,is]=await Promise.all([b.bingCall<BRow[]>(key,'GetCrawlStats',{siteUrl:site}),a.issuesLimit?b.bingCall<BRow[]>(key,'GetCrawlIssues',{siteUrl:site}):Promise.resolve({ok:true as const,data:[]})]);
+    if(!st.ok)return st;
+    const days=(st.data??[]).map(x=>({date:b.bingDate(x.Date),crawled:x.CrawledPages??null,inIndex:x.InIndex??null,inLinks:x.InLinks??null,crawlErrors:x.CrawlErrors??null,code2xx:x.Code2xx??null,code301:x.Code301??null,code302:x.Code302??null,code4xx:x.Code4xx??null,code5xx:x.Code5xx??null,blockedByRobotsTxt:x.BlockedByRobotsTxt??null,malware:x.ContainsMalware??null})).sort((x,y)=>String(y.date).localeCompare(String(x.date)));
+    const issues=is.ok?(is.data??[]).slice(0,a.issuesLimit).map(x=>({url:x.Url,httpCode:x.HttpCode??null,issueFlags:x.Issues??null,inLinks:x.InLinks??null})):[];
+    return {siteUrl:site,latest:days[0]??null,last30Days:days.slice(0,30),crawlIssues:{count:is.ok?(is.data??[]).length:null,items:issues}};
+   }));
+   server.registerTool('bing_sitemaps',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Bing sitemaps',description:'Sitemaps and feeds known to Bing for the site with status, last crawl and URL count.',inputSchema:z.object({siteUrl:bingSiteArg})},async a=>withBing(async(key,b)=>{
+    const r=await b.bingCall<BRow[]>(key,'GetFeeds',{siteUrl:siteOf(b,a.siteUrl)});if(!r.ok)return r;
+    return {sitemaps:(r.data??[]).map(f=>({url:f.Url,type:f.Type??null,status:f.Status??null,submitted:b.bingDate(f.Submitted),lastCrawled:b.bingDate(f.LastCrawled),urlCount:f.UrlCount??null}))};
+   }));
+   server.registerTool('bing_url_info',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Bing URL inspection',description:'What Bing knows about one URL of the site: HTTP status, size, discovery and last crawl dates, inbound anchors.',inputSchema:z.object({siteUrl:bingSiteArg,url:z.string().url()})},async a=>withBing(async(key,b)=>{
+    const r=await b.bingCall<BRow>(key,'GetUrlInfo',{siteUrl:siteOf(b,a.siteUrl),url:a.url});if(!r.ok)return r;const x:BRow=r.data??{};
+    return {url:x.Url??a.url,httpStatus:x.HttpStatus??null,documentSize:x.DocumentSize??null,discovered:b.bingDate(x.DiscoveryDate),lastCrawled:b.bingDate(x.LastCrawledDate),isPage:x.IsPage??null,anchorCount:x.AnchorCount??null,childUrls:x.TotalChildUrlCount??null};
+   }));
+   server.registerTool('bing_inbound_links',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Bing inbound links',description:'Backlinks seen by Bing: pages of the site with their number of inbound links, or (with url) the external pages linking to that URL.',inputSchema:z.object({siteUrl:bingSiteArg,url:z.string().url().optional().describe('A page of the site: list who links to it.'),page:z.number().int().min(0).max(50).default(0)})},async a=>withBing(async(key,b)=>{
+    const site=siteOf(b,a.siteUrl);
+    if(a.url){const r=await b.bingCall<BRow>(key,'GetUrlLinks',{siteUrl:site,link:a.url,page:a.page});if(!r.ok)return r;return {url:a.url,totalPages:r.data?.TotalPages??null,links:((r.data?.Details as BRow[]|undefined)??[]).map((d:BRow)=>({from:d.Url,anchorText:d.AnchorText??null}))};}
+    const r=await b.bingCall<BRow>(key,'GetLinkCounts',{siteUrl:site,page:a.page});if(!r.ok)return r;
+    return {siteUrl:site,page:a.page,totalPages:r.data?.TotalPages??null,pages:((r.data?.Links as BRow[]|undefined)??[]).map((l:BRow)=>({url:l.Url,inboundLinks:l.Count}))};
+   }));
+   server.registerTool('bing_keyword_research',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Bing keyword research',description:'Bing search volume (impressions) for a keyword by week, plus related keywords with their volume. Works for any keyword, not only those of the site.',inputSchema:z.object({query:z.string().min(1).max(120),country:z.string().regex(/^[a-z]{2}$/i).default('us').describe('Two-letter country code, e.g. us, fr, de, jp.'),language:z.string().regex(/^[a-z]{2}(-[A-Z]{2})?$/).default('en-US').describe('Language-region, e.g. en-US, fr-FR, de-DE, ja-JP.'),related:z.boolean().default(true),weeks:z.number().int().min(4).max(26).default(12)})},async a=>withBing(async(key,b)=>{
+    const end=new Date(),start=new Date(end.getTime()-a.weeks*7*86400000),iso=(d:Date)=>d.toISOString().slice(0,10);
+    const base={q:a.query,country:a.country.toLowerCase(),language:a.language};
+    const [st,rel]=await Promise.all([b.bingCall<BRow[]>(key,'GetKeywordStats',base),a.related?b.bingCall<BRow[]>(key,'GetRelatedKeywords',{...base,startDate:iso(start),endDate:iso(end)}):Promise.resolve({ok:true as const,data:[]})]);
+    if(!st.ok)return st;
+    const weekly=(st.data??[]).map(x=>({week:b.bingDate(x.Date),impressions:x.Impressions??null,broadImpressions:x.BroadImpressions??null})).sort((x,y)=>String(x.week).localeCompare(String(y.week))).slice(-a.weeks);
+    return {query:a.query,country:base.country,language:a.language,weekly,related:rel.ok?(rel.data??[]).map(x=>({query:x.Query,impressions:x.Impressions??null,broadImpressions:x.BroadImpressions??null})).sort((x,y)=>Number(y.impressions??0)-Number(x.impressions??0)).slice(0,50):{error:rel.error,message:rel.message},note:'Impressions = Bing searches for the exact query; broadImpressions include close variants.'};
+   }));
+   server.registerTool('bing_submit_urls',{annotations:{openWorldHint:true,destructiveHint:false,idempotentHint:true},title:'Submit URLs to Bing',description:'Asks Bing to crawl new or updated pages of the site (within the site\'s daily quota). Only URLs on the site itself are accepted. Also returns the remaining quota.',inputSchema:z.object({siteUrl:bingSiteArg,urls:z.array(z.string().url()).min(1).max(500)})},async a=>withBing(async(key,b)=>{
+    const site=siteOf(b,a.siteUrl);const urls=[...new Set(a.urls)];const foreign=urls.filter(u=>!sameHost(site,u));
+    if(foreign.length)return {ok:false,error:'urls_outside_site',message:`These URLs are not on ${site}: ${foreign.slice(0,5).join(', ')}`};
+    const q=await b.bingCall<{DailyQuota?:number;MonthlyQuota?:number}>(key,'GetUrlSubmissionQuota',{siteUrl:site});
+    if(q.ok&&typeof q.data?.DailyQuota==='number'&&q.data.DailyQuota<urls.length)return {ok:false,error:'quota_exceeded',message:`Bing allows ${q.data.DailyQuota} more URLs today for this site; ${urls.length} were given.`};
+    const r=await b.bingCall(key,'SubmitUrlBatch',{},{siteUrl:site,urlList:urls});if(!r.ok)return r;
+    const after=await b.bingCall<{DailyQuota?:number;MonthlyQuota?:number}>(key,'GetUrlSubmissionQuota',{siteUrl:site});
+    return {submitted:urls.length,remainingToday:after.ok?after.data?.DailyQuota??null:null,remainingThisMonth:after.ok?after.data?.MonthlyQuota??null:null};
+   }));
+   server.registerTool('bing_submit_sitemap',{annotations:{openWorldHint:true,destructiveHint:false,idempotentHint:true},title:'Submit a sitemap to Bing',description:'Submits (or resubmits) a sitemap of the site to Bing.',inputSchema:z.object({siteUrl:bingSiteArg,sitemapUrl:z.string().url()})},async a=>withBing(async(key,b)=>{
+    const site=siteOf(b,a.siteUrl);if(!sameHost(site,a.sitemapUrl))return {ok:false,error:'sitemap_outside_site',message:`The sitemap must be on ${site}.`};
+    const r=await b.bingCall(key,'SubmitFeed',{},{siteUrl:site,feedUrl:a.sitemapUrl});if(!r.ok)return r;return {submitted:a.sitemapUrl};
+   }));
    // ---- Google Analytics 4 (analytics.readonly): free-form reports and realtime ----
    const ga4Field=z.string().max(80).regex(ga4.GA4_FIELD);
    const ga4Auth=async(property:string):Promise<{ok:true;name?:string}|Record<string,unknown>>=>{

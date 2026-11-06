@@ -168,6 +168,13 @@ The local server has these tools:
 - **Scientific sources:** the same nine `science_*` tools as the remote server
 - **NotebookLM (after `cammicgo login`):** the same 51 NotebookLM tools as the remote server, executed directly on the computer — see [docs/CAMMICGO-CLI.md](docs/CAMMICGO-CLI.md)
 
+
+## Bing Webmaster Tools
+
+Each user saves their own Bing Webmaster Tools API key at `/account` (Bing Webmaster Tools › Settings › API access › API Key). The key is encrypted with AES-256-GCM in `cmg_bing_keys`, shown back only as a hint, and never returned to the AI assistant.
+
+Tools: `bing_sites`, `bing_search_performance`, `bing_queries`, `bing_pages`, `bing_crawl`, `bing_sitemaps`, `bing_url_info`, `bing_inbound_links`, `bing_keyword_research` (read-only) and `bing_submit_urls`, `bing_submit_sitemap` (URLs of the user's own site only, within Bing's daily quota).
+
 ## Safety: nothing happens without your yes
 
 - **Two steps for every write.** LinkedIn posts, YouTube uploads, Drive trash and Google Ads campaigns all work the same way. The first call returns the exact preview and a confirmation token, bound to your account and to the exact content (including the bytes of an attached file). The token can be used from 10 seconds to 15 minutes after the preview. Only your explicit yes, in a new message, carries out the action. One confirmation publishes **once**, even if the assistant retries.
