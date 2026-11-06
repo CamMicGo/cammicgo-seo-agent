@@ -80,7 +80,7 @@ public class MainActivity extends Activity {
   private WebView notebookWeb;
   private LinearLayout notebookActions;
   private boolean notebookExpanded = false;
-  private Button notebookExpand;
+  private android.widget.ImageButton notebookExpand;
   private LinearLayout appShell;
   private View appHeader, appTabs;
   private WebView linkedinWeb;
@@ -112,7 +112,8 @@ public class MainActivity extends Activity {
   private Uri linkedinPendingAttachment;
   private String linkedinPendingAttachmentJob;
   private boolean linkedinExpanded = false;
-  private Button linkedinExpand;
+  private android.widget.ImageButton linkedinExpand;
+  private LinearLayout linkedinAttachRow;
   private LinearLayout linkedinActions;
   private boolean linkedinMcpEnabled = false;
   private boolean linkedinPollBusy = false;
@@ -238,7 +239,11 @@ public class MainActivity extends Activity {
     b.setTypeface(Typeface.DEFAULT_BOLD);
     GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{BLUE, VIOLET});
     g.setCornerRadius(dp(14));
-    b.setBackground(g);
+    android.graphics.drawable.StateListDrawable st = new android.graphics.drawable.StateListDrawable();
+    st.addState(new int[]{android.R.attr.state_pressed}, shape(VIOLET, 14, 0));
+    st.addState(new int[]{-android.R.attr.state_enabled}, shape(GREY, 14, 0));
+    st.addState(new int[]{}, g);
+    b.setBackground(st);
     b.setPadding(dp(18), dp(12), dp(18), dp(12));
     b.setStateListAnimator(null);
     return b;
@@ -248,8 +253,8 @@ public class MainActivity extends Activity {
     Button b = new Button(this);
     b.setText(s); b.setAllCaps(false); b.setTextColor(BLUE); b.setTextSize(14);
     b.setTypeface(Typeface.DEFAULT_BOLD);
-    b.setBackground(shape(Color.WHITE, 14, Color.rgb(169, 202, 250)));
-    b.setPadding(dp(12), dp(10), dp(12), dp(10));
+    b.setBackground(toolBackground(TOOL_FILL, TOOL_LINE));
+    b.setPadding(dp(14), dp(10), dp(14), dp(10));
     b.setStateListAnimator(null);
     return b;
   }
@@ -259,6 +264,90 @@ public class MainActivity extends Activity {
     b.setText(s); b.setAllCaps(false); b.setTextColor(color); b.setTextSize(14);
     b.setBackgroundColor(Color.TRANSPARENT); b.setStateListAnimator(null);
     return b;
+  }
+
+  // ---------- toolbars above the LinkedIn / NotebookLM web views ----------
+  // One look everywhere: 40dp tall, 12dp corners, soft blue fill, vector icon + short label.
+  static final int TOOL_FILL = Color.rgb(236, 242, 254), TOOL_LINE = Color.rgb(214, 226, 248),
+      OK_FILL = Color.rgb(232, 247, 238), OK_LINE = Color.rgb(170, 222, 189);
+
+  private LinearLayout toolbarRow() {
+    LinearLayout row = new LinearLayout(this);
+    row.setOrientation(LinearLayout.HORIZONTAL);
+    row.setGravity(Gravity.CENTER_VERTICAL);
+    row.setPadding(dp(10), dp(6), dp(10), dp(6));
+    return row;
+  }
+
+  private Button toolButton(String label, UiIcons.Kind icon) {
+    Button b = new Button(this);
+    b.setText(label); b.setAllCaps(false); b.setSingleLine(true);
+    b.setTextSize(13); b.setTypeface(Typeface.DEFAULT_BOLD); b.setTextColor(INK);
+    b.setMinHeight(0); b.setMinimumHeight(0); b.setMinWidth(0); b.setMinimumWidth(0);
+    b.setPadding(dp(12), 0, dp(12), 0);
+    b.setStateListAnimator(null);
+    b.setBackground(toolBackground(TOOL_FILL, TOOL_LINE));
+    b.setGravity(Gravity.CENTER);
+    if (icon != null) {
+      b.setCompoundDrawables(UiIcons.make(icon, BLUE, dp(18)), null, null, null);
+      b.setCompoundDrawablePadding(dp(6));
+    }
+    return b;
+  }
+
+  /** Square icon-only button (expand, refresh…); the description is read by TalkBack and shown on long press. */
+  private android.widget.ImageButton iconButton(UiIcons.Kind icon, String description) {
+    android.widget.ImageButton b = new android.widget.ImageButton(this);
+    b.setImageDrawable(UiIcons.make(icon, BLUE, dp(20)));
+    b.setScaleType(android.widget.ImageView.ScaleType.CENTER);
+    b.setBackground(toolBackground(TOOL_FILL, TOOL_LINE));
+    b.setContentDescription(description);
+    if (android.os.Build.VERSION.SDK_INT >= 26) b.setTooltipText(description);
+    b.setPadding(0, 0, 0, 0);
+    return b;
+  }
+
+  /** Rounded fill with a pressed state, so taps give visible feedback. */
+  private Drawable toolBackground(int fill, int stroke) {
+    android.graphics.drawable.StateListDrawable s = new android.graphics.drawable.StateListDrawable();
+    s.addState(new int[]{android.R.attr.state_pressed}, shape(Color.rgb(214, 228, 253), 12, BLUE));
+    s.addState(new int[]{}, shape(fill, 12, stroke));
+    return s;
+  }
+
+  private LinearLayout.LayoutParams toolLp(int widthPx, float weight, boolean gap) {
+    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(widthPx, dp(40), weight);
+    if (gap) lp.leftMargin = dp(8);
+    return lp;
+  }
+
+  /** Segmented control like the app's main tabs: the active page is a filled blue pill. */
+  private LinearLayout navSegment(Button... items) {
+    LinearLayout seg = new LinearLayout(this);
+    seg.setPadding(dp(3), dp(3), dp(3), dp(3));
+    seg.setBackground(shape(Color.rgb(230, 237, 250), 14, 0));
+    for (Button b : items) {
+      b.setBackground(null);
+      b.setPadding(dp(6), 0, dp(6), 0);
+      b.setCompoundDrawablePadding(dp(4));
+      b.setEllipsize(android.text.TextUtils.TruncateAt.END);
+      seg.addView(b, new LinearLayout.LayoutParams(0, dp(38), 1));
+    }
+    return seg;
+  }
+
+  private void setNavState(Button b, boolean on) {
+    b.setSelected(on);
+    b.setBackground(on ? shape(BLUE, 11, 0) : null);
+    b.setElevation(on ? dp(1) : 0);
+    b.setTextColor(on ? Color.WHITE : MUTED);
+    b.setCompoundDrawableTintList(android.content.res.ColorStateList.valueOf(on ? Color.WHITE : MUTED));
+  }
+
+  private void setToggleState(Button b, boolean on) {
+    b.setBackground(on ? toolBackground(OK_FILL, OK_LINE) : toolBackground(TOOL_FILL, TOOL_LINE));
+    b.setTextColor(on ? GREEN : INK);
+    b.setCompoundDrawables(UiIcons.make(on ? UiIcons.Kind.SHIELD_OK : UiIcons.Kind.SHIELD, on ? GREEN : BLUE, dp(18)), null, null, null);
   }
 
   private EditText field(String hint) {
@@ -760,16 +849,7 @@ public class MainActivity extends Activity {
     });
   }
 
-  private void setLinkedInButtonIcon(Button button, int drawableId) {
-    Drawable icon = getDrawable(drawableId);
-    if (icon == null) return;
-    icon = icon.mutate();
-    icon.setTint(BLUE);
-    icon.setBounds(0, 0, dp(19), dp(19));
-    button.setCompoundDrawables(icon, null, null, null);
-    button.setCompoundDrawablePadding(dp(5));
-    button.setGravity(Gravity.CENTER);
-  }
+
 
   // ---------- LinkedIn: personal account, on-device session ----------
   private void setLinkedInExpanded(boolean expanded) {
@@ -778,8 +858,11 @@ public class MainActivity extends Activity {
     if (appTabs != null) appTabs.setVisibility(expanded ? View.GONE : View.VISIBLE);
     if (linkedinActions != null) linkedinActions.setVisibility(expanded ? View.GONE : View.VISIBLE);
     if (linkedinExpand != null) {
-      linkedinExpand.setText(expanded ? "⤡" : "⤢");
-      linkedinExpand.setContentDescription(linkedinToolbarText(expanded ? "collapse" : "expand"));
+      String d = linkedinToolbarText(expanded ? "collapse" : "expand");
+      linkedinExpand.setImageDrawable(UiIcons.make(expanded ? UiIcons.Kind.COLLAPSE : UiIcons.Kind.EXPAND, expanded ? Color.WHITE : BLUE, dp(20)));
+      linkedinExpand.setBackground(expanded ? shape(BLUE, 12, 0) : toolBackground(TOOL_FILL, TOOL_LINE));
+      linkedinExpand.setContentDescription(d);
+      if (android.os.Build.VERSION.SDK_INT >= 26) linkedinExpand.setTooltipText(d);
     }
     getWindow().getDecorView().setSystemUiVisibility(expanded
       ? View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
@@ -793,34 +876,22 @@ public class MainActivity extends Activity {
     host.addView(root, new FrameLayout.LayoutParams(-1, -1));
     pages[3] = root;
 
-    LinearLayout actions = new LinearLayout(this);
-    actions.setPadding(dp(8), dp(6), dp(8), dp(6));
-    Button messages = secondary(t("linkedin_messages"));
-    Button network = secondary(t("linkedin_network"));
-    Button search = secondary(t("linkedin_search"));
-    // Android platform icons are stable across locales; no font-dependent emoji glyphs.
-    setLinkedInButtonIcon(messages, android.R.drawable.ic_dialog_email);
-    setLinkedInButtonIcon(network, android.R.drawable.ic_menu_share);
-    setLinkedInButtonIcon(search, android.R.drawable.ic_menu_search);
-    actions.addView(messages, new LinearLayout.LayoutParams(0, -2, 1));
-    actions.addView(network, new LinearLayout.LayoutParams(0, -2, 1));
-    actions.addView(search, new LinearLayout.LayoutParams(0, -2, 1));
+    LinearLayout actions = toolbarRow();
+    actions.setPadding(dp(10), dp(8), dp(10), dp(2));
+    Button messages = toolButton(t("linkedin_messages"), UiIcons.Kind.CHAT);
+    Button network = toolButton(t("linkedin_network"), UiIcons.Kind.PEOPLE);
+    Button search = toolButton(t("linkedin_search"), UiIcons.Kind.SEARCH);
+    actions.addView(navSegment(messages, network, search), new LinearLayout.LayoutParams(-1, -2));
     root.addView(actions);
     linkedinNav = new Button[]{messages, network, search};
+    for (Button b : linkedinNav) setNavState(b, false);
 
     linkedinActions = actions;
-    // Compact secondary toolbar leaves more room for the LinkedIn WebView.
-    LinearLayout toolsRow = new LinearLayout(this);
-    toolsRow.setOrientation(LinearLayout.HORIZONTAL);
-    toolsRow.setPadding(dp(8), dp(2), dp(8), dp(2));
-    Button expandLinkedIn = secondary("⛶");
-    expandLinkedIn.setTextSize(17);
-    expandLinkedIn.setMinHeight(0);
-    expandLinkedIn.setMinimumHeight(0);
-    expandLinkedIn.setPadding(dp(6), dp(3), dp(6), dp(3));
-    expandLinkedIn.setContentDescription(linkedinToolbarText("expand"));
+    // One compact toolbar: [expand] [MCP access ………] [JSON]
+    LinearLayout toolsRow = toolbarRow();
+    android.widget.ImageButton expandLinkedIn = iconButton(UiIcons.Kind.EXPAND, linkedinToolbarText("expand"));
     linkedinExpand = expandLinkedIn;
-    toolsRow.addView(expandLinkedIn, new LinearLayout.LayoutParams(dp(44), dp(40)));
+    toolsRow.addView(expandLinkedIn, toolLp(dp(40), 0, false));
     expandLinkedIn.setOnClickListener(v -> setLinkedInExpanded(!linkedinExpanded));
     linkedinMcpEnabled = false;
     linkedinWeb = new WebView(this);
@@ -828,25 +899,17 @@ public class MainActivity extends Activity {
     linkedinWeb.getSettings().setDomStorageEnabled(true);
     CookieManager.getInstance().setAcceptCookie(true);
     CookieManager.getInstance().setAcceptThirdPartyCookies(linkedinWeb, true);
-    Button mcpControl = secondary(linkedinToolbarText("allow"));
-    mcpControl.setAllCaps(false);
+    Button mcpControl = toolButton(linkedinToolbarText("allow"), UiIcons.Kind.SHIELD);
     mcpControl.setContentDescription(linkedinToolbarText("permission"));
     linkedinMcpControlButton = mcpControl;
-    mcpControl.setText(linkedinToolbarText("allow"));
-    mcpControl.setCompoundDrawablesWithIntrinsicBounds(linkedinShieldIcon(), null, null, null);
-    mcpControl.setCompoundDrawablePadding(dp(4));
-    mcpControl.setTextSize(12);
-    mcpControl.setMinHeight(0);
-    mcpControl.setMinimumHeight(0);
-    mcpControl.setPadding(dp(5), dp(3), dp(5), dp(3));
-    LinearLayout.LayoutParams mcpLp = new LinearLayout.LayoutParams(0, dp(40), 1);
-    mcpLp.leftMargin = dp(4);
-    toolsRow.addView(mcpControl, mcpLp);
+    setToggleState(mcpControl, false);
+    toolsRow.addView(mcpControl, toolLp(0, 1, true));
     mcpControl.setOnClickListener(v -> {
       if (linkedinMcpEnabled) {
         linkedinMcpEnabled = false;
         ui.removeCallbacks(linkedinPoll);
         mcpControl.setText(linkedinToolbarText("allow"));
+        setToggleState(mcpControl, false);
         Toast.makeText(this, "Contrôle LinkedIn MCP désactivé", Toast.LENGTH_SHORT).show();
       } else {
         new AlertDialog.Builder(this).setTitle("Autoriser la navigation LinkedIn ?")
@@ -855,20 +918,15 @@ public class MainActivity extends Activity {
           .setPositiveButton("Autoriser", (d, w) -> {
             linkedinMcpEnabled = true;
             mcpControl.setText(linkedinToolbarText("allowed"));
+            setToggleState(mcpControl, true);
             ui.post(linkedinPoll);
           }).show();
       }
     });
-    Button exportJson = secondary(I18n.code(this).equals("fr") ? "⇩ JSON" : "⇩ JSON");
+    Button exportJson = toolButton("JSON", UiIcons.Kind.DOWNLOAD);
     exportJson.setContentDescription(linkedinToolbarText("export"));
-    exportJson.setTextSize(12);
-    exportJson.setMinHeight(0);
-    exportJson.setMinimumHeight(0);
-    exportJson.setPadding(dp(5), dp(3), dp(5), dp(3));
-    LinearLayout.LayoutParams exportLp = new LinearLayout.LayoutParams(0, dp(40), 0.75f);
-    exportLp.leftMargin = dp(4);
-    toolsRow.addView(exportJson, exportLp);
-    root.addView(toolsRow, new LinearLayout.LayoutParams(-1, dp(44)));
+    toolsRow.addView(exportJson, toolLp(-2, 0, true));
+    root.addView(toolsRow, new LinearLayout.LayoutParams(-1, -2));
     exportJson.setOnClickListener(v -> exportLinkedInThreadJson());
     linkedinWeb.setWebChromeClient(new WebChromeClient() {
       @Override public boolean onShowFileChooser(WebView view, android.webkit.ValueCallback<Uri[]> callback, FileChooserParams params) {
@@ -902,19 +960,15 @@ public class MainActivity extends Activity {
       @Override public void onPageFinished(WebView view, String url) { markLinkedInNav(url); }
     });
     // Native buttons provide accessible touch targets instead of relying on tiny web icons.
-    LinearLayout attachmentRow = new LinearLayout(this);
-    attachmentRow.setOrientation(LinearLayout.HORIZONTAL);
-    attachmentRow.setPadding(dp(8), dp(2), dp(8), dp(2));
-    Button imageButton = secondary("Image");
-    Button fileButton = secondary("Pièce jointe");
-    imageButton.setAllCaps(false);
-    fileButton.setAllCaps(false);
+    LinearLayout attachmentRow = toolbarRow();
+    attachmentRow.setPadding(dp(10), 0, dp(10), dp(8));
+    Button imageButton = toolButton("Image", UiIcons.Kind.IMAGE);
+    Button fileButton = toolButton("Pièce jointe", UiIcons.Kind.CLIP);
     imageButton.setContentDescription("Joindre une image au message LinkedIn");
     fileButton.setContentDescription("Joindre un document au message LinkedIn");
-    attachmentRow.addView(imageButton, new LinearLayout.LayoutParams(0, dp(44), 1));
-    LinearLayout.LayoutParams fileButtonParams = new LinearLayout.LayoutParams(0, dp(44), 1);
-    fileButtonParams.leftMargin = dp(8);
-    attachmentRow.addView(fileButton, fileButtonParams);
+    attachmentRow.addView(imageButton, toolLp(0, 1, false));
+    attachmentRow.addView(fileButton, toolLp(0, 1, true));
+    linkedinAttachRow = attachmentRow;
     imageButton.setOnClickListener(v -> openLinkedInAttachmentPicker(true));
     fileButton.setOnClickListener(v -> openLinkedInAttachmentPicker(false));
     root.addView(attachmentRow);
@@ -1089,10 +1143,7 @@ public class MainActivity extends Activity {
     for (int i = 0; i < linkedinNav.length; i++) {
       Button b = linkedinNav[i];
       boolean on = i == active;
-      b.setSelected(on);
-      b.setBackground(on ? shape(BLUE, 14, BLUE) : shape(Color.WHITE, 14, Color.rgb(169, 202, 250)));
-      b.setTextColor(on ? Color.WHITE : BLUE);
-      b.setCompoundDrawableTintList(android.content.res.ColorStateList.valueOf(on ? Color.WHITE : BLUE));
+      setNavState(b, on);
       b.setContentDescription(b.getText() + (on ? " ✓" : ""));
     }
   }
@@ -1967,29 +2018,22 @@ public class MainActivity extends Activity {
     root.setBackgroundColor(BG);
     host.addView(root, new FrameLayout.LayoutParams(-1,-1));
     pages[2]=root;
-    LinearLayout actions=new LinearLayout(this);
-    actions.setPadding(dp(8),dp(6),dp(8),dp(6));
-    Button notebooks=secondary("Notebooks");
-    Button sources=secondary("Sources");
-    Button reload=secondary("⟳");
-    reload.setContentDescription(I18n.code(this).equals("fr") ? "Actualiser" : "Refresh");
-    notebooks.setSingleLine(true);
-    actions.addView(notebooks,new LinearLayout.LayoutParams(-2,-2));
-    sources.setSingleLine(true);
-    actions.addView(sources,new LinearLayout.LayoutParams(-2,-2));
-    actions.addView(reload,new LinearLayout.LayoutParams(dp(60),-2));
-    notebookActions = actions;
-    Button expand = secondary("⤢");
-    expand.setContentDescription(I18n.code(this).equals("fr") ? "Agrandir" : "Expand");
+    boolean fr = I18n.code(this).equals("fr");
+    // Same toolbar as LinkedIn: [expand] [Notebooks] [Sources] [refresh] [browser]
+    LinearLayout actions=toolbarRow();
+    android.widget.ImageButton expand = iconButton(UiIcons.Kind.EXPAND, fr ? "Agrandir" : "Expand");
     notebookExpand = expand;
-    Button chrome = secondary("◎ " + (I18n.code(this).equals("fr") ? "Navigateur" : "Browser"));
-    chrome.setSingleLine(true);
-    actions.addView(expand,new LinearLayout.LayoutParams(dp(54),-2));
-    actions.addView(chrome,new LinearLayout.LayoutParams(-2,-2));
-    android.widget.HorizontalScrollView actionScroll = new android.widget.HorizontalScrollView(this);
-    actionScroll.setHorizontalScrollBarEnabled(false);
-    actionScroll.addView(actions, new android.widget.HorizontalScrollView.LayoutParams(-2, -2));
-    root.addView(actionScroll);
+    Button notebooks=toolButton("Notebooks", UiIcons.Kind.BOOK);
+    Button sources=toolButton("Sources", UiIcons.Kind.PLUS);
+    android.widget.ImageButton reload=iconButton(UiIcons.Kind.REFRESH, fr ? "Actualiser" : "Refresh");
+    android.widget.ImageButton chrome=iconButton(UiIcons.Kind.BROWSER, fr ? "Ouvrir dans le navigateur" : "Open in browser");
+    actions.addView(expand, toolLp(dp(40),0,false));
+    actions.addView(notebooks, toolLp(0,1,true));
+    actions.addView(sources, toolLp(0,1,true));
+    actions.addView(reload, toolLp(dp(40),0,true));
+    actions.addView(chrome, toolLp(dp(40),0,true));
+    notebookActions = actions;
+    root.addView(actions, new LinearLayout.LayoutParams(-1,-2));
     expand.setOnClickListener(v -> setNotebookExpanded(!notebookExpanded));
     chrome.setOnClickListener(v -> {
       String url = notebookWeb == null ? null : notebookWeb.getUrl();
@@ -2022,7 +2066,13 @@ public class MainActivity extends Activity {
         child.setVisibility(expanded && child != notebookExpand ? View.GONE : View.VISIBLE);
       }
     }
-    if (notebookExpand != null) notebookExpand.setText(expanded ? "⤡" : "⤢");
+    if (notebookExpand != null) {
+      String d = I18n.code(this).equals("fr") ? (expanded ? "Réduire" : "Agrandir") : (expanded ? "Collapse" : "Expand");
+      notebookExpand.setImageDrawable(UiIcons.make(expanded ? UiIcons.Kind.COLLAPSE : UiIcons.Kind.EXPAND, expanded ? Color.WHITE : BLUE, dp(20)));
+      notebookExpand.setBackground(expanded ? shape(BLUE, 12, 0) : toolBackground(TOOL_FILL, TOOL_LINE));
+      notebookExpand.setContentDescription(d);
+      if (android.os.Build.VERSION.SDK_INT >= 26) notebookExpand.setTooltipText(d);
+    }
     getWindow().getDecorView().setSystemUiVisibility(expanded
       ? View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
       : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
@@ -2379,32 +2429,6 @@ public class MainActivity extends Activity {
   /** Label shared by the assistant activity button and its diagnostics dialog. */
   /** Compact LinkedIn toolbar translations in I18n.CODES order. */
   /** Native vector shield, consistent across Android fonts and locales (no lock emoji). */
-  private android.graphics.drawable.Drawable linkedinShieldIcon() {
-    android.graphics.drawable.Drawable icon = new android.graphics.drawable.Drawable() {
-      private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
-      @Override public void draw(android.graphics.Canvas canvas) {
-        android.graphics.Rect b = getBounds();
-        float sx = b.width() / 24f, sy = b.height() / 24f;
-        canvas.save(); canvas.translate(b.left, b.top); canvas.scale(sx, sy);
-        paint.setColor(BLUE); paint.setStyle(android.graphics.Paint.Style.STROKE); paint.setStrokeWidth(2.1f);
-        paint.setStrokeJoin(android.graphics.Paint.Join.ROUND); paint.setStrokeCap(android.graphics.Paint.Cap.ROUND);
-        android.graphics.Path shield = new android.graphics.Path();
-        shield.moveTo(12, 2); shield.cubicTo(9.5f, 4, 6.6f, 5, 3.5f, 5.5f);
-        shield.lineTo(3.5f, 11); shield.cubicTo(3.5f, 16.5f, 7.1f, 20, 12, 22);
-        shield.cubicTo(16.9f, 20, 20.5f, 16.5f, 20.5f, 11); shield.lineTo(20.5f, 5.5f);
-        shield.cubicTo(17.4f, 5, 14.5f, 4, 12, 2); shield.close(); canvas.drawPath(shield, paint);
-        paint.setStrokeWidth(2.3f); canvas.drawLine(8.5f, 12, 11, 14.5f, paint);
-        canvas.drawLine(11, 14.5f, 15.8f, 9.5f, paint); canvas.restore();
-      }
-      @Override public void setAlpha(int alpha) { paint.setAlpha(alpha); }
-      @Override public void setColorFilter(android.graphics.ColorFilter filter) { paint.setColorFilter(filter); }
-      @Override public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
-      @Override public int getIntrinsicWidth() { return dp(17); }
-      @Override public int getIntrinsicHeight() { return dp(17); }
-    };
-    icon.setBounds(0, 0, dp(17), dp(17));
-    return icon;
-  }
 
   private String linkedinToolbarText(String key) {
     String[][] labels = {
@@ -2622,7 +2646,7 @@ public class MainActivity extends Activity {
     if (linkedinMcpEnabled && linkedinWeb != null) {
       ui.removeCallbacks(linkedinPoll);
       ui.post(linkedinPoll);
-      if (linkedinMcpControlButton != null) linkedinMcpControlButton.setText(linkedinToolbarText("allowed"));
+      if (linkedinMcpControlButton != null) { linkedinMcpControlButton.setText(linkedinToolbarText("allowed")); setToggleState(linkedinMcpControlButton, true); }
     }
   }
   @Override protected void onPause() {
