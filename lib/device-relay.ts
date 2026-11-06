@@ -33,7 +33,7 @@ export async function sb<T=unknown>(path:string,init?:RequestInit&{prefer?:strin
 const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
 const nowIso=()=>new Date().toISOString();
 
-export type Device={id:string;user_id:string;name:string;created_at:string;last_seen_at:string|null;relay_seen_at?:string|null;relay_claim_at?:string|null};
+export type Device={id:string;user_id:string;name:string;created_at:string;last_seen_at:string|null;relay_seen_at?:string|null;relay_claim_at?:string|null;relay_paused_until?:string|null};
 export type Job={id:string;video_id:string;language:string;status:'pending'|'claimed'|'done'|'error';result:unknown;error:string|null;device_id:string|null;created_at:string;expires_at:string};
 
 /** Validates a YouTube URL, shared text or bare ID; returns the 11-character ID or null. */
@@ -67,7 +67,7 @@ export async function deviceFromAuthorization(authorization:string|null){
  return rows[0]??null;
 }
 export async function touchDevice(id:string){await sb('/rest/v1/cmg_devices?id=eq.'+id,{method:'PATCH',body:JSON.stringify({last_seen_at:nowIso()})});}
-export async function listDevices(userId:string){return sb<Device[]>('/rest/v1/cmg_devices?user_id=eq.'+userId+'&revoked_at=is.null&select=id,user_id,name,created_at,last_seen_at,relay_seen_at,relay_claim_at&order=created_at.desc');}
+export async function listDevices(userId:string){return sb<Device[]>('/rest/v1/cmg_devices?user_id=eq.'+userId+'&revoked_at=is.null&select=id,user_id,name,created_at,last_seen_at,relay_seen_at,relay_claim_at,relay_paused_until&order=created_at.desc');}
 export async function revokeDevice(userId:string,deviceId:string){const rows=await sb<Device[]>('/rest/v1/cmg_devices?id=eq.'+encodeURIComponent(deviceId)+'&user_id=eq.'+userId+'&revoked_at=is.null',{method:'PATCH',body:JSON.stringify({revoked_at:nowIso()}),prefer:'return=representation'});return rows.length>0;}
 export const isOnline=(d:Device)=>!!d.last_seen_at&&Date.now()-Date.parse(d.last_seen_at)<DEVICE_ONLINE_MS;
 const recent=(t?:string|null)=>!!t&&Date.now()-Date.parse(t)<DEVICE_ONLINE_MS;
@@ -76,12 +76,20 @@ export const relayRunning=(d:Device)=>recent(d.relay_seen_at);
 /** The relay worker is running AND accepting jobs (not paused after a YouTube HTTP 429). */
 export const relayClaiming=(d:Device)=>recent(d.relay_claim_at);
 /** Records relay worker activity on each /api/devices/jobs poll. */
-export async function touchRelay(id:string,claiming:boolean){const now=nowIso();await sb('/rest/v1/cmg_devices?id=eq.'+id,{method:'PATCH',body:JSON.stringify(claiming?{relay_seen_at:now,relay_claim_at:now}:{relay_seen_at:now})});}
+export async function touchRelay(id:string,claiming:boolean,pausedUntil?:number|null){
+ const now=nowIso();
+ const paused=!claiming&&pausedUntil&&pausedUntil>Date.now()&&pausedUntil<Date.now()+86_400_000?new Date(pausedUntil).toISOString():null;
+ await sb('/rest/v1/cmg_devices?id=eq.'+id,{method:'PATCH',body:JSON.stringify(claiming?{relay_seen_at:now,relay_claim_at:now,relay_paused_until:null}:{relay_seen_at:now,relay_paused_until:paused})});
+}
 /** Why no device takes transcript/NotebookLM jobs, with what the user must do. Null when a device can take them. */
-export function relayBlocker(devices:Device[]):null|{status:'device_paused'|'relay_off';messageForUser:string}{
+export function relayBlocker(devices:Device[]):null|{status:'device_paused'|'relay_off';messageForUser:string;resumesAt?:string}{
  if(devices.some(relayClaiming))return null;
  const names=devices.map(d=>d.name).join(', ');
- if(devices.some(relayRunning))return {status:'device_paused',messageForUser:'Your CamMicGo app ('+names+') is connected but has paused YouTube requests after YouTube limited it (HTTP 429). Open the app: in "Assistant IA", wait for the pause to end or tap "Réessayer", then tell me to retry. Nothing was lost.'};
+ const running=devices.filter(relayRunning);
+ if(running.length){
+  const until=running.map(d=>d.relay_paused_until).filter((t):t is string=>!!t&&Date.parse(t)>Date.now()).sort()[0];
+  return {status:'device_paused',...(until?{resumesAt:until}:{}),messageForUser:'YouTube temporarily limited your CamMicGo app ('+names+') (HTTP 429), so it paused transcripts'+(until?' until '+until+' (convert to the user\'s local time)':'')+'. It resumes by itself; to try sooner, tap "Réessayer" in the app\'s "Assistant IA" tab, then tell me to retry. Nothing was queued, so nothing will run in a loop.'};
+ }
  if(devices.some(isOnline))return {status:'relay_off',messageForUser:'Your CamMicGo app ('+names+') is open (LinkedIn control), but "Mode connecté" is off, so it does not take transcript or NotebookLM requests. In the app, open "Connexion à votre assistant IA" and turn on "Mode connecté", keep the phone awake, then tell me to retry.'};
  return null;
 }
@@ -164,14 +172,14 @@ export async function recentPairingFailures(ip:string){
 export async function recordPairingFailure(ip:string){await sb('/rest/v1/cmg_pairing_attempts',{method:'POST',body:JSON.stringify({ip_hash:hash('ip:'+ip)})});}
 
 // ---------- progress shown on paired devices ----------
-type WaveJob={id:string;video_id:string;status:Job['status'];error:string|null;created_at:string;completed_at:string|null;expires_at:string;title:string|null};
-export type DeviceProgress={total:number;done:number;failed:number;pending:number;working:number;startedAt:string;finishedAt:string|null;recent:Array<{videoId:string;title:string|null;status:'done'|'failed'|'working'|'pending';at:string|null;error?:string}>};
+type WaveJob={id:string;video_id:string;status:Job['status'];error:string|null;created_at:string;completed_at:string|null;expires_at:string;title:string|null;agent_name?:string|null};
+export type DeviceProgress={total:number;done:number;failed:number;pending:number;working:number;startedAt:string;finishedAt:string|null;recent:Array<{videoId:string;title:string|null;status:'done'|'failed'|'working'|'pending';at:string|null;agent?:string|null;createdAt?:string;error?:string}>};
 const WAVE_GAP_MS=10*60_000;
 /** Progress of the user's latest wave of transcript requests (e.g. a 50-video batch), or null when idle for 30 min. */
 export async function deviceProgress(userId:string):Promise<DeviceProgress|null>{
  const since=new Date(Date.now()-6*3600_000).toISOString();
  const expiryCutoff=new Date().toISOString();
- const rows=await sb<WaveJob[]>('/rest/v1/cmg_transcript_jobs?user_id=eq.'+userId+'&expires_at=gt.'+encodeURIComponent(expiryCutoff)+'&created_at=gt.'+encodeURIComponent(since)+'&select=id,video_id,status,error,created_at,completed_at,expires_at,title:result->>title&order=created_at.desc&limit=600');
+ const rows=await sb<WaveJob[]>('/rest/v1/cmg_transcript_jobs?user_id=eq.'+userId+'&expires_at=gt.'+encodeURIComponent(expiryCutoff)+'&created_at=gt.'+encodeURIComponent(since)+'&select=id,video_id,status,error,created_at,completed_at,expires_at,agent_name,title:result->>title&order=created_at.desc&limit=600');
  if(!rows.length)return null;
  // The latest wave: consecutive requests separated by less than 10 minutes.
  const wave=[rows[0]];
@@ -191,7 +199,7 @@ export async function deviceProgress(userId:string):Promise<DeviceProgress|null>
  }
  const order={working:0,done:1,failed:1,pending:2} as const;
  const recent=[...wave].sort((a,b)=>order[state(a)]-order[state(b)]||Date.parse(b.completed_at||b.created_at)-Date.parse(a.completed_at||a.created_at)).slice(0,12)
-  .map(j=>({videoId:j.video_id,title:j.title||titles.get(j.video_id)||null,status:state(j),at:j.completed_at,...(state(j)==='failed'?{error:(j.error||'Expirée').split('\n')[0].slice(0,140)}:{})}));
+  .map(j=>({videoId:j.video_id,title:j.title||titles.get(j.video_id)||null,status:state(j),at:j.completed_at,agent:j.agent_name||null,createdAt:j.created_at,...(state(j)==='failed'?{error:(j.error||'Expirée').split('\n')[0].slice(0,140)}:{})}));
  return {total:wave.length,...counts,startedAt:wave[wave.length-1].created_at,finishedAt:finished&&lastDone?new Date(lastDone).toISOString():null,recent};
 }
 

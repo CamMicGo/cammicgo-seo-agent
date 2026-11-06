@@ -162,7 +162,8 @@ public class MainActivity extends Activity {
   // assistant tab
   private EditText codeInput;
   private Button pairButton, connectButton, retryYoutubeButton;
-  private LinearLayout unpairedBox, pairedBox, historyList, notebookRequests, linkedinRequests;
+  private LinearLayout unpairedBox, pairedBox, historyList, notebookRequests, linkedinRequests, progressWaitingList;
+  private TextView progressPause;
   private View statusDot;
   private TextView statusLine, relayDetail;
   private TextView progressCount, progressLabel, progressCurrent, progressNote, progressFreshness, statDone, statWaiting, statFailed;
@@ -580,7 +581,7 @@ public class MainActivity extends Activity {
     buttons.addView(unpair);
     pairedBox.addView(buttons, gapTop(6));
     c.addView(pairedBox);
-    retryYoutubeButton = secondary("↻  Réessayer l'extraction YouTube (HTTP 429)");
+    retryYoutubeButton = secondary("↻  Réessayer maintenant (pause YouTube HTTP 429)");
     retryYoutubeButton.setVisibility(View.GONE);
     pairedBox.addView(retryYoutubeButton, gapTop(8));
     retryYoutubeButton.setOnClickListener(v -> new AlertDialog.Builder(this)
@@ -649,6 +650,14 @@ public class MainActivity extends Activity {
     p.addView(activityRow);
     progressSpinner.setTag(activityRow);
     activityRow.setVisibility(View.GONE);
+    progressPause = text(p, "", 13, AMBER, true);
+    progressPause.setPadding(dp(12), dp(10), dp(12), dp(10));
+    progressPause.setBackground(shape(Color.rgb(255, 247, 230), 12, Color.rgb(250, 214, 150)));
+    ((LinearLayout.LayoutParams) progressPause.getLayoutParams()).topMargin = dp(12);
+    progressPause.setVisibility(View.GONE);
+    progressWaitingList = new LinearLayout(this);
+    progressWaitingList.setOrientation(LinearLayout.VERTICAL);
+    p.addView(progressWaitingList, gapTop(10));
     progressCurrent = text(p, "", 13, INK, true);
     progressCurrent.setPadding(0, dp(12), 0, 0);
     progressCurrent.setMaxLines(2);
@@ -2240,7 +2249,7 @@ public class MainActivity extends Activity {
     chipDot.setBackground(dot(chipColor));
     chipText.setText(!paired ? t("chip_unpaired") : connected ? t("chip_connected") : starting ? "Démarrage…" : t("chip_stopped"));
 
-    if (retryYoutubeButton != null) retryYoutubeButton.setVisibility(paired && p.getBoolean("youtube429ManualPause", false) ? View.VISIBLE : View.GONE);
+    if (retryYoutubeButton != null) retryYoutubeButton.setVisibility(paired && (p.getBoolean("youtube429ManualPause", false) || p.getLong("youtubePausedUntil", 0L) > System.currentTimeMillis()) ? View.VISIBLE : View.GONE);
     if (paired) {
       statusDot.setBackground(dot(connected ? GREEN : GREY));
       statusLine.setText(connected ? t("status_on") : starting ? "Connexion au serveur en cours…" : t("status_off"));
@@ -2337,6 +2346,15 @@ public class MainActivity extends Activity {
   private void refreshProgress(SharedPreferences p, boolean paired, boolean connected) {
     JSONObject o = null;
     try { String s = p.getString("progress", null); if (s != null) o = new JSONObject(s); } catch (Exception ignored) {}
+    long pausedUntil = p.getLong("youtubePausedUntil", 0L);
+    boolean ytPaused = paired && (pausedUntil > System.currentTimeMillis() || p.getBoolean("youtube429ManualPause", false));
+    if (progressPause != null) {
+      progressPause.setVisibility(ytPaused ? View.VISIBLE : View.GONE);
+      if (ytPaused) progressPause.setText(pausedUntil > System.currentTimeMillis()
+          ? "⏸  YouTube a limité ce téléphone (HTTP 429). Les transcriptions reprennent seules à " + DateFormat.getTimeInstance(DateFormat.SHORT).format(new Date(pausedUntil)) + ". Votre assistant en est informé : il ne relance pas en boucle."
+          : "⏸  YouTube a limité ce téléphone (HTTP 429). Touchez « Réessayer maintenant » pour reprendre.");
+    }
+    if (progressWaitingList != null) progressWaitingList.removeAllViews();
     if (o == null || o.optInt("total") == 0) {
       progressCount.setText("—");
       progressLabel.setText(paired ? t("no_request") : t("pair_to_start"));
@@ -2379,11 +2397,32 @@ public class MainActivity extends Activity {
         if (r.optString("videoId").equals(current) && !r.isNull("title")) currentTitle = r.optString("title");
       }
     }
+    // List the requests still waiting, with the assistant that asked for them (they reach the
+    // "sent to the assistant" list below only once the transcript has been delivered).
+    if (progressWaitingList != null && recent != null) {
+      for (int i = 0; i < recent.length(); i++) {
+        JSONObject r = recent.optJSONObject(i);
+        if (r == null) continue;
+        String st = r.optString("status");
+        if (!"pending".equals(st) && !"working".equals(st)) continue;
+        String title = r.isNull("title") ? r.optString("videoId") : r.optString("title");
+        String agent = r.isNull("agent") ? "" : r.optString("agent");
+        String state = "working".equals(st) ? "en cours" : ytPaused ? "en pause (YouTube 429)" : "en attente";
+        TextView row = text(progressWaitingList, ("working".equals(st) ? "▶  " : "⏳  ") + title + "\n" + (agent.isEmpty() ? "" : agent + " · ") + state, 13, INK, false);
+        row.setMaxLines(3);
+        row.setPadding(dp(12), dp(8), dp(12), dp(8));
+        row.setBackground(shape(Color.rgb(244, 247, 253), 10, Color.rgb(222, 230, 245)));
+        ((LinearLayout.LayoutParams) row.getLayoutParams()).topMargin = dp(6);
+        final String vid = r.optString("videoId");
+        row.setOnClickListener(v -> { try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=" + vid))); } catch (Exception ignored) {} });
+      }
+    }
     if (waiting > 0 && current != null) progressCurrent.setText(t("current", currentTitle != null ? currentTitle : current));
     else progressCurrent.setText(waiting == 0 ? t("all_done") : "");
 
     String note;
-    if (waiting > 0 && !connected) note = t("stopped_resume");
+    if (waiting > 0 && ytPaused) note = "";
+    else if (waiting > 0 && !connected) note = t("stopped_resume");
     else if (waiting > 0) {
       String eta = eta(o.optString("startedAt", null), handled, waiting);
       note = (eta != null ? eta + " · " : "") + t("auto_resume");

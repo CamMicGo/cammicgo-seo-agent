@@ -126,6 +126,9 @@ public class RelayService extends Service {
         // A YouTube HTTP 429 pauses only transcript claims, never the server heartbeat.
         // Keep polling through the normal error handler so network failures cannot kill the worker.
         if (wait > 0) {
+          status("YouTube a limité ce téléphone (HTTP 429) : transcriptions en pause jusqu’à "
+              + java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(new java.util.Date(pausedUntil))
+              + ". Reprise automatique, ou « Réessayer maintenant ».");
           RelayClient.poll(this, token, false);
           RelayClient.prefs(this).edit().putLong("lastSync", System.currentTimeMillis()).apply();
           sleep(Math.min(wait, 15_000));

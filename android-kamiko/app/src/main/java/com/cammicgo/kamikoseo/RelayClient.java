@@ -54,7 +54,10 @@ public final class RelayClient {
   /** Polls the relay: returns the full response ({job, progress, pollAfterMs}); stores progress for the UI. */
   public static JSONObject poll(Context c, String token, boolean claim) throws IOException {
     try {
-      JSONObject res = new JSONObject(request("GET", "/api/devices/jobs" + (claim ? "" : "?claim=0"), token, null));
+      // While YouTube is paused (HTTP 429), tell the server until when, so assistants can explain it.
+      long pausedUntil = prefs(c).getLong("youtubePausedUntil", 0L);
+      String q = claim ? "" : "?claim=0" + (pausedUntil > System.currentTimeMillis() ? "&pausedUntil=" + pausedUntil : "");
+      JSONObject res = new JSONObject(request("GET", "/api/devices/jobs" + q, token, null));
       JSONObject progress = res.optJSONObject("progress");
       prefs(c).edit().putString("progress", progress == null ? null : progress.toString())
           .putLong("progressAt", System.currentTimeMillis()).apply();

@@ -11,7 +11,7 @@ export async function GET(req:NextRequest){
   // Transient relay payloads are purged; local APK history is unaffected.
   await pruneRelayPayloads().catch(()=>{});
   const claiming=req.nextUrl.searchParams.get('claim')!=='0';
-  await touchRelay(device.id,claiming).catch(()=>{});
+  await touchRelay(device.id,claiming,Number(req.nextUrl.searchParams.get('pausedUntil'))||null).catch(()=>{});
   const notebook=claiming?await claimNotebookJob(device).catch(()=>null):null;
   const job=claiming&&!notebook?await claimJob(device):null;
   const transcriptAgent=job?await sb<Array<{agent_name:string|null}>>('/rest/v1/cmg_transcript_jobs?id=eq.'+job.id+'&user_id=eq.'+device.user_id+'&select=agent_name').then(rows=>rows[0]?.agent_name||'Assistant inconnu').catch(()=> 'Assistant inconnu'):null;
