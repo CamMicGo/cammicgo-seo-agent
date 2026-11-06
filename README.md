@@ -103,6 +103,17 @@ npm run local:doctor    # checks credentials and tokens
 - **Register it in your assistant:** `npm run agent:setup -- claude` (or `gemini`, `cursor`) adds the stdio server to Claude Desktop, Gemini CLI or Cursor.
 - **More help:** full guide on the [website](https://seo.cammicgo.com/setup/local), with troubleshooting in [docs/LOCAL-MCP-INSTALL.md](docs/LOCAL-MCP-INSTALL.md).
 
+### `cammicgo`: terminal and local MCP for NotebookLM
+
+```bash
+npm link                # once, in the cloned folder: adds the "cammicgo" command
+cammicgo login          # sign in to NotebookLM in a dedicated Chrome window
+cammicgo setup vscode   # or claude, claude-code, cursor, windsurf, gemini, all
+cammicgo notebook list
+```
+
+The full NotebookLM toolset of the Android app (notebooks, sources, Studio, chat, notes, research, collections, sharing, downloads), YouTube transcripts into notebooks, from the terminal or any MCP client, without the phone or the CamMicGo server. See [docs/CAMMICGO-CLI.md](docs/CAMMICGO-CLI.md).
+
 ### LinkedIn: two ways to connect
 
 - **Simple (one minute):** on [your account](https://seo.cammicgo.com/account), click **Connect LinkedIn** and allow with your own LinkedIn account. You don't need a LinkedIn Page or a developer app.
@@ -148,13 +159,14 @@ Full walkthrough: **[seo.cammicgo.com/setup/linkedin](https://seo.cammicgo.com/s
 
 ### Local MCP (stdio, read-only)
 
-The local server has 23 tools:
+The local server has these tools:
 - **Account and properties:** `service_info`, `find_google_properties`
 - **Search Console:** `list_search_sites`, `search_performance`, `seo_keyword_opportunities`
 - **Google Analytics 4:** `list_ga4_properties`, `ga4_top_pages`, `ga4_countries`
 - **YouTube:** `youtube_my_channels`, `youtube_my_videos`, `youtube_video_metrics`, `youtube_get_transcript` (the local server fetches transcripts itself)
 - **Google Calendar:** `calendar_list`, `calendar_upcoming_events`
 - **Scientific sources:** the same nine `science_*` tools as the remote server
+- **NotebookLM (after `cammicgo login`):** the same 51 NotebookLM tools as the remote server, executed directly on the computer — see [docs/CAMMICGO-CLI.md](docs/CAMMICGO-CLI.md)
 
 ## Safety: nothing happens without your yes
 
@@ -214,6 +226,7 @@ npm run test:mcp:local       # local MCP protocol smoke test (no Google call)
 
 - [Connecting agents](docs/CONNECTING-AGENTS.md)
 - [Local MCP installation](docs/LOCAL-MCP-INSTALL.md)
+- [`cammicgo` command line and local NotebookLM](docs/CAMMICGO-CLI.md)
 - [Local transcript agent](docs/LOCAL-TRANSCRIPT-AGENT.md)
 - [Google modules and security](docs/GOOGLE-MODULES-AND-SECURITY.md)
 - [Quotas and launch](docs/QUOTAS-AND-LAUNCH.md)

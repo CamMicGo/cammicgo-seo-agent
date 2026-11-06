@@ -18,9 +18,10 @@
     "oauth:desktop": "node scripts/import-desktop-oauth.mjs",
     "test:mcp:local": "node scripts/test-local-mcp.mjs",
     "relay": "node desktop/relay.mjs",
-    "test": "node scripts/build-science-local.mjs --check && node --experimental-strip-types --no-warnings --test tests/google-drive.test.ts tests/science.test.ts tests/science-biblio.test.ts tests/benchmark-parse.test.ts tests/google-scopes.test.ts tests/youtube-analytics.test.ts tests/ga4-gsc.test.ts tests/linkedin.test.ts tests/chat-files.test.ts && node --test tests/notebooklm-transcript-csv.test.mjs tests/notebooklm-channel-archive.test.mjs tests/notebooklm-local.test.mjs",
+    "test": "node scripts/build-science-local.mjs --check && node --experimental-strip-types --no-warnings --test tests/google-drive.test.ts tests/science.test.ts tests/science-biblio.test.ts tests/benchmark-parse.test.ts tests/google-scopes.test.ts tests/youtube-analytics.test.ts tests/ga4-gsc.test.ts tests/linkedin.test.ts tests/chat-files.test.ts && node --test tests/notebooklm-transcript-csv.test.mjs tests/notebooklm-channel-archive.test.mjs tests/notebooklm-local.test.mjs tests/notebooklm-rpc.test.mjs",
     "lint": "eslint .",
-    "build:science": "node scripts/build-science-local.mjs"
+    "build:science": "node scripts/build-science-local.mjs",
+    "cammicgo": "node cli/cammicgo.mjs"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.10",
@@ -45,5 +46,8 @@
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.9.0"
+  },
+  "bin": {
+    "cammicgo": "cli/cammicgo.mjs"
   }
 }
