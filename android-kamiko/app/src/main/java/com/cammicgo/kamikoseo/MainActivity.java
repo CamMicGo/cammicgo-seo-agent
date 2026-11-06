@@ -778,6 +778,7 @@ public class MainActivity extends Activity {
     actions.addView(network, new LinearLayout.LayoutParams(0, -2, 1));
     actions.addView(search, new LinearLayout.LayoutParams(0, -2, 1));
     root.addView(actions);
+    linkedinNav = new Button[]{messages, network, search};
 
     linkedinActions = actions;
     // Compact secondary toolbar leaves more room for the LinkedIn WebView.
@@ -868,7 +869,10 @@ public class MainActivity extends Activity {
         return true;
       }
     });
-    linkedinWeb.setWebViewClient(new WebViewClient());
+    linkedinWeb.setWebViewClient(new WebViewClient() {
+      @Override public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) { markLinkedInNav(url); }
+      @Override public void onPageFinished(WebView view, String url) { markLinkedInNav(url); }
+    });
     // Native buttons provide accessible touch targets instead of relying on tiny web icons.
     LinearLayout attachmentRow = new LinearLayout(this);
     attachmentRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -1006,24 +1010,63 @@ public class MainActivity extends Activity {
     linkedinWeb.loadUrl(url);
     ui.postDelayed(() -> {
       if (!linkedinMcpEnabled) { finishLinkedInJob(id, null, "LinkedIn navigation disabled"); return; }
-      String js = "(function(){const anchors=[...document.querySelectorAll('a[href*=\\\"/in/\\\"]')].filter(a=>a.closest('li,article,[class*=result]'));const profiles=anchors.map(a=>({name:(a.innerText||a.closest('li,article')?.innerText||'').trim().slice(0,350),profileUrl:a.href.split('?')[0],avatarUrl:(a.closest('li,article,[class*=result]')?.querySelector('img')?.currentSrc||a.closest('li,article,[class*=result]')?.querySelector('img')?.src||'')})).filter(p=>p.name&&p.profileUrl);return JSON.stringify({profiles:profiles.slice(0,100),url:location.pathname});})()";
-      linkedinWeb.evaluateJavascript(js, raw -> {
-        try {
-          JSONObject data = new JSONObject(new JSONArray("[" + raw + "]").getString(0));
-          JSONArray items = data.optJSONArray("profiles");
-          int before = found.size();
-          if (items != null) for (int n = 0; n < items.length() && found.size() < requested; n++) {
-            JSONObject profile = items.optJSONObject(n);
-            if (profile == null) continue;
-            String profileUrl = profile.optString("profileUrl");
-            if (profileUrl.startsWith("https://www.linkedin.com/in/") && !found.containsKey(profileUrl)) found.put(profileUrl, profile);
-          }
-          if (found.size() >= requested || found.size() >= 100) finishLinkedInSearch(id, requested, found, page, found.size() >= requested ? "requested_count_reached" : "continue_with_next_page");
-          else if (items == null || items.length() == 0 || found.size() == before) finishLinkedInSearch(id, requested, found, page, "no_more_visible_results");
-          else collectLinkedInSearchPage(id, baseUrl, page + 1, requested, found);
-        } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
-      });
+      extractLinkedInPeople(id, baseUrl, page, requested, found, 0);
     }, 2800);
+  }
+
+  /** Reads the visible people results; LinkedIn renders them late, so it looks again for up to ~8 s. */
+  private void extractLinkedInPeople(String id, String baseUrl, int page, int requested, java.util.LinkedHashMap<String, JSONObject> found, int attempt) {
+    String js = "(function(){const seen=new Set();const out=[];"
+      + "for(const a of document.querySelectorAll('a[href*=\"/in/\"]')){"
+      + "const href=a.href.split('?')[0].split('#')[0].replace(/\\/$/,'')+'/';"
+      + "if(!/^https:\\/\\/([a-z]{2,3}\\.)?linkedin\\.com\\/in\\/[^/]+\\/$/.test(href)||seen.has(href)||a.closest('header,nav,footer,[class*=global-nav]'))continue;"
+      + "const card=a.closest('li,article,[class*=result],[class*=entity],[data-view-name]')||(a.parentElement&&a.parentElement.parentElement)||a;"
+      + "const img=card.querySelector('img');const name=((a.innerText||'').trim().split('\\n')[0]||(img&&img.alt)||'').trim();"
+      + "if(!name||/^(voir|view|see)\\b/i.test(name))continue;seen.add(href);"
+      + "out.push({name:name.slice(0,150),headline:(card.innerText||'').trim().slice(0,350),profileUrl:href.replace(/^https:\\/\\/[a-z]{2,3}\\./,'https://www.'),avatarUrl:img?(img.currentSrc||img.src||''):''});}"
+      + "return JSON.stringify({profiles:out.slice(0,100),url:location.pathname+location.search.slice(0,80),title:document.title,inLinks:document.querySelectorAll('a[href*=\"/in/\"]').length});})()";
+    linkedinWeb.evaluateJavascript(js, raw -> {
+      try {
+        JSONObject data = new JSONObject(new JSONArray("[" + raw + "]").getString(0));
+        JSONArray items = data.optJSONArray("profiles");
+        if ((items == null || items.length() == 0) && attempt < 4) {
+          ui.postDelayed(() -> extractLinkedInPeople(id, baseUrl, page, requested, found, attempt + 1), 2000); return;
+        }
+        int before = found.size();
+        if (items != null) for (int n = 0; n < items.length() && found.size() < requested; n++) {
+          JSONObject profile = items.optJSONObject(n);
+          if (profile == null) continue;
+          String profileUrl = profile.optString("profileUrl");
+          if (profileUrl.startsWith("https://www.linkedin.com/in/") && !found.containsKey(profileUrl)) found.put(profileUrl, profile);
+        }
+        if (found.isEmpty()) {
+          // Nothing readable: say what the page was, instead of an empty success.
+          JSONObject diag = new JSONObject();
+          diag.put("profiles", new JSONArray()); diag.put("retrieved", 0); diag.put("requested", requested);
+          diag.put("reason", "no_profiles_visible"); diag.put("page", data.optString("url")); diag.put("title", data.optString("title")); diag.put("profileLinksOnPage", data.optInt("inLinks"));
+          finishLinkedInJob(id, diag, null); return;
+        }
+        if (found.size() >= requested || found.size() >= 100) finishLinkedInSearch(id, requested, found, page, found.size() >= requested ? "requested_count_reached" : "continue_with_next_page");
+        else if (items == null || items.length() == 0 || found.size() == before) finishLinkedInSearch(id, requested, found, page, "no_more_visible_results");
+        else collectLinkedInSearchPage(id, baseUrl, page + 1, requested, found);
+      } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
+    });
+  }
+
+  /** Highlights the toolbar button of the page shown (also when the assistant navigates). */
+  private Button[] linkedinNav;
+  private void markLinkedInNav(String url) {
+    if (linkedinNav == null || url == null) return;
+    int active = url.contains("/messaging") ? 0 : url.contains("/mynetwork") ? 1 : url.contains("/search/") ? 2 : -1;
+    for (int i = 0; i < linkedinNav.length; i++) {
+      Button b = linkedinNav[i];
+      boolean on = i == active;
+      b.setSelected(on);
+      b.setBackground(on ? shape(BLUE, 14, BLUE) : shape(Color.WHITE, 14, Color.rgb(169, 202, 250)));
+      b.setTextColor(on ? Color.WHITE : BLUE);
+      b.setCompoundDrawableTintList(android.content.res.ColorStateList.valueOf(on ? Color.WHITE : BLUE));
+      b.setContentDescription(b.getText() + (on ? " ✓" : ""));
+    }
   }
 
   private void finishLinkedInSearch(String id, int requested, java.util.LinkedHashMap<String, JSONObject> found, int pages, String reason) {
