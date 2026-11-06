@@ -9,6 +9,7 @@ import * as yta from '@/lib/youtube-analytics';
 import * as gsc from '@/lib/gsc';
 import * as ga4 from '@/lib/ga4';
 import * as li from '@/lib/linkedin';
+import * as chatFiles from '@/lib/chat-files';
 import * as sci from '@/lib/science';
 import * as sciExport from '@/lib/science-export';
 import {googleApiCatalog} from '@/lib/google-api-operation-catalog';
@@ -172,12 +173,12 @@ async function handler(req:NextRequest){
    // These tools provide a truthful, user-supplied conversation workflow without
    // harvesting browser cookies, scraping private endpoints or fabricating messages.
    // LinkedIn Android relay: explicit opt-in on the device; read/navigation only, never sends messages.
-   const linkedinDevice=async(operation:'inbox'|'open'|'thread'|'back'|'feed'|'search'|'company_search'|'network_suggestions'|'invite'|'send'|'attach',payload:Record<string,string>={})=>{
+   const linkedinDevice=async(operation:'inbox'|'open'|'thread'|'back'|'feed'|'search'|'company_search'|'network_suggestions'|'invite'|'send'|'attach',payload:Record<string,string>={},waitMs=35000)=>{
     const liRelay=await import('@/lib/linkedin-relay');
     const devices=await relay.listDevices(user.id);
     if(!devices.some(relay.isOnline))return asText({status:'device_offline',message:'Connectez et ouvrez CamMicGo Android, puis activez le contrôle LinkedIn MCP.'});
     const job=await liRelay.enqueueLinkedIn(user.id,operation,{...payload,agentName});
-    const deadline=Date.now()+35000;
+    const deadline=Date.now()+waitMs;
     while(Date.now()<deadline){
      await new Promise(r=>setTimeout(r,1500));
      const state=await liRelay.getLinkedIn(user.id,job.id);
@@ -197,7 +198,7 @@ async function handler(req:NextRequest){
       }
       return asText({status:'done',data});
      }
-     if(state?.status==='error')return asText({status:'error',error:state.error});
+     if(state?.status==='error')return asText({status:'error',error:state.error,...(state.result?{details:state.result}:{})});
     }
     return asText({status:'pending',jobId:job.id,message:'Ouvrez CamMicGo Android avec le contrôle LinkedIn activé; vérifiez avec linkedin_job_status.'});
    };
@@ -211,99 +212,72 @@ async function handler(req:NextRequest){
     if(!a.confirm)return asText({status:'preview',profileUrl:a.profileUrl,note:'No invitation sent. Ask for explicit approval in a new user message.'});
     return linkedinDevice('invite',{profileUrl:a.profileUrl});
    });
-   // Private outgoing LinkedIn attachment staging; no message is sent by these tools.
-   const linkedinAttachment=async(kind:'image'|'document',filename:string,mime:string,base64:string)=>{
-    const types:Record<string,string>=kind==='image'
-     ?{'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif'}
-     :{'application/pdf':'pdf','text/plain':'txt','application/vnd.openxmlformats-officedocument.wordprocessingml.document':'docx','application/msword':'doc'};
-    const ext=types[mime];
-    if(!ext)return asText({status:'error',error:'Unsupported file type'});
-    if(!/^[A-Za-z0-9+/]+={0,2}$/.test(base64)||base64.length%4!==0)return asText({status:'error',error:'Invalid base64'});
-    const bytes=Buffer.from(base64,'base64');
-    if(bytes.length<1||bytes.length>5_000_000)return asText({status:'error',error:'File must be 1 byte to 5 MB'});
-    const valid=mime==='image/png'?bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))
-     :mime==='image/jpeg'?bytes[0]===255&&bytes[1]===216&&bytes[2]===255
-     :mime==='image/gif'?bytes.subarray(0,3).toString()==='GIF'
-     :mime==='image/webp'?bytes.subarray(0,4).toString()==='RIFF'&&bytes.subarray(8,12).toString()==='WEBP'
-     :mime==='application/pdf'?bytes.subarray(0,5).toString()==='%PDF-'
-     :mime==='application/vnd.openxmlformats-officedocument.wordprocessingml.document'?bytes[0]===80&&bytes[1]===75
-     :mime==='application/msword'?bytes.subarray(0,4).equals(Buffer.from([208,207,17,224]))
-     :true;
-    if(!valid)return asText({status:'error',error:'File signature does not match MIME type'});
-    const key=process.env.SUPABASE_SECRET_KEY;
-    if(!key)return asText({status:'error',error:'Private storage not configured'});
-    const base=process.env.SUPABASE_URL||'https://vfngxjsryklqldarkxhy.supabase.co';
-    const {randomUUID}=await import('node:crypto');
-    const attachmentId=randomUUID();
-    const storagePath=user.id+'/linkedin-outgoing/'+attachmentId+'.'+ext;
-    const response=await fetch(base+'/storage/v1/object/cmg-notebook-artifacts/'+storagePath,{method:'POST',headers:{apikey:key,Authorization:'Bearer '+key,'Content-Type':mime,'x-upsert':'false'},body:bytes,signal:AbortSignal.timeout(45000)});
-    if(!response.ok)return asText({status:'error',error:'Private storage upload failed',httpStatus:response.status});
-    return asText({status:'staged',attachmentId,kind,filename:filename.slice(0,180),mime,bytes:bytes.length,storagePath,attachedToLinkedIn:false,messageSent:false});
+   // ---- LinkedIn attachments: nothing is stored by CamMicGo ----
+   // ChatGPT gives the file through `_meta["openai/fileParams"]` (a temporary download link to its own file
+   // storage). The server only downloads it in memory to check type, size and fingerprint, then the paired
+   // phone downloads it itself into its private cache, attaches it, sends, and deletes it.
+   const chatFileField=z.union([z.object({download_url:z.string().max(4000),file_id:z.string().max(300).optional(),mime_type:z.string().max(150).nullish(),file_name:z.string().max(300).nullish(),name:z.string().max(300).nullish(),size:z.number().nullish()}),z.string().max(4000)])
+    .describe('ChatGPT: the file itself (attached by the user or generated by you); ChatGPT sends its content to CamMicGo. Never invent a URL or a path.');
+   const FILE_META={[chatFiles.FILE_PARAM_META]:['file']};
+   type CheckedFile={downloadUrl:string;name:string;mime:string;bytes:number;sha256:string};
+   const ATTACH_MAX=5_000_000;
+   const ATTACH_TYPES=['image/png','image/jpeg','image/gif','image/webp','application/pdf','text/plain','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+   /** Downloads the assistant's file in memory (never stored) and describes it; the bytes are then dropped. */
+   const checkChatFile=async(value:unknown):Promise<{ok:true;file:CheckedFile}|{ok:false;problem:Record<string,unknown>}>=>{
+    const ref=chatFiles.readChatFile(value);if(!ref.ok)return {ok:false,problem:{status:'error',...ref.problem}};
+    const got=await chatFiles.downloadChatFile(ref.file,ATTACH_MAX);if(!got.ok)return {ok:false,problem:{status:'error',...got.problem}};
+    const sniffed=chatFiles.sniffType(got.bytes);
+    const declared=ref.file.mime_type??got.contentType;
+    const mime=sniffed?.mime??(chatFiles.looksLikeText(got.bytes)&&(!declared||declared.startsWith('text/'))?'text/plain':null);
+    if(!mime||!ATTACH_TYPES.includes(mime))return {ok:false,problem:{status:'error',error:'unsupported_file_type',messageForUser:'LinkedIn attachments sent through CamMicGo: PNG, JPEG, GIF or WebP images, PDF, Word (DOC, DOCX) or text documents'+(sniffed?' (this file is '+sniffed.mime+')':'')+'.'}};
+    const name=chatFiles.cleanFileName(ref.file.file_name??ref.file.name,chatFiles.extensionFor(mime),mime.startsWith('image/')?'image':'document');
+    return {ok:true,file:{downloadUrl:ref.file.download_url,name,mime,bytes:got.bytes.length,sha256:createHash('sha256').update(got.bytes).digest('hex')}};
    };
-   // Accept a short-lived HTTPS file URL as an alternative to passing multi-megabyte base64 through MCP.
-   // Only trusted ChatGPT file-host domains are accepted; no arbitrary URL fetch or redirects.
-   // filePath is a ChatGPT-side attachment reference: clients that support local-file
-   // arguments resolve it into a short-lived file URL before invoking this tool.
-   // The MCP server itself never reads arbitrary client filesystem paths.
-   const linkedinAttachmentFromUrl=async(kind:'image'|'document',filename:string,mime:string,sourceUrl:string)=>{
-    let parsed:URL;
-    try{parsed=new URL(sourceUrl);}catch{return asText({status:'error',error:'Invalid source URL'});}
-    if(parsed.protocol!=='https:'||parsed.port||parsed.username||parsed.password||!['sdmntprnortheu.oaiusercontent.com','files.oaiusercontent.com','chatgpt.com'].includes(parsed.hostname))
-     return asText({status:'error',error:'Only approved HTTPS ChatGPT file URLs are accepted'});
-    try{
-     const response=await fetch(parsed.toString(),{redirect:'error',signal:AbortSignal.timeout(20000)});
-     if(!response.ok)return asText({status:'error',error:'File URL unavailable',httpStatus:response.status});
-     const declared=Number(response.headers.get('content-length')||'0');
-     if(declared>5_000_000)return asText({status:'error',error:'File exceeds 5 MB'});
-     const reader=response.body?.getReader();
-     if(!reader)return asText({status:'error',error:'Empty file response'});
-     const chunks:Uint8Array[]=[];let size=0;
-     while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>5_000_000){await reader.cancel();return asText({status:'error',error:'File exceeds 5 MB'});}chunks.push(value);}
-     const bytes=Buffer.concat(chunks.map(c=>Buffer.from(c)));
-     return linkedinAttachment(kind,filename,mime,bytes.toString('base64'));
-    }catch{return asText({status:'error',error:'Unable to retrieve source file'});}
-   };
-   server.registerTool('linkedin_upload_image',{title:'Stage LinkedIn image in private storage',description:'Stage an image (max 5 MB) using a ChatGPT file attachment (filePath), or legacy base64/sourceUrl. Does not attach or send.',inputSchema:z.object({filename:z.string().min(1).max(180),mime:z.enum(['image/png','image/jpeg','image/webp','image/gif']),base64:z.string().min(4).max(6_800_000).optional(),sourceUrl:z.string().url().max(3000).optional(),filePath:z.string().min(1).max(3000).optional()}).refine(a=>[a.base64,a.sourceUrl,a.filePath].filter(Boolean).length===1,{message:'Provide exactly one of filePath, base64 or sourceUrl'})},async a=>a.base64?linkedinAttachment('image',a.filename,a.mime,a.base64):linkedinAttachmentFromUrl('image',a.filename,a.mime,a.filePath||a.sourceUrl!));
-   server.registerTool('linkedin_upload_document',{title:'Stage LinkedIn document in private storage',description:'Stage a document (max 5 MB) using a ChatGPT file attachment (filePath), or legacy base64/sourceUrl. Does not attach or send.',inputSchema:z.object({filename:z.string().min(1).max(180),mime:z.enum(['application/pdf','text/plain','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document']),base64:z.string().min(4).max(6_800_000).optional(),sourceUrl:z.string().url().max(3000).optional(),filePath:z.string().min(1).max(3000).optional()}).refine(a=>[a.base64,a.sourceUrl,a.filePath].filter(Boolean).length===1,{message:'Provide exactly one of filePath, base64 or sourceUrl'})},async a=>a.base64?linkedinAttachment('document',a.filename,a.mime,a.base64):linkedinAttachmentFromUrl('document',a.filename,a.mime,a.filePath||a.sourceUrl!));
-   server.registerTool('linkedin_attachment_link',{title:'Get temporary download link for staged LinkedIn attachment',annotations:{readOnlyHint:true},description:'Sign a five-minute private download link for an attachment owned by this user. This does not attach to LinkedIn.',inputSchema:z.object({attachmentId:z.string().uuid(),mime:z.enum(['image/png','image/jpeg','image/webp','image/gif','application/pdf','text/plain','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document'])})},async a=>{
-    const ext:Record<string,string>={'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif','application/pdf':'pdf','text/plain':'txt','application/msword':'doc','application/vnd.openxmlformats-officedocument.wordprocessingml.document':'docx'};
-    const key=process.env.SUPABASE_SECRET_KEY;
-    if(!key)return asText({status:'error',error:'Storage unavailable'});
-    const base=process.env.SUPABASE_URL||'https://vfngxjsryklqldarkxhy.supabase.co';
-    const path=user.id+'/linkedin-outgoing/'+a.attachmentId+'.'+ext[a.mime];
-    const response=await fetch(base+'/storage/v1/object/sign/cmg-notebook-artifacts/'+path,{method:'POST',headers:{apikey:key,Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({expiresIn:300}),signal:AbortSignal.timeout(10000)});
-    if(!response.ok)return asText({status:'error',error:'Attachment unavailable',httpStatus:response.status});
-    const result=await response.json() as {signedURL?:string;signedUrl?:string};
-    const signed=result.signedURL||result.signedUrl;
-    if(!signed)return asText({status:'error',error:'Missing signed URL'});
-    return asText({status:'ready',attachmentId:a.attachmentId,downloadUrl:new URL(signed.startsWith('/storage/v1/')?signed:'/storage/v1/'+(signed.startsWith('/')?signed.slice(1):signed),base).toString(),expiresInSeconds:300,attachedToLinkedIn:false});
+   const attachmentPayload=(f:CheckedFile)=>({attachmentUrl:f.downloadUrl,attachmentName:f.name,attachmentMime:f.mime,attachmentBytes:String(f.bytes),attachmentSha256:f.sha256});
+   const describeAttachment=(f:CheckedFile)=>({name:f.name,type:f.mime,bytes:f.bytes,sha256:f.sha256});
+   const NO_FILE_TRANSFER='Only ChatGPT can hand a conversation file to CamMicGo (file field). Other assistants cannot transfer files to a remote MCP server: attach the file yourself in the LinkedIn app.';
+   const dmKey=()=>process.env.SESSION_ENCRYPTION_KEY??'';
+   const dmHash=(x:unknown)=>createHash('sha256').update(JSON.stringify(x)).digest('base64url');
+   const parseOutcome=(r:{content?:Array<{type:string;text?:string}>})=>{try{return JSON.parse(r.content?.find(c=>c.type==='text')?.text||'{}') as Record<string,unknown>;}catch{return {};}};
+
+   server.registerTool('linkedin_check_attachment',{title:'Check a file for a LinkedIn message',annotations:{readOnlyHint:true,openWorldHint:true},_meta:FILE_META,
+    description:'Check a file before sending it in a LinkedIn message: type (PNG, JPEG, GIF, WebP, PDF, DOC, DOCX, TXT), size (5 MB max), name and fingerprint. ChatGPT: put the file itself in `file`. Nothing is stored, attached or sent. '+NO_FILE_TRANSFER,
+    inputSchema:z.object({file:chatFileField})},async a=>{const c=await checkChatFile(a.file);return asText(c.ok?{status:'ok',attachment:describeAttachment(c.file),stored:false,next:'Use linkedin_send_message with participant, text and this same file.'}:c.problem);});
+
+   server.registerTool('linkedin_attach_file',{title:'Attach a file in the LinkedIn composer (no sending)',_meta:FILE_META,
+    description:'Puts a file in the composer of the LinkedIn conversation with this participant on the paired phone, WITHOUT sending, and reports whether LinkedIn shows it. The phone downloads the file into its private cache (nothing is stored by CamMicGo) and deletes it afterwards. To send a message with a file, use linkedin_send_message instead. '+NO_FILE_TRANSFER,
+    inputSchema:z.object({participant:z.string().min(2).max(150),file:chatFileField})},async a=>{
+    const c=await checkChatFile(a.file);if(!c.ok)return asText(c.problem);
+    return linkedinDevice('attach',{participant:a.participant.trim(),...attachmentPayload(c.file)},40000);
    });
-   server.registerTool('linkedin_attach_file',{title:'Attach staged file in LinkedIn Android',description:'Download staged image or document into the private Android app cache and attach to the open LinkedIn thread. Does not send a message. Staging is removed after Android reports completion.',inputSchema:z.object({attachmentId:z.string().uuid(),mime:z.enum(['image/png','image/jpeg','image/webp','image/gif','application/pdf','text/plain','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document'])})},async a=>{
-    const ext:Record<string,string>={'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif','application/pdf':'pdf','text/plain':'txt','application/msword':'doc','application/vnd.openxmlformats-officedocument.wordprocessingml.document':'docx'};
-    const key=process.env.SUPABASE_SECRET_KEY;
-    if(!key)return asText({status:'error',error:'Storage unavailable'});
-    const base=process.env.SUPABASE_URL||'https://vfngxjsryklqldarkxhy.supabase.co';
-    const path=user.id+'/linkedin-outgoing/'+a.attachmentId+'.'+ext[a.mime];
-    const headers={apikey:key,Authorization:'Bearer '+key,'Content-Type':'application/json'};
-    const response=await fetch(base+'/storage/v1/object/sign/cmg-notebook-artifacts/'+path,{method:'POST',headers,body:JSON.stringify({expiresIn:300})});
-    if(!response.ok)return asText({status:'error',error:'Staged attachment not found'});
-    const result=await response.json() as {signedURL?:string;signedUrl?:string};
-    const signed=result.signedURL||result.signedUrl;
-    if(!signed)return asText({status:'error',error:'Signing failed'});
-    const downloadUrl=new URL(signed.startsWith('/storage/v1/')?signed:'/storage/v1/'+(signed.startsWith('/')?signed.slice(1):signed),base).toString();
-    const outcome=await linkedinDevice('attach',{downloadUrl,mime:a.mime,attachmentId:a.attachmentId});
-    // Remove staging after confirmed Android picker acceptance; pending jobs remain retryable.
-    const outcomeText=outcome.content?.find(c=>c.type==='text')?.text;
-    let completed=false;
-    try{completed=JSON.parse(outcomeText||'{}').status==='done';}catch{}
-    if(completed){
-     await fetch(base+'/storage/v1/object/cmg-notebook-artifacts/'+path,{method:'DELETE',headers:{apikey:key,Authorization:'Bearer '+key}}).catch(()=>{});
-    }
+
+   server.registerTool('linkedin_send_message',{title:'Send an approved LinkedIn message via Android',_meta:FILE_META,annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true},
+    description:'Send a private LinkedIn message, optionally with ONE file (image or document, 5 MB max), through the paired Android phone. ALWAYS TWO STEPS: confirm=false sends nothing and returns the exact preview (recipient, text, file) and a confirmationToken; send only after the user explicitly approves in a NEW message, with the same arguments (the same file again), confirm=true and the confirmationToken. The phone opens the conversation, downloads the file into its private cache, attaches it, checks LinkedIn shows it, and only then writes and sends the text; if the file cannot be attached, nothing is sent. The cached file is deleted afterwards. ChatGPT: put the file itself in `file`. '+NO_FILE_TRANSFER,
+    inputSchema:z.object({participant:z.string().min(2).max(150),text:z.string().min(1).max(3000),file:chatFileField.optional(),confirm:z.boolean().optional().default(false),confirmationToken:z.string().max(80).optional()})},async a=>{
+    let f:CheckedFile|null=null;
+    if(a.file!==undefined){const c=await checkChatFile(a.file);if(!c.ok)return asText(c.problem);f=c.file;}
+    // The approval covers recipient, text and the exact file bytes (fingerprint), not a link that changes per call.
+    const content={participant:a.participant.trim(),text:a.text,attachment:f?describeAttachment(f):null};
+    const ids=['linkedin-dm:'+dmHash(content)];
+    if(!a.confirm)return asText({status:'preview',sent:false,...content,confirmationToken:drive.confirmToken(dmKey(),user.id,'publish',ids),expiresInMinutes:15,
+     next:'Show the recipient, the exact text and the file to the user. Send only after the user explicitly says yes in a NEW message: call linkedin_send_message again with the same arguments (the same file), confirm=true and this confirmationToken.'});
+    const check=drive.checkConfirmToken(dmKey(),user.id,'publish',ids,a.confirmationToken);
+    if(!check.ok||!a.confirmationToken)return asText({status:'error',error:'confirmation_required',reason:check.ok?'missing':check.reason,
+     messageForUser:!check.ok&&check.reason==='too_fast'?'Show the preview to the user and wait for their explicit answer before sending.':!check.ok&&check.reason==='expired'?'The preview expired (15 minutes): prepare it again.':'Call with confirm=false first, show the exact preview (recipient, text, file) to the user, and send only after an explicit yes, with the same arguments and the confirmationToken.'});
+    // One send per approval: a retried call gets the first outcome back instead of sending again.
+    const social=await import('@/lib/social-store');
+    const claim=await social.claimPublication(user.id,'linkedin',a.confirmationToken).catch(()=>null);
+    if(!claim)return asText({status:'error',error:'storage_unavailable',sent:false,messageForUser:'Nothing was sent: CamMicGo is temporarily unavailable. Try again in a minute.'});
+    if(!claim.claimed)return asText(claim.status==='published'&&claim.result?{...claim.result,alreadySent:true,note:'Already sent with this approval: nothing was sent again.'}
+     :{status:'error',error:'send_already_started',messageForUser:'This approval was already used and the outcome is not known yet: check linkedin_job_status or the conversation on the phone before sending again (that needs a new preview and a new yes).'});
+    // With a file the job is an 'attach' that sends afterwards: an older phone app, which would ignore the file and
+    // send the text alone, rejects such a job instead.
+    const outcome=f?await linkedinDevice('attach',{participant:content.participant,text:a.text,sendAfterAttach:'true',...attachmentPayload(f)},40000)
+     :await linkedinDevice('send',{participant:content.participant,text:a.text},40000);
+    const r=parseOutcome(outcome);const data=(r.data??{}) as Record<string,unknown>;
+    if(r.status==='done'&&data.sent===true)await social.finishPublication(claim.id,{status:'done',...data}).catch(()=>{});
+    else if(r.status==='error'||r.status==='device_offline')await social.finishPublication(claim.id,null).catch(()=>{});
     return outcome;
-   });
-   server.registerTool('linkedin_send_message',{title:'Send an approved LinkedIn message via Android',description:'First preview with confirm=false; send with confirm=true ONLY after explicit user approval of exact recipient and text in a NEW message. No signing key or confirmation table required. Android verifies the conversation.',inputSchema:z.object({participant:z.string().min(2).max(150),text:z.string().min(1).max(3000),confirm:z.boolean().optional().default(false)})},async a=>{
-    if(!a.confirm)return asText({status:'preview',participant:a.participant,text:a.text,attachmentsSupported:false,note:'No message sent. Ask for explicit approval in a new user message.'});
-    return linkedinDevice('send',{participant:a.participant,text:a.text});
    });
    server.registerTool('linkedin_list_conversations',{title:'List LinkedIn conversations on paired Android',annotations:{readOnlyHint:true},description:'Navigate to LinkedIn inbox and list conversations in the authenticated Android WebView. Requires explicit LinkedIn MCP opt-in on the open phone.',inputSchema:z.object({})},async()=>linkedinDevice('inbox'));
    server.registerTool('linkedin_open_conversation',{title:'Open LinkedIn conversation on paired Android',annotations:{readOnlyHint:true},description:'Navigate to a selected LinkedIn conversation by exact visible participant name. Does not send messages.',inputSchema:z.object({participant:z.string().min(2).max(150)})},async a=>linkedinDevice('open',{participant:a.participant}));

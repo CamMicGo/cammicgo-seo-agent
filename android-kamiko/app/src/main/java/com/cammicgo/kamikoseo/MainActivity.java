@@ -93,8 +93,14 @@ public class MainActivity extends Activity {
       if (files == null) return;
       long now = System.currentTimeMillis();
       for (java.io.File file : files) {
-        if (file.isFile() && file.getName().startsWith("linkedin-") &&
-            (all || now - file.lastModified() > 15 * 60 * 1000L)) file.delete();
+        boolean stale = all || now - file.lastModified() > 15 * 60 * 1000L;
+        if (file.isFile() && file.getName().startsWith("linkedin-") && stale) file.delete();
+        // Per-job folders (0.6.19+) left behind by an interrupted job.
+        if (file.isDirectory() && file.getName().startsWith("job-") && stale) {
+          java.io.File[] inner = file.listFiles();
+          if (inner != null) for (java.io.File f : inner) f.delete();
+          file.delete();
+        }
       }
     } catch (Exception e) { android.util.Log.w("CamMicGoLinkedIn", "Cache cleanup failed", e); }
   }
@@ -839,15 +845,13 @@ public class MainActivity extends Activity {
       @Override public boolean onShowFileChooser(WebView view, android.webkit.ValueCallback<Uri[]> callback, FileChooserParams params) {
         if (linkedinPendingAttachment != null && linkedinPendingAttachmentJob != null) {
           Uri selected = linkedinPendingAttachment;
-          String attachmentJob = linkedinPendingAttachmentJob;
           linkedinPendingAttachment = null;
           linkedinPendingAttachmentJob = null;
           callback.onReceiveValue(new Uri[]{selected});
-          // The picker accepted the URI, not necessarily the upload. Do not delete yet.
-          JSONObject accepted = new JSONObject();
-          try { accepted.put("pickerAccepted", true); accepted.put("uploadConfirmed", false); } catch (Exception ignored) {}
-          ui.postDelayed(() -> finishLinkedInJob(attachmentJob, accepted, null), 2000);
-          scheduleLinkedInCacheCleanup();
+          // The chooser received the file; the job goes on by checking that LinkedIn shows it (never "done" here).
+          Runnable next = linkedinChooserDelivered;
+          linkedinChooserDelivered = null;
+          if (next != null) next.run();
           return true;
         }
         if (linkedinFileCallback != null) linkedinFileCallback.onReceiveValue(null);
@@ -982,76 +986,8 @@ public class MainActivity extends Activity {
         try { JSONObject result = new JSONObject(new JSONArray("[" + raw + "]").getString(0)); finishLinkedInJob(id, result, result.optBoolean("clicked") ? null : result.optString("error", "Invite failed")); }
         catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
       });
-    } else if ("attach".equals(op)) {
-      String url = job.optString("downloadUrl", "");
-      String mime = job.optString("mime", "");
-      String attachmentId = job.optString("attachmentId", "");
-      if (!isLinkedInMessagingPage() || linkedinWeb.getUrl() == null || !linkedinWeb.getUrl().contains("/thread/")) {
-        finishLinkedInJob(id, null, "Open a LinkedIn thread before attaching"); return;
-      }
-      if (!url.startsWith("https://") || !url.contains("/storage/v1/object/sign/cmg-notebook-artifacts/") ||
-          !attachmentId.matches("[0-9a-fA-F-]{36}") ||
-          !(mime.startsWith("image/") || mime.equals("application/pdf") || mime.equals("text/plain") ||
-            mime.equals("application/msword") || mime.equals("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))) {
-        finishLinkedInJob(id, null, "Invalid attachment"); return;
-      }
-      worker.execute(() -> {
-        try {
-          java.net.HttpURLConnection connection = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
-          connection.setConnectTimeout(10000);
-          connection.setReadTimeout(20000);
-          if (connection.getResponseCode() != 200) throw new Exception("Download HTTP " + connection.getResponseCode());
-          java.io.File directory = new java.io.File(getCacheDir(), "linkedin-shared");
-          if (!directory.exists() && !directory.mkdirs()) throw new Exception("Cache unavailable");
-          String ext = mime.equals("image/png") ? "png" : mime.equals("image/jpeg") ? "jpg" :
-            mime.equals("image/webp") ? "webp" : mime.equals("image/gif") ? "gif" :
-            mime.equals("application/pdf") ? "pdf" : mime.equals("text/plain") ? "txt" :
-            mime.equals("application/msword") ? "doc" : "docx";
-          java.io.File file = new java.io.File(directory, "linkedin-" + attachmentId + "." + ext);
-          try (java.io.InputStream input = connection.getInputStream(); java.io.FileOutputStream output = new java.io.FileOutputStream(file)) {
-            byte[] buffer = new byte[8192]; int n; int total = 0;
-            while ((n = input.read(buffer)) != -1) {
-              total += n; if (total > 5000000) throw new Exception("Attachment too large");
-              output.write(buffer, 0, n);
-            }
-            if (total < 1) throw new Exception("Empty attachment");
-          } finally { connection.disconnect(); }
-          Uri uri = androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", file);
-          ui.post(() -> {
-            linkedinPendingAttachment = uri;
-            linkedinPendingAttachmentJob = id;
-            Toast.makeText(this, "Fichier reçu dans le cache privé CamMicGo", Toast.LENGTH_LONG).show();
-            openLinkedInAttachmentPicker(mime.startsWith("image/"));
-            ui.postDelayed(() -> {
-              if (id.equals(linkedinPendingAttachmentJob)) {
-
-                linkedinPendingAttachment = null;
-                linkedinPendingAttachmentJob = null;
-                cleanLinkedInAttachmentCache(true);
-                finishLinkedInJob(id, null, "LinkedIn file chooser did not open");
-              }
-            }, 9000);
-          });
-        } catch (Exception e) { ui.post(() -> finishLinkedInJob(id, null, "Attachment download failed: " + e.getMessage())); }
-      });
-    } else if ("send".equals(op)) {
-      String participant = job.optString("participant", "").trim();
-      String message = job.optString("text", "");
-      if (participant.length() < 2 || message.isEmpty() || message.length() > 3000) { finishLinkedInJob(id, null, "Invalid recipient or text"); return; }
-      if (!isLinkedInMessagingPage() || linkedinWeb.getUrl() == null || !linkedinWeb.getUrl().contains("/thread/")) { finishLinkedInJob(id, null, "Open the intended LinkedIn conversation first"); return; }
-      // Validate the visible recipient and message composer before writing or clicking Send.
-      String js = "(function(name,msg){\nconst norm=s=>(s||'').replace(/\\s+/g,' ').trim().toLocaleLowerCase();\nconst heading=[...document.querySelectorAll('h1,h2,h3,[class*=conversation-header],[class*=thread-header]')].map(e=>(e.innerText||'').trim()).filter(Boolean);\nif(!heading.some(s=>norm(s).includes(norm(name))))return JSON.stringify({error:'Recipient not verified',headings:heading.slice(0,5)});\nconst visible=e=>{const r=e.getBoundingClientRect();const st=getComputedStyle(e);return r.width>0&&r.height>0&&st.visibility!=='hidden'&&st.display!=='none'&&!e.disabled&&!e.readOnly};\nconst scope=document.querySelector('main')||document;\nconst candidates=[...scope.querySelectorAll('textarea,[contenteditable=\"true\"],[contenteditable=\"\"],[role=\"textbox\"],input[type=\"text\"],input:not([type])')].filter(visible).filter(e=>!e.closest('header,nav,[role=\"search\"],[class*=\"search\"]')&&!e.closest('[aria-hidden=\"true\"]'));\nconst scored=candidates.map(e=>{const hint=[e.getAttribute('aria-label'),e.getAttribute('data-placeholder'),e.getAttribute('placeholder'),e.getAttribute('role'),e.getAttribute('data-testid'),e.className].filter(x=>typeof x==='string').join(' ').toLowerCase();let score=0;if(/message|messag|r\u00e9diger|write|compose|envoyer|reply|r\u00e9pondre/.test(hint))score+=6;if(e.matches('textarea'))score+=3;if(e.isContentEditable)score+=2;if(e.closest('form,[class*=\"compose\"],[class*=\"footer\"],[class*=\"reply\"]'))score+=3;if(e.closest('[class*=\"conversation\"],[class*=\"thread\"],[class*=\"messaging\"]'))score+=2;return {e,score}}).sort((a,b)=>b.score-a.score);\nif(!scored.length||scored[0].score<2)return JSON.stringify({error:'Message composer not found',candidateCount:candidates.length,url:location.pathname});\nif(scored.length>1&&scored[0].score===scored[1].score)return JSON.stringify({error:'Message composer ambiguous',matches:scored.filter(x=>x.score===scored[0].score).length});\nconst editor=scored[0].e;\nconst buttons=[...scope.querySelectorAll('button,[role=\"button\"],input[type=\"submit\"]')].filter(visible).filter(b=>/^(send|envoyer|send message|envoyer le message)$/i.test((b.getAttribute('aria-label')||b.getAttribute('title')||b.innerText||b.value||'').trim()));\nif(buttons.length!==1)return JSON.stringify({error:'Send button ambiguous or missing',matches:buttons.length});\neditor.focus();\nif(editor.matches('textarea,input')){const proto=editor.matches('textarea')?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value').set.call(editor,msg);}\nelse if(editor.isContentEditable){editor.textContent=msg;}\nelse return JSON.stringify({error:'Unsupported composer'});\neditor.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:msg}));\neditor.dispatchEvent(new Event('change',{bubbles:true}));\nconst actual=editor.matches('textarea,input')?editor.value:editor.innerText;\nif(actual!==msg)return JSON.stringify({error:'Composer text verification failed',length:actual.length});\nif(buttons[0].disabled||buttons[0].getAttribute('aria-disabled')==='true')return JSON.stringify({error:'Send button disabled'});\nbuttons[0].click();\nreturn JSON.stringify({clicked:true,recipient:name,characters:msg.length});\n})(" + JSONObject.quote(participant) + "," + JSONObject.quote(message) + ")";
-      linkedinWeb.evaluateJavascript(js, raw -> {
-        try {
-          JSONObject result = new JSONObject(new JSONArray("[" + raw + "]").getString(0));
-          if (!result.optBoolean("clicked")) finishLinkedInJob(id, result, result.optString("error", "Send failed"));
-          else {
-            // Allow LinkedIn's async upload to settle after the Send click.
-            ui.postDelayed(() -> cleanLinkedInAttachmentCache(true), 30000);
-            finishLinkedInJob(id, result, null);
-          }
-        } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
-      });
+    } else if ("attach".equals(op) || "send".equals(op)) {
+      runLinkedInFileJob(id, op, job);
     } else if ("thread".equals(op)) {
       if (!isLinkedInMessagingPage() || !linkedinWeb.getUrl().contains("/thread/")) {
         finishLinkedInJob(id, null, "Ouvrez une conversation LinkedIn"); return;
@@ -1105,6 +1041,286 @@ public class MainActivity extends Activity {
       result.put("profiles", profiles);
       finishLinkedInCards(id, result);
     } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
+  }
+
+  // ---------------- LinkedIn attachments (0.6.19) ----------------
+  // The file comes straight from the assistant's file storage (ChatGPT) into this app's private cache
+  // (cache/linkedin-shared/<job>/), never through CamMicGo storage. It is put into LinkedIn's own file input
+  // with a DataTransfer (no file chooser, so no user gesture is needed); if LinkedIn exposes no input, a real
+  // tap on its attach button opens the chooser, which receives the cached file. Success is only reported when
+  // LinkedIn shows the file in the composer and has finished uploading it; the text is sent only after that.
+  interface LiJson { void done(JSONObject r); }
+  private Runnable linkedinChooserDelivered;
+  private static final java.util.regex.Pattern LI_FILE_HOST = java.util.regex.Pattern.compile(
+    "^(chatgpt\\.com|oaiusercontent\\.com|[a-z0-9.-]+\\.(oaiusercontent|openai|chatgpt)\\.com|oaisdmntpr[a-z0-9]{1,40}\\.blob\\.core\\.windows\\.net)$");
+  private static final String[] LI_ATTACH_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf", "text/plain",
+    "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"};
+  /** Shared page helpers: composer, the area around it, and what LinkedIn shows for an attachment there. */
+  private static final String LI_JS =
+    "const norm=s=>(s||'').replace(/\\s+/g,' ').trim().toLocaleLowerCase();"
+    + "const visible=e=>{const r=e.getBoundingClientRect();const st=getComputedStyle(e);return r.width>0&&r.height>0&&st.visibility!=='hidden'&&st.display!=='none'};"
+    + "const findEditor=()=>{const scope=document.querySelector('main')||document;const c=[...scope.querySelectorAll('textarea,[contenteditable=\"true\"],[contenteditable=\"\"],[role=\"textbox\"]')].filter(visible).filter(e=>!e.closest('header,nav,[role=\"search\"],[class*=\"search\"]'));"
+    + "const s=c.map(e=>{const h=[e.getAttribute('aria-label'),e.getAttribute('data-placeholder'),e.getAttribute('placeholder'),e.className].filter(x=>typeof x==='string').join(' ').toLowerCase();let v=0;if(/message|messag|r\\u00e9diger|write|compose|reply|r\\u00e9pondre/.test(h))v+=6;if(e.matches('textarea'))v+=3;if(e.isContentEditable)v+=2;if(e.closest('form,[class*=\"compose\"],[class*=\"footer\"],[class*=\"reply\"]'))v+=3;return {e,v}}).sort((a,b)=>b.v-a.v);return s.length&&s[0].v>=2?s[0].e:null};"
+    + "const regionOf=ed=>{if(!ed)return document.querySelector('main')||document.body;let n=ed;for(let i=0;i<8&&n.parentElement;i++){n=n.parentElement;if(n.matches('form,[class*=msg-form],[class*=compose],[class*=reply],[class*=footer]'))return n;}return (ed.parentElement&&ed.parentElement.parentElement&&ed.parentElement.parentElement.parentElement)||document.body};"
+    + "const evidence=name=>{const ed=findEditor();const reg=regionOf(ed);const n=norm(name);"
+    + "const imgs=[...reg.querySelectorAll('img')].filter(i=>{const s=i.currentSrc||i.src||'';return /^(blob:|data:image)/.test(s)||/media\\.licdn|dms\\/image|messaging|attachment/i.test(s)}).length;"
+    + "const named=n.length>4?[...reg.querySelectorAll('*')].filter(e=>e.children.length===0&&norm(e.textContent).includes(n)).length:0;"
+    + "const remove=[...reg.querySelectorAll('button,[role=button]')].filter(b=>{const l=norm(b.getAttribute('aria-label')||b.title||b.innerText);return /remove|supprimer|retirer|delete|effacer|annuler/.test(l)&&/attach|pi\\u00e8ce|piece|image|photo|fichier|file|m\\u00e9dia|media/.test(l)}).length;"
+    + "const progress=[...reg.querySelectorAll('[role=progressbar],progress,[class*=progress],[class*=uploading]')].filter(visible).length;"
+    + "const text=ed?(ed.matches('textarea,input')?ed.value:ed.innerText).trim().length:-1;"
+    + "return {editor:!!ed,imgs,named,remove,progress,text}};"
+    + "const headerHas=name=>[...document.querySelectorAll('h1,h2,h3,[class*=conversation-header],[class*=thread-header]')].map(e=>(e.innerText||'').trim()).filter(Boolean).some(s=>norm(s).includes(norm(name)));"
+    + "const items=()=>[...document.querySelectorAll('li[class*=message],[class*=msg-s-event-listitem],[class*=message-event]')];";
+
+  private static JSONObject liParse(String raw) {
+    try { return new JSONObject(new JSONArray("[" + raw + "]").getString(0)); }
+    catch (Exception e) { JSONObject o = new JSONObject(); try { o.put("error", "Unreadable page answer"); } catch (Exception ignored) {} return o; }
+  }
+  private void liEval(String body, LiJson done) {
+    linkedinWeb.evaluateJavascript("(function(){" + LI_JS + body + "})()", raw -> done.done(liParse(raw)));
+  }
+  private static String q(String s) { return JSONObject.quote(s == null ? "" : s); }
+  private java.io.File liJobDir(String id) { return new java.io.File(new java.io.File(getCacheDir(), "linkedin-shared"), "job-" + id.replaceAll("[^0-9a-fA-F-]", "")); }
+  private void liDeleteJobFiles(String id) {
+    java.io.File dir = liJobDir(id);
+    java.io.File[] files = dir.listFiles();
+    if (files != null) for (java.io.File f : files) f.delete();
+    dir.delete();
+    if (linkedinWeb != null) linkedinWeb.evaluateJavascript("try{delete window.__cmgUp}catch(e){}", null);
+  }
+  private void liFail(String id, String error, JSONObject details) {
+    liDeleteJobFiles(id);
+    linkedinPendingAttachment = null; linkedinPendingAttachmentJob = null; linkedinChooserDelivered = null;
+    finishLinkedInJob(id, details, error);
+  }
+
+  /** attach (composer only) and send (optionally with one file): one job, one outcome. */
+  private void runLinkedInFileJob(String id, String requestedOp, JSONObject job) {
+    String participant = job.optString("participant", "").trim();
+    String text = job.optString("text", "");
+    String url = job.optString("attachmentUrl", "");
+    boolean withFile = !url.isEmpty();
+    // An approved message with a file arrives as an attach job that sends once the file is verified.
+    final String op = "attach".equals(requestedOp) && job.optBoolean("sendAfterAttach", false) ? "send" : requestedOp;
+    if (participant.length() < 2 || participant.length() > 150) { finishLinkedInJob(id, null, "Recipient required"); return; }
+    if ("send".equals(op) && (text.isEmpty() || text.length() > 3000)) { finishLinkedInJob(id, null, "Invalid text"); return; }
+    if ("attach".equals(op) && !withFile) { finishLinkedInJob(id, null, "No file given"); return; }
+    liEnsureThread(id, participant, () -> {
+      if (!withFile) { liSend(id, participant, text, null, null); return; }
+      liDownload(id, job, file -> liAttach(id, file, job.optString("attachmentName"), job.optString("attachmentMime"), attached -> {
+        if (!attached.optBoolean("attached")) { liFail(id, "File not attached: nothing was sent", attached); return; }
+        if ("attach".equals(op)) {
+          liDeleteJobFiles(id);
+          try { attached.put("sent", false); attached.put("note", "In the composer only: nothing was sent."); } catch (Exception ignored) {}
+          finishLinkedInJob(id, attached, null);
+        } else liSend(id, participant, text, file, attached);
+      }));
+    });
+  }
+
+  /** Verifies the open conversation is the recipient's; otherwise opens it from the inbox and checks again. */
+  private void liEnsureThread(String id, String participant, Runnable ready) {
+    liEval("return JSON.stringify({ok:location.pathname.includes('/thread/')&&headerHas(" + q(participant) + ")});", r -> {
+      if (r.optBoolean("ok")) { ready.run(); return; }
+      linkedinWeb.loadUrl("https://www.linkedin.com/messaging/");
+      ui.postDelayed(() -> {
+        String js = "const sels='li[class*=conversation],[class*=conversation-list] li,[class*=messaging] [role=listitem]';"
+          + "const found=[...document.querySelectorAll(sels)].filter(n=>norm(n.innerText).includes(norm(" + q(participant) + ")));"
+          + "if(found.length!==1)return JSON.stringify({error:found.length?'Several conversations match this name':'Conversation not visible in the inbox',matches:found.length});"
+          + "(found[0].querySelector('a[href]')||found[0]).click();return JSON.stringify({clicked:true});";
+        liEval(js, clicked -> {
+          if (!clicked.optBoolean("clicked")) { liFail(id, clicked.optString("error", "Conversation not found"), clicked); return; }
+          ui.postDelayed(() -> liEval("return JSON.stringify({ok:location.pathname.includes('/thread/')&&headerHas(" + q(participant) + ")});", check -> {
+            if (check.optBoolean("ok")) ready.run();
+            else liFail(id, "Recipient not verified in the open conversation: nothing was sent", check);
+          }), 3000);
+        });
+      }, 2800);
+    });
+  }
+
+  /** Downloads the file into the private cache; checks host, type, exact size and SHA-256 fingerprint. */
+  private void liDownload(String id, JSONObject job, java.util.function.Consumer<java.io.File> next) {
+    String url = job.optString("attachmentUrl", "");
+    String mime = job.optString("attachmentMime", "");
+    String name = job.optString("attachmentName", "file").replaceAll("[\\\\/\\u0000-\\u001f:*?\"<>|]", " ").trim();
+    long expected = job.optLong("attachmentBytes", -1);
+    String sha = job.optString("attachmentSha256", "").toLowerCase();
+    if (!java.util.Arrays.asList(LI_ATTACH_TYPES).contains(mime) || expected < 1 || expected > 5_000_000 || !sha.matches("[0-9a-f]{64}") || name.isEmpty()) {
+      liFail(id, "Invalid attachment description", null); return;
+    }
+    worker.execute(() -> {
+      try {
+        java.net.URL target = new java.net.URL(url);
+        java.net.HttpURLConnection c = null;
+        for (int hop = 0; ; hop++) {
+          if (!"https".equals(target.getProtocol()) || !LI_FILE_HOST.matcher(target.getHost().toLowerCase()).matches() || hop > 3)
+            throw new Exception("File host not allowed: " + target.getHost());
+          c = (java.net.HttpURLConnection) target.openConnection();
+          c.setInstanceFollowRedirects(false);
+          c.setConnectTimeout(10000); c.setReadTimeout(30000);
+          int code = c.getResponseCode();
+          if (code >= 300 && code < 400 && c.getHeaderField("Location") != null) { target = new java.net.URL(target, c.getHeaderField("Location")); c.disconnect(); continue; }
+          if (code != 200) throw new Exception("Download HTTP " + code + (code == 403 || code == 404 ? " (the assistant's file link expired: send the file again)" : ""));
+          break;
+        }
+        java.io.File dir = liJobDir(id);
+        if (!dir.exists() && !dir.mkdirs()) throw new Exception("Cache unavailable");
+        java.io.File file = new java.io.File(dir, name.length() > 120 ? name.substring(name.length() - 120) : name);
+        java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+        long total = 0;
+        try (java.io.InputStream in = c.getInputStream(); java.io.FileOutputStream out = new java.io.FileOutputStream(file)) {
+          byte[] buf = new byte[16384]; int n;
+          while ((n = in.read(buf)) != -1) { total += n; if (total > expected) throw new Exception("File larger than announced"); md.update(buf, 0, n); out.write(buf, 0, n); }
+        } finally { c.disconnect(); }
+        StringBuilder hex = new StringBuilder(); for (byte b : md.digest()) hex.append(String.format("%02x", b));
+        if (total != expected || !hex.toString().equals(sha)) throw new Exception("The downloaded file differs from the approved file");
+        ui.post(() -> next.accept(file));
+      } catch (Exception e) { ui.post(() -> liFail(id, "Attachment download failed: " + e.getMessage(), null)); }
+    });
+  }
+
+  /** Puts the file into LinkedIn's composer and waits until LinkedIn shows it, uploaded. */
+  private void liAttach(String id, java.io.File file, String name, String mime, LiJson done) {
+    liEval("return JSON.stringify(evidence(" + q(name) + "));", base -> {
+      String b64;
+      try { b64 = android.util.Base64.encodeToString(java.nio.file.Files.readAllBytes(file.toPath()), android.util.Base64.NO_WRAP); }
+      catch (Exception e) { liFail(id, "Cache read failed", null); return; }
+      java.util.List<String> parts = new java.util.ArrayList<>();
+      for (int i = 0; i < b64.length(); i += 400_000) parts.add(b64.substring(i, Math.min(b64.length(), i + 400_000)));
+      linkedinWeb.evaluateJavascript("window.__cmgUp=[];1", v -> liPush(parts, 0, () -> liInject(id, file, name, mime, base, false, done)));
+    });
+  }
+  private void liPush(java.util.List<String> parts, int i, Runnable after) {
+    if (i >= parts.size()) { after.run(); return; }
+    linkedinWeb.evaluateJavascript("window.__cmgUp.push('" + parts.get(i) + "');1", v -> liPush(parts, i + 1, after));
+  }
+  private void liInject(String id, java.io.File file, String name, String mime, JSONObject base, boolean revealed, LiJson done) {
+    boolean image = mime.startsWith("image/");
+    String js = "const image=" + image + ";const inputs=[...document.querySelectorAll('input[type=file]')];"
+      + "const score=e=>{const a=(e.accept||'').toLowerCase();let s=0;if(e.disabled)return -9;if(image){if(/image/.test(a))s+=5;else if(!a||a.includes('*'))s+=2;}else{if(/pdf|doc|text|application|\\*/.test(a))s+=5;else if(!a)s+=2;else if(/^image\\//.test(a)&&!a.includes(','))s-=5;}const ed=findEditor();if(ed&&regionOf(ed).contains(e))s+=3;return s};"
+      + "const ranked=inputs.map(e=>({e,s:score(e)})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s);"
+      + "const diag=inputs.map(e=>({accept:e.accept||'',multiple:e.multiple,visible:visible(e)}));"
+      + "if(!ranked.length)return JSON.stringify({injected:false,reason:'no_file_input',inputs:diag});"
+      + "const b=atob((window.__cmgUp||[]).join(''));const u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);"
+      + "if(!u.length)return JSON.stringify({injected:false,reason:'no_bytes'});"
+      + "const f=new File([u]," + q(name) + ",{type:" + q(mime) + ",lastModified:Date.now()});const dt=new DataTransfer();dt.items.add(f);"
+      + "const t=ranked[0].e;t.files=dt.files;t.dispatchEvent(new Event('input',{bubbles:true}));t.dispatchEvent(new Event('change',{bubbles:true}));"
+      + "return JSON.stringify({injected:t.files.length===1,accept:t.accept||'',inputs:diag});";
+    liEval(js, r -> {
+      if (r.optBoolean("injected")) { liWaitEvidence(id, name, base, 25, "datatransfer", r, file, mime, done); return; }
+      if (!revealed && "no_file_input".equals(r.optString("reason"))) {
+        // Some layouts create the input only once the attach menu is open: open it, then try again.
+        liEval("const re=" + (image ? "/photo|image|picture|galerie|gallery/" : "/attach|joindre|document|fichier|file|pi\\u00e8ce/") + ";"
+          + "const m=[...document.querySelectorAll('button,[role=button]')].filter(visible).filter(b=>re.test(norm(b.getAttribute('aria-label')||b.title||b.innerText)));"
+          + "if(m.length)m[0].click();return JSON.stringify({clicked:m.length});",
+          c -> ui.postDelayed(() -> liInject(id, file, name, mime, base, true, done), 900));
+        return;
+      }
+      liChooserFallback(id, file, name, mime, base, r, done);
+    });
+  }
+  /** Fallback: a real tap on LinkedIn's attach button opens the chooser, which receives the cached file. */
+  private void liChooserFallback(String id, java.io.File file, String name, String mime, JSONObject base, JSONObject diag, LiJson done) {
+    boolean image = mime.startsWith("image/");
+    liEval("const re=" + (image ? "/photo|image|picture|galerie|gallery/" : "/attach|joindre|document|fichier|file|pi\\u00e8ce/") + ";"
+      + "const all=[...document.querySelectorAll('button,[role=button],label')].filter(visible);"
+      + "const m=all.filter(b=>re.test(norm(b.getAttribute('aria-label')||b.title||b.innerText)));"
+      + "if(!m.length)return JSON.stringify({found:0,labels:all.map(b=>norm(b.getAttribute('aria-label')||b.title||b.innerText).slice(0,40)).filter(Boolean).slice(0,40)});"
+      + "m[0].scrollIntoView({block:'center'});const r=m[0].getBoundingClientRect();"
+      + "return JSON.stringify({found:m.length,x:r.left+r.width/2,y:r.top+r.height/2,dpr:devicePixelRatio});", btn -> {
+      if (btn.optInt("found") < 1) {
+        JSONObject out = new JSONObject();
+        try { out.put("attached", false); out.put("reason", "LinkedIn shows neither a file input nor an attach button"); out.put("injection", diag); out.put("buttons", btn.optJSONArray("labels")); } catch (Exception ignored) {}
+        done.done(out); return;
+      }
+      Uri uri;
+      try { uri = androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", file); }
+      catch (Exception e) { liFail(id, "Cache file not shareable", null); return; }
+      linkedinPendingAttachment = uri; linkedinPendingAttachmentJob = id;
+      final boolean[] delivered = {false};
+      linkedinChooserDelivered = () -> { delivered[0] = true; liWaitEvidence(id, name, base, 25, "chooser", diag, file, mime, done); };
+      float dpr = (float) btn.optDouble("dpr", getResources().getDisplayMetrics().density);
+      float x = (float) btn.optDouble("x") * dpr, y = (float) btn.optDouble("y") * dpr;
+      long t0 = android.os.SystemClock.uptimeMillis();
+      android.view.MotionEvent down = android.view.MotionEvent.obtain(t0, t0, android.view.MotionEvent.ACTION_DOWN, x, y, 0);
+      android.view.MotionEvent up = android.view.MotionEvent.obtain(t0, t0 + 60, android.view.MotionEvent.ACTION_UP, x, y, 0);
+      linkedinWeb.dispatchTouchEvent(down);
+      ui.postDelayed(() -> { linkedinWeb.dispatchTouchEvent(up); down.recycle(); up.recycle(); }, 60);
+      ui.postDelayed(() -> {
+        if (delivered[0]) return;
+        linkedinPendingAttachment = null; linkedinPendingAttachmentJob = null; linkedinChooserDelivered = null;
+        JSONObject out = new JSONObject();
+        try { out.put("attached", false); out.put("reason", "LinkedIn did not open its file chooser"); out.put("injection", diag); } catch (Exception ignored) {}
+        done.done(out);
+      }, 8000);
+    });
+  }
+  /** Attached = LinkedIn shows something new for the file in the composer and no upload is running. */
+  private void liWaitEvidence(String id, String name, JSONObject base, int triesLeft, String method, JSONObject diag, java.io.File file, String mime, LiJson done) {
+    ui.postDelayed(() -> liEval("return JSON.stringify(evidence(" + q(name) + "));", now -> {
+      boolean seen = now.optInt("imgs") > base.optInt("imgs") || now.optInt("named") > base.optInt("named") || now.optInt("remove") > base.optInt("remove");
+      boolean uploading = now.optInt("progress") > base.optInt("progress");
+      if (seen && !uploading) {
+        JSONObject out = new JSONObject();
+        try { out.put("attached", true); out.put("verified", true); out.put("method", method); out.put("name", name); out.put("mime", mime); out.put("bytes", file.length()); out.put("evidence", now); } catch (Exception ignored) {}
+        done.done(out); return;
+      }
+      if (!seen && "datatransfer".equals(method) && triesLeft == 17) { liChooserFallback(id, file, name, mime, base, diag, done); return; }
+      if (triesLeft <= 0) {
+        JSONObject out = new JSONObject();
+        try { out.put("attached", false); out.put("reason", seen ? "LinkedIn was still uploading the file" : "LinkedIn does not show the file in the composer"); out.put("method", method); out.put("before", base); out.put("after", now); out.put("injection", diag); } catch (Exception ignored) {}
+        done.done(out); return;
+      }
+      liWaitEvidence(id, name, base, triesLeft - 1, method, diag, file, mime, done);
+    }), 1000);
+  }
+
+  /** Writes and sends the text; with a file, only if it is still in the composer. Then checks the thread. */
+  private void liSend(String id, String participant, String text, java.io.File file, JSONObject attached) {
+    boolean withFile = file != null;
+    String name = withFile ? attached.optString("name") : "";
+    String js = "const name=" + q(participant) + ",msg=" + q(text) + ",withFile=" + withFile + ",fname=" + q(name) + ";"
+      + "if(!headerHas(name))return JSON.stringify({error:'Recipient not verified'});"
+      + "const ev=evidence(fname);"
+      + "if(withFile&&!(ev.imgs>0||ev.named>0||ev.remove>0))return JSON.stringify({error:'The file is no longer in the composer: nothing was sent',evidence:ev});"
+      + "if(!withFile&&ev.remove>0)return JSON.stringify({error:'The composer already holds an attachment that was not approved: nothing was sent',evidence:ev});"
+      + "if(ev.progress>0)return JSON.stringify({error:'LinkedIn is still uploading: nothing was sent'});"
+      + "const editor=findEditor();if(!editor)return JSON.stringify({error:'Message composer not found'});"
+      + "const scope=document.querySelector('main')||document;"
+      + "const buttons=[...scope.querySelectorAll('button,[role=\"button\"],input[type=\"submit\"]')].filter(visible).filter(b=>/^(send|envoyer|send message|envoyer le message)$/i.test((b.getAttribute('aria-label')||b.getAttribute('title')||b.innerText||b.value||'').trim()));"
+      + "if(buttons.length!==1)return JSON.stringify({error:'Send button ambiguous or missing',matches:buttons.length});"
+      + "const before=items().length;editor.focus();"
+      + "if(editor.matches('textarea,input')){const p=editor.matches('textarea')?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(p,'value').set.call(editor,msg);}else editor.textContent=msg;"
+      + "editor.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:msg}));editor.dispatchEvent(new Event('change',{bubbles:true}));"
+      + "const actual=editor.matches('textarea,input')?editor.value:editor.innerText;"
+      + "if(actual.trim()!==msg.trim())return JSON.stringify({error:'Composer text verification failed'});"
+      + "if(buttons[0].disabled||buttons[0].getAttribute('aria-disabled')==='true')return JSON.stringify({error:'Send button disabled'});"
+      + "buttons[0].click();return JSON.stringify({clicked:true,before,characters:msg.length});";
+    liEval(js, r -> {
+      if (!r.optBoolean("clicked")) { liFail(id, r.optString("error", "Send failed") + (r.optString("error").contains("nothing") ? "" : ": nothing was sent"), r); return; }
+      liVerifySent(id, participant, text, name, withFile, r.optInt("before"), attached, 20);
+    });
+  }
+  /** Sent = the text (and the file) appear in the conversation; otherwise the outcome is reported as unconfirmed. */
+  private void liVerifySent(String id, String participant, String text, String name, boolean withFile, int before, JSONObject attached, int triesLeft) {
+    ui.postDelayed(() -> liEval("const t=norm(" + q(text) + ").slice(0,60),n=norm(" + q(name) + ");const last=items().slice(-4);"
+      + "const textSeen=last.some(e=>norm(e.innerText).includes(t));"
+      + "const fileSeen=last.some(e=>[...e.querySelectorAll('img')].some(i=>/messaging|dms\\/image|media\\.licdn|attachment|blob:/i.test(i.currentSrc||i.src||''))||(n.length>4&&norm(e.innerText).includes(n)));"
+      + "const ev=evidence(n);return JSON.stringify({textSeen,fileSeen,count:items().length,composerEmpty:ev.text===0&&ev.remove===0});", r -> {
+      boolean ok = r.optBoolean("textSeen") && (!withFile || r.optBoolean("fileSeen"));
+      if (!ok && triesLeft > 0) { liVerifySent(id, participant, text, name, withFile, before, attached, triesLeft - 1); return; }
+      JSONObject out = new JSONObject();
+      try {
+        out.put("sent", ok); out.put("sendClicked", true); out.put("recipient", participant); out.put("characters", text.length());
+        out.put("textSeenInThread", r.optBoolean("textSeen")); out.put("composerEmptied", r.optBoolean("composerEmpty"));
+        if (withFile) { attached.put("seenInThread", r.optBoolean("fileSeen")); out.put("attachment", attached); }
+        if (!ok) out.put("note", "Send was clicked but the message was not seen in the conversation: check it on the phone before sending again.");
+      } catch (Exception ignored) {}
+      // LinkedIn has read the file (it is shown sent) or the job is over: the cached copy goes now.
+      liDeleteJobFiles(id);
+      finishLinkedInJob(id, out, null);
+    }), 1000);
   }
 
   private void extractLinkedInInbox(String id) {
@@ -1265,7 +1481,8 @@ public class MainActivity extends Activity {
         JSONObject body = new JSONObject();
         body.put("id", id);
         if (error != null) body.put("error", error);
-        else body.put("result", result);
+        // Diagnostics travel with failures too (what LinkedIn showed), never file contents.
+        if (result != null) body.put("result", result);
         RelayClient.request("POST", "/api/devices/linkedin", RelayClient.token(this), body.toString());
       } catch (Exception e) { android.util.Log.w("CamMicGoLinkedIn", "Relay result failed", e); }
     });
