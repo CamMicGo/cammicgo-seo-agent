@@ -391,7 +391,13 @@ final class NotebookClient {
     return result;
   }
 
+  private JSONArray studioOnly;
   private JSONArray studioSources(String notebookUrl,boolean nested) throws Exception {
+    if(studioOnly!=null&&studioOnly.length()>0){
+      JSONArray ids=new JSONArray();
+      for(int j=0;j<studioOnly.length();j++){JSONArray single=new JSONArray().put(studioOnly.getString(j));ids.put(nested?new JSONArray().put(single):single);}
+      return ids;
+    }
     JSONArray entries=getNotebook(notebookUrl).getJSONArray("sources");
     JSONArray ids=new JSONArray();
     for(int j=0;j<entries.length();j++){
@@ -410,6 +416,17 @@ final class NotebookClient {
   }
   JSONObject studioCreateAdvanced(String notebookUrl,String kind,String language,String focus,
       String format,int optionA,int optionB) throws Exception {
+    return studioCreateAdvanced(notebookUrl,kind,language,focus,format,optionA,optionB,"",null);
+  }
+  /** stylePrompt: custom visual style (video, with style code 2 "custom"); sourceIds: only these sources. */
+  JSONObject studioCreateAdvanced(String notebookUrl,String kind,String language,String focus,
+      String format,int optionA,int optionB,String stylePrompt,JSONArray sourceIds) throws Exception {
+    studioOnly=sourceIds;
+    try { return studioCreateInner(notebookUrl,kind,language,focus,format,optionA,optionB,stylePrompt==null?"":stylePrompt); }
+    finally { studioOnly=null; }
+  }
+  private JSONObject studioCreateInner(String notebookUrl,String kind,String language,String focus,
+      String format,int optionA,int optionB,String stylePrompt) throws Exception {
     String id=ownedNotebookId(notebookUrl);
     JSONArray nested=studioSources(notebookUrl,true),simple=studioSources(notebookUrl,false);
     String lang=language==null||language.isEmpty()?"fr":language;
@@ -426,7 +443,7 @@ final class NotebookClient {
       JSONArray opts=new JSONArray().put(simple).put(fmt==4?JSONObject.NULL:lang)
         .put(prompt).put(JSONObject.NULL).put(fmt);
       if(fmt==4)opts.put(JSONObject.NULL).put(JSONObject.NULL).put(1);
-      else if(fmt!=3)opts.put(optionA>=1?optionA:1);
+      else if(fmt!=3){opts.put(optionA>=1?optionA:1);if(!stylePrompt.isEmpty())opts.put(stylePrompt);}
       content.put(3).put(nested);
       for(int j=0;j<4;j++)content.put(JSONObject.NULL);
       content.put(new JSONArray().put(JSONObject.NULL).put(JSONObject.NULL).put(opts));
@@ -484,6 +501,42 @@ final class NotebookClient {
       throw new IOException("Studio RPC did not return an artifact ID");
     return new JSONObject().put("artifactId",artifact.optString(0)).put("kind",kind)
       .put("notebookId",id).put("status","submitted").put("verifiedComplete",false);
+  }
+  /** Revises slides of a deck: creates a NEW deck (the original stays). instructions: [[index0, text], ...]. */
+  JSONObject studioRevise(String notebookUrl,String artifactId,JSONArray instructions) throws Exception {
+    String id=ownedNotebookId(notebookUrl);
+    Object raw=rpc("KmcKPe",new JSONArray().put(new JSONArray().put(2)).put(artifactId).put(new JSONArray().put(instructions)),"/notebook/"+id);
+    JSONArray art=raw instanceof JSONArray?((JSONArray)raw).optJSONArray(0):null;
+    if(art==null||art.optString(0).isEmpty())throw new IOException("Slide revision not accepted");
+    return new JSONObject().put("artifactId",art.optString(0)).put("title",art.optString(1,"")).put("originalArtifactId",artifactId)
+      .put("notebookId",id).put("status","submitted").put("verifiedComplete",false);
+  }
+  /** Exports a report (Docs) or a data table (Sheets) into the user's Google Drive. */
+  JSONObject exportArtifact(String notebookUrl,String artifactId,String title,String type) throws Exception {
+    String id=ownedNotebookId(notebookUrl);
+    int code="sheets".equals(type)?2:1;
+    Object raw=rpc("Krh3pd",new JSONArray().put(JSONObject.NULL).put(artifactId).put(JSONObject.NULL).put(title).put(code),"/notebook/"+id);
+    String url=null;
+    if(raw instanceof JSONArray){
+      JSONArray r=(JSONArray)raw;Object first=r.opt(0);
+      if(first instanceof JSONArray){Object inner=((JSONArray)first).opt(0);url=inner instanceof JSONArray?((JSONArray)inner).optString(0,null):inner instanceof String?(String)inner:null;}
+      else if(first instanceof String)url=(String)first;
+    }
+    if(url==null||!url.startsWith("https://"))throw new IOException("Export not confirmed by NotebookLM");
+    return new JSONObject().put("exported",true).put("url",url).put("type",code==2?"sheets":"docs").put("title",title);
+  }
+  /** AI summary of the notebook and suggested topics. */
+  JSONObject describeNotebook(String notebookUrl) throws Exception {
+    String id=ownedNotebookId(notebookUrl);
+    Object raw=rpc("VfAZjd",new JSONArray().put(id).put(new JSONArray().put(2)),"/notebook/"+id);
+    String summary="";JSONArray topics=new JSONArray();
+    if(raw instanceof JSONArray){
+      JSONArray r=(JSONArray)raw;
+      JSONArray s0=r.optJSONArray(0);if(s0!=null)summary=s0.optString(0,"");
+      JSONArray t1=r.optJSONArray(1);JSONArray list=t1==null?null:t1.optJSONArray(0);
+      if(list!=null)for(int j=0;j<list.length();j++){JSONArray t=list.optJSONArray(j);if(t!=null&&t.length()>=2)topics.put(new JSONObject().put("question",t.optString(0)).put("prompt",t.optString(1)));}
+    }
+    return new JSONObject().put("notebookId",id).put("summary",summary).put("suggestedTopics",topics);
   }
   JSONObject studioStatus(String notebookUrl) throws Exception {
     String id=ownedNotebookId(notebookUrl);

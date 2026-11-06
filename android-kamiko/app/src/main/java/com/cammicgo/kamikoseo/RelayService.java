@@ -291,7 +291,10 @@ public class RelayService extends Service {
       else if ("source_sync_drive".equals(operation)) result=client.sourceSyncDrive(job.optString("notebookUrl"),job.optString("sourceId"));
       else if ("source_delete".equals(operation)) result=client.sourceDelete(job.optString("notebookUrl"),job.optString("sourceId"),job.optString("expectedTitle"),job.optBoolean("confirm",false));
       else if ("query".equals(operation)) result=client.queryNotebook(job.optString("notebookUrl"),job.optString("question"));
-      else if ("studio_create".equals(operation)) result=client.studioCreateAdvanced(job.optString("notebookUrl"),job.optString("kind"),job.optString("language","fr"),job.optString("focus",""),job.optString("format",""),job.optInt("optionA",1),job.optInt("optionB",2));
+      else if ("studio_create".equals(operation)) result=client.studioCreateAdvanced(job.optString("notebookUrl"),job.optString("kind"),job.optString("language","fr"),job.optString("focus",""),job.optString("format",""),job.optInt("optionA",1),job.optInt("optionB",2),job.optString("stylePrompt",""),job.has("sourceIds")?new JSONArray(job.optString("sourceIds","[]")):null);
+      else if ("studio_revise".equals(operation)) result=client.studioRevise(job.optString("notebookUrl"),job.optString("artifactId"),new JSONArray(job.optString("instructions","[]")));
+      else if ("export_artifact".equals(operation)) result=client.exportArtifact(job.optString("notebookUrl"),job.optString("artifactId"),job.optString("title","NotebookLM Export"),job.optString("exportType","docs"));
+      else if ("notebook_describe".equals(operation)) result=client.describeNotebook(job.optString("notebookUrl"));
       else if ("research_start".equals(operation)) result=client.researchStart(job.optString("notebookUrl"),job.optString("query"),job.optString("source","web"),job.optString("mode","fast"));
       else if ("research_status".equals(operation)) result=client.researchStatus(job.optString("notebookUrl"),job.optString("taskId"));
       else if ("research_import".equals(operation)) result=client.researchImport(job.optString("notebookUrl"),job.optString("taskId"),new JSONArray(job.optString("sources","[]")),job.optBoolean("confirm",false));
