@@ -1370,7 +1370,7 @@ async function handler(req:NextRequest){
     if(!key)return asText({error:'bing_not_connected',messageForUser:'Connect Bing Webmaster Tools first: open https://seo.cammicgo.com/account, section "Bing Webmaster Tools", and paste your API key (in Bing Webmaster Tools: Settings › API access › API Key › Generate).'});
     const out=await fn(key,b) as {ok?:boolean;error?:string}|unknown;
     const e=out as {ok?:boolean;error?:string;message?:string};
-    if(e&&e.ok===false){return asText({error:e.error,message:e.message,hint:e.error==='bing_key_rejected'?'The saved Bing key was rejected: ask the user to generate a new one and save it at https://seo.cammicgo.com/account.':'Check the siteUrl with bing_sites (Bing expects the exact registered URL, usually with a trailing slash).'})}
+    if(e&&e.ok===false){return {isError:true,...asText({error:e.error,message:e.message,hint:e.error==='bing_key_rejected'?'The saved Bing key was rejected: ask the user to generate a new one and save it at https://seo.cammicgo.com/account.':'Check the siteUrl with bing_sites (Bing expects the exact registered URL, usually with a trailing slash).'})}}
     return asText(out);
    };
    const siteOf=(b:typeof import('@/lib/bing'),v:string)=>b.bingSiteUrl(v)??v;
