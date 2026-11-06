@@ -614,7 +614,9 @@ public class MainActivity extends Activity {
         .setMessage(t("clear_msg"))
         .setPositiveButton(t("clear_ok"), (dlg, which) -> {
           SharedPreferences prefs = RelayClient.prefs(this);
-          prefs.edit().putString("history", "[]").putString("assistantNotebookHistory", "[]").putString("linkedinAssistantHistory", "[]").apply();
+          prefs.edit().putString("history", "[]").putString("assistantNotebookHistory", "[]").putString("linkedinAssistantHistory", "[]")
+              .putString("mcpDebugHistory", "[]").putLong("mcpDebugClearedAt", System.currentTimeMillis()).apply();
+          linkedinLastPollError = "";
           historyShown = null;
           refreshHistory(prefs);
         })
@@ -1346,10 +1348,16 @@ public class MainActivity extends Activity {
 
 
   /** Writes the approved text in the visible composer and checks it, without sending. */
-  private void liTypeText(String id, String participant, String text, Runnable next) {
+  private void liTypeText(String id, String participant, String text, Runnable next) { liTypeText(id, participant, text, next, 0); }
+  private void liTypeText(String id, String participant, String text, Runnable next, int attempt) {
     String js = "const name=" + q(participant) + ",msg=" + q(text) + ";"
       + "if(!headerHas(name))return JSON.stringify({error:'Recipient not verified'});"
-      + "const ev=evidence('');if(ev.remove>0)return JSON.stringify({error:'The composer already holds an attachment that was not approved: nothing was sent',evidence:ev});"
+      + "const ev=evidence('');"
+      // An unsent attachment left in the composer (an earlier attempt) is removed once, never sent with this message.
+      + "if(ev.remove>0){const reg=regionOf(findEditor());const rm=[...reg.querySelectorAll('button,[role=button]')].filter(b=>{const l=norm(b.getAttribute('aria-label')||b.title||b.innerText);return /remove|supprimer|retirer|delete|effacer|annuler/.test(l)&&/attach|pi\\u00e8ce|piece|image|photo|fichier|file|m\\u00e9dia|media/.test(l)});"
+      + "const labels=rm.map(b=>norm(b.getAttribute('aria-label')||b.title||b.innerText).slice(0,60));"
+      + "if(" + attempt + ">0)return JSON.stringify({error:'The composer still holds an attachment that was not approved: nothing was sent',evidence:ev,buttons:labels});"
+      + "rm.forEach(b=>b.click());return JSON.stringify({leftoverRemoved:rm.length,buttons:labels});}"
       + "const editor=findEditor();if(!editor)return JSON.stringify({error:'Message composer not found',fields:[...document.querySelectorAll('textarea,[contenteditable],[role=\\\"textbox\\\"],input')].filter(visible).slice(0,8).map(e=>({tag:e.tagName.toLowerCase(),type:e.type||'',label:(e.getAttribute('aria-label')||e.getAttribute('placeholder')||'').slice(0,60)}))});"
       + "editor.focus();"
       + "if(editor.matches('textarea,input')){const p=editor.matches('textarea')?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(p,'value').set.call(editor,msg);}else editor.textContent=msg;"
@@ -1357,7 +1365,11 @@ public class MainActivity extends Activity {
       + "const actual=editor.matches('textarea,input')?editor.value:editor.innerText;"
       + "if(actual.trim()!==msg.trim())return JSON.stringify({error:'Composer text verification failed'});"
       + "return JSON.stringify({typed:true});";
-    liEval(js, r -> { if (r.optBoolean("typed")) next.run(); else liFail(id, r.optString("error", "Text not written") + (r.optString("error").contains("nothing") ? "" : ": nothing was sent"), r); });
+    liEval(js, r -> {
+      if (r.optBoolean("typed")) next.run();
+      else if (r.has("leftoverRemoved")) ui.postDelayed(() -> liTypeText(id, participant, text, next, attempt + 1), 1500);
+      else liFail(id, r.optString("error", "Text not written") + (r.optString("error").contains("nothing") ? "" : ": nothing was sent"), r);
+    });
   }
   /** Removes the text this job wrote (used when the file could not be attached). */
   private void liClearText(String text, Runnable next) {
@@ -2097,8 +2109,17 @@ public class MainActivity extends Activity {
     worker.execute(() -> {
       try {
         String raw = RelayClient.request("GET", "/api/devices/mcp-debug", RelayClient.token(this), null);
-        JSONArray calls = new JSONObject(raw).optJSONArray("calls");
-        if (calls == null) return;
+        JSONArray all = new JSONObject(raw).optJSONArray("calls");
+        if (all == null) return;
+        // The server keeps the last calls: those from before "Clear the list" are not shown again.
+        long clearedAt = RelayClient.prefs(this).getLong("mcpDebugClearedAt", 0L);
+        JSONArray calls = new JSONArray();
+        for (int i = 0; i < all.length(); i++) {
+          JSONObject c = all.optJSONObject(i);
+          if (c == null) continue;
+          long at; try { at = Instant.parse(c.optString("at")).toEpochMilli(); } catch (Exception e) { at = Long.MAX_VALUE; }
+          if (at > clearedAt) calls.put(c);
+        }
         RelayClient.prefs(this).edit().putString("mcpDebugHistory", calls.toString()).apply();
         ui.post(() -> { historyShown = null; refreshHistory(RelayClient.prefs(this)); });
       } catch (Exception ignored) { /* Debug history is best-effort. */ }
