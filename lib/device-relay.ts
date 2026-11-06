@@ -33,7 +33,7 @@ export async function sb<T=unknown>(path:string,init?:RequestInit&{prefer?:strin
 const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
 const nowIso=()=>new Date().toISOString();
 
-export type Device={id:string;user_id:string;name:string;created_at:string;last_seen_at:string|null};
+export type Device={id:string;user_id:string;name:string;created_at:string;last_seen_at:string|null;relay_seen_at?:string|null;relay_claim_at?:string|null};
 export type Job={id:string;video_id:string;language:string;status:'pending'|'claimed'|'done'|'error';result:unknown;error:string|null;device_id:string|null;created_at:string;expires_at:string};
 
 /** Validates a YouTube URL, shared text or bare ID; returns the 11-character ID or null. */
@@ -67,9 +67,24 @@ export async function deviceFromAuthorization(authorization:string|null){
  return rows[0]??null;
 }
 export async function touchDevice(id:string){await sb('/rest/v1/cmg_devices?id=eq.'+id,{method:'PATCH',body:JSON.stringify({last_seen_at:nowIso()})});}
-export async function listDevices(userId:string){return sb<Device[]>('/rest/v1/cmg_devices?user_id=eq.'+userId+'&revoked_at=is.null&select=id,user_id,name,created_at,last_seen_at&order=created_at.desc');}
+export async function listDevices(userId:string){return sb<Device[]>('/rest/v1/cmg_devices?user_id=eq.'+userId+'&revoked_at=is.null&select=id,user_id,name,created_at,last_seen_at,relay_seen_at,relay_claim_at&order=created_at.desc');}
 export async function revokeDevice(userId:string,deviceId:string){const rows=await sb<Device[]>('/rest/v1/cmg_devices?id=eq.'+encodeURIComponent(deviceId)+'&user_id=eq.'+userId+'&revoked_at=is.null',{method:'PATCH',body:JSON.stringify({revoked_at:nowIso()}),prefer:'return=representation'});return rows.length>0;}
 export const isOnline=(d:Device)=>!!d.last_seen_at&&Date.now()-Date.parse(d.last_seen_at)<DEVICE_ONLINE_MS;
+const recent=(t?:string|null)=>!!t&&Date.now()-Date.parse(t)<DEVICE_ONLINE_MS;
+/** The relay worker ("Mode connecté") is polling for jobs. The LinkedIn control alone only proves the app is open. */
+export const relayRunning=(d:Device)=>recent(d.relay_seen_at);
+/** The relay worker is running AND accepting jobs (not paused after a YouTube HTTP 429). */
+export const relayClaiming=(d:Device)=>recent(d.relay_claim_at);
+/** Records relay worker activity on each /api/devices/jobs poll. */
+export async function touchRelay(id:string,claiming:boolean){const now=nowIso();await sb('/rest/v1/cmg_devices?id=eq.'+id,{method:'PATCH',body:JSON.stringify(claiming?{relay_seen_at:now,relay_claim_at:now}:{relay_seen_at:now})});}
+/** Why no device takes transcript/NotebookLM jobs, with what the user must do. Null when a device can take them. */
+export function relayBlocker(devices:Device[]):null|{status:'device_paused'|'relay_off';messageForUser:string}{
+ if(devices.some(relayClaiming))return null;
+ const names=devices.map(d=>d.name).join(', ');
+ if(devices.some(relayRunning))return {status:'device_paused',messageForUser:'Your CamMicGo app ('+names+') is connected but has paused YouTube requests after YouTube limited it (HTTP 429). Open the app: in "Assistant IA", wait for the pause to end or tap "Réessayer", then tell me to retry. Nothing was lost.'};
+ if(devices.some(isOnline))return {status:'relay_off',messageForUser:'Your CamMicGo app ('+names+') is open (LinkedIn control), but "Mode connecté" is off, so it does not take transcript or NotebookLM requests. In the app, open "Connexion à votre assistant IA" and turn on "Mode connecté", keep the phone awake, then tell me to retry.'};
+ return null;
+}
 
 // ---------- jobs ----------
 /** A transcript already fetched by any device in the last 30 days (public captions). */

@@ -108,6 +108,7 @@ async function handler(req:NextRequest){
    const notebookJob=async(operation:'chat_configure'|'chat_get'|'chat_delete'|'source_search'|'source_list_drive'|'collection_list'|'collection_create'|'collection_edit'|'collection_delete'|'studio_revise'|'export_artifact'|'notebook_describe'|'create'|'list'|'add_url_source'|'get'|'rename'|'delete_preview'|'delete'|'add_text_source'|'add_drive_source'|'usage'|'source_list'|'studio_create'|'studio_status'|'mindmap_create'|'notebook_share_status'|'query'|'notebook_share_public'|'notebook_share_invite'|'artifact_download_link'|'source_rename'|'source_sync_drive'|'source_delete'|'studio_get'|'research_start'|'research_status'|'research_import'|'note'|'source_describe'|'source_get_content'|'artifact_download_binary'|'studio_delete',payload:Record<string,string>)=>{
     const devices=await relay.listDevices(user.id);
     if(!devices.some(relay.isOnline))return asText({status:'device_offline',created:false,messageForUser:'Connectez le relais CamMicGo sur votre ordinateur, avec une session NotebookLM Google ouverte. Les actions ne sont pas exécutées dans le cloud.'});
+    const nbBlocked=relay.relayBlocker(devices);if(nbBlocked)return asText({...nbBlocked,created:false,operation});
     const job=await relay.createNotebookJob(user.id,operation,{...payload,agentName:payload.agentName||agentName,agentSource:payload.agentName?'mcp-tool-argument':declaredClient||clientHeader});
     const deadline=Date.now()+40_000;
     while(Date.now()<deadline){
@@ -473,7 +474,9 @@ async function handler(req:NextRequest){
     const meta={originalLanguage,requestedLanguage:args.language||'original'};
     try{
      const cached=await relay.cachedTranscript(videoId,language);if(cached)return asText({...(fmt(cached) as object),...meta,cached:true});
-     const devices=await relay.listDevices(user.id);const online=devices.filter(relay.isOnline);
+     const devices=await relay.listDevices(user.id);const online=devices.filter(relay.relayClaiming);
+     const blocked=online.length?null:relay.relayBlocker(devices);
+     if(blocked)return asText({videoId,...blocked,created:false,instructions:'Relay messageForUser to the user in their language. Do not poll: call youtube_get_transcript again only after the user confirms.'});
      if(online.length){
       const job=await relay.createJob(user.id,videoId,language,10,args.agentName||agentName);
       const deadline=Date.now()+40_000;
@@ -537,6 +540,8 @@ async function handler(req:NextRequest){
      if(job.status==='done')return asText(relay.formatTranscript(job.result,'text'));
      if(job.status==='error')return asText({videoId:job.video_id,error:'The paired device could not fetch captions',deviceError:job.error});
      if(Date.parse(job.expires_at)<Date.now())return asText({videoId:job.video_id,error:'Job expired: no paired device answered within 10 minutes. Check that the app is open with "Mode connecté" on.'});
+     const blocked=job.status==='pending'?relay.relayBlocker(await relay.listDevices(user.id)):null;
+     if(blocked)return asText({videoId:job.video_id,status:'pending',waitingReason:blocked.status,messageForUser:blocked.messageForUser,instructions:'Relay messageForUser to the user in their language and stop polling until they confirm; the request stays queued until '+job.expires_at+'.'});
      return asText({videoId:job.video_id,status:job.status,hint:'Still waiting for the paired device; retry in a few seconds.'});
     }catch(e){return asText({error:e instanceof Error?e.message:'Transcript relay unavailable'})}
    });
