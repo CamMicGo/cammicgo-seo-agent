@@ -1450,17 +1450,23 @@ public class MainActivity extends Activity {
   /** Sent = the text (and the file) appear in the conversation; otherwise the outcome is reported as unconfirmed. */
   private void liVerifySent(String id, String participant, String text, String name, boolean withFile, int before, JSONObject attached, int triesLeft) {
     ui.postDelayed(() -> liEval("const t=norm(" + q(text) + ").slice(0,60),n=norm(" + q(name) + ");const last=items().slice(-4);"
-      + "const textSeen=last.some(e=>norm(e.innerText).includes(t));"
+      // The light mobile page (mwlite) does not always list the new message where the thread items are read:
+      // the text also counts when it is on the page outside the composer, and the composer no longer holds it.
+      + "const ed=findEditor();const inEditor=!!ed&&norm(ed.matches('textarea,input')?ed.value:ed.innerText).includes(t);"
+      + "const main=document.querySelector('main')||document.body;const pageHas=norm(main.innerText).includes(t);"
+      + "const textSeen=!inEditor&&(last.some(e=>norm(e.innerText).includes(t))||pageHas);"
       + "const fileSeen=last.some(e=>[...e.querySelectorAll('img')].some(i=>/messaging|dms\\/image|media\\.licdn|attachment|blob:/i.test(i.currentSrc||i.src||''))||(n.length>4&&norm(e.innerText).includes(n)));"
       + "const ev=evidence(n);return JSON.stringify({textSeen,fileSeen,count:items().length,composerEmpty:ev.text===0&&ev.remove===0});", r -> {
       boolean ok = r.optBoolean("textSeen") && (!withFile || r.optBoolean("fileSeen"));
+      // Still not seen: reload the conversation once (the light page may not refresh by itself), then look again.
+      if (!ok && triesLeft == 8) linkedinWeb.reload();
       if (!ok && triesLeft > 0) { liVerifySent(id, participant, text, name, withFile, before, attached, triesLeft - 1); return; }
       JSONObject out = new JSONObject();
       try {
         out.put("sent", ok); out.put("sendClicked", true); out.put("recipient", participant); out.put("characters", text.length());
         out.put("textSeenInThread", r.optBoolean("textSeen")); out.put("composerEmptied", r.optBoolean("composerEmpty"));
         if (withFile) { attached.put("seenInThread", r.optBoolean("fileSeen")); out.put("attachment", attached); }
-        if (!ok) out.put("note", "Send was clicked but the message was not seen in the conversation: check it on the phone before sending again.");
+        if (!ok) out.put("note", "Send was clicked but the message could not be confirmed on the page: it may well have been sent. Check the conversation (LinkedIn app) and do NOT send it again before checking.");
       } catch (Exception ignored) {}
       // LinkedIn has read the file (it is shown sent) or the job is over: the cached copy goes now.
       liDeleteJobFiles(id);
