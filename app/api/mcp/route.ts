@@ -449,7 +449,7 @@ async function handler(req:NextRequest){
     const ids=yta.channelIds(args.channelId);
     const cur=await ytReport({ids,...period,metrics:yta.BASIC_METRICS});if(cur.error)return ytFail(cur);
 
-[executed on device: instance-20260604-1918 (a7765734-3129-4de5-be49-77d0c678b0cf)]    const totals=yta.friendlyTotals(yta.rowsOf(cur)[0]);
+    const totals=yta.friendlyTotals(yta.rowsOf(cur)[0]);
     const out:Record<string,unknown>={channel:args.channelId??'MINE',period:{start:period.startDate,end:period.endDate,days:period.days},totals};
     const prev=yta.previousPeriod(period);
     const [p,f,d]=await Promise.all([
@@ -900,7 +900,7 @@ async function handler(req:NextRequest){
    const profileOut=(p:sci.AuthorProfile)=>({openAlexId:p.id,name:p.name,orcid:p.orcid,institution:p.institution,country:p.country,works:p.works,citations:p.citations,hIndex:p.hIndex,i10Index:p.i10Index,topics:p.topics,lastYears:p.lastYears,alternativeNames:p.alternativeNames.length?p.alternativeNames:undefined,url:p.url});
 
 
-[executed on device: instance-20260604-1918 (a7765734-3129-4de5-be49-77d0c678b0cf)]   server.registerTool('science_author_works',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Complete publication list of a researcher',
+   server.registerTool('science_author_works',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Complete publication list of a researcher',
     description:'ALL publications of one researcher, found by identity (not by text search): give an OpenAlex author ID (A…), an ORCID (0000-0002-…), a Semantic Scholar author ID, or a name (a name is used only if exactly one profile matches; otherwise candidates are returned so the user can choose). Works from OpenAlex plus HAL deposits linked to the ORCID; preprint/published versions and duplicates are merged; newest first by default; filter by years or topic words. Returns one page (pageSize) plus stable export links to the COMPLETE list in BibTeX, RIS (Zotero/EndNote), CSV, Markdown (NotebookLM) and CSL-JSON that always regenerate the up-to-date list. To save one in Drive, pass its link to drive_upload_file (source.type="url"). If OpenAlex split one person into several profiles, pass the extra IDs in extraAuthorIds.',
     inputSchema:z.object({author:z.string().min(2).max(200).describe('OpenAlex ID (A…), ORCID, Semantic Scholar author ID or full name'),extraAuthorIds:z.array(z.string().regex(/^A\d{4,12}$/i)).max(4).optional(),
      sort:workSort,from:z.string().regex(/^\d{4}(-\d{2}-\d{2})?$/).optional().describe('Year or date'),to:z.string().regex(/^\d{4}(-\d{2}-\d{2})?$/).optional(),
@@ -1318,4 +1318,4 @@ export const POST=handler;
 // This confirms route existence only; it does not imply OAuth or private Google tools are enabled.
 export function HEAD(){return new NextResponse(null,{status:200,headers:{'Cache-Control':'no-store','Allow':'HEAD, POST, GET'}})}
 
-[executed on device: instance-20260604-1918 (a7765734-3129-4de5-be49-77d0c678b0cf)]
+
