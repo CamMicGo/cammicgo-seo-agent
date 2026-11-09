@@ -1,7 +1,7 @@
 'use client';
 import {useCallback,useEffect,useState} from 'react';
 import Link from 'next/link';
-import {useT} from '../lang-provider';
+import {useT,useLang} from '../lang-provider';
 import {accountCopy} from '@/lib/copy/account';
 import {supabaseBrowser,supabaseConfigured} from '@/lib/supabase-browser';
 import DriveStorage from './drive-storage';
@@ -12,7 +12,34 @@ import LinkedInConnect from './linkedin-connect';
 type Client={projectId:string|null;clientId:string;secretHint:string;verifiedAt:string|null;updatedAt:string};
 type Account={admin:boolean;client:Client|null;redirectUri:string;google:{connected:boolean;mode:'shared'|'byo'|null;scopes:string[]|null;driveWrite:string[]|null};usage:{used:number;limit:number;perMinute:number;resetsAt:string}};
 const MCP_URL='https://seo.cammicgo.com/api/mcp';
-const APIS:Array<[string,string]>=[['Search Console','webmasters.readonly'],['Google Analytics 4','analytics.readonly'],['YouTube','youtube.readonly'],['YouTube Analytics','yt-analytics.readonly'],['YouTube ✎ (upload)','youtube.upload'],['Google Calendar','calendar.readonly'],['Gmail','gmail.readonly'],['Google Drive','drive.readonly'],['Google Drive ✎ (drive.file)','drive.file'],['Google Drive ⚠ full access (drive)','drive'],['Google Docs','documents.readonly'],['Google Sheets','spreadsheets.readonly'],['Google Slides','presentations.readonly'],['Google Tasks','tasks.readonly'],['Google Contacts','contacts.readonly'],['Google Classroom','classroom.courses.readonly'],['Google Chat','chat.spaces.readonly'],['Apps Script','script.projects.readonly'],['Google Ads','adwords']];
+const APIS:Array<[string,string]>=[['Search Console','webmasters.readonly'],['Google Analytics 4','analytics.readonly'],['YouTube','youtube.readonly'],['YouTube Analytics','yt-analytics.readonly'],['YouTube ✎ (upload)','youtube.upload'],['Google Calendar','calendar.readonly'],['Google Calendar ✎ (events)','calendar.events'],['Gmail','gmail.readonly'],['Google Drive','drive.readonly'],['Google Drive ✎ (drive.file)','drive.file'],['Google Drive ⚠ full access (drive)','drive'],['Google Docs','documents.readonly'],['Google Sheets','spreadsheets.readonly'],['Google Slides','presentations.readonly'],['Google Tasks','tasks.readonly'],['Google Contacts','contacts.readonly'],['Google Classroom','classroom.courses.readonly'],['Google Chat','chat.spaces.readonly'],['Apps Script','script.projects.readonly'],['Google Ads','adwords']];
+const LOGOS:Record<string,string>={
+ 'Search Console':'/google-search-console.svg','Google Analytics 4':'/api/assets/google-analytics',
+ 'YouTube':'/google-logos/youtube.svg','YouTube Analytics':'/google-logos/youtube.svg',
+ 'Google Calendar':'/google-logos/calendar.png','Gmail':'/google-logos/gmail.png','Google Drive':'/google-logos/drive.png',
+ 'Google Docs':'/google-logos/docs.png','Google Sheets':'/google-logos/sheets.png','Google Slides':'/google-logos/slides.png',
+ 'Google Tasks':'/google-logos/tasks.png','Google Contacts':'/google-logos/contacts.png',
+ 'Google Classroom':'/google-logos/classroom.png','Google Chat':'/google-logos/chat.png',
+ 'Apps Script':'/google-logos/apps-script.png','Google Ads':'/google-logos/google-ads.png'
+};
+const serviceName=(name:string)=>name.split(' ✎')[0].split(' ⚠')[0];
+const permissionName=(id:string,lang:string)=>{
+ const key=id==='youtube.upload'?'upload':id==='drive'?'full':id==='adwords'?'manage':id==='drive.file'||id==='calendar.events'?'write':'read';
+ const dict:Record<string,Record<string,string>>={
+ fr:{read:'Lecture',write:'Création et modification',full:'Accès complet (sensible)',manage:'Rapports et gestion',upload:'Mise en ligne (sensible)',granted:'Accordé',missing:'Non accordé'},
+ en:{read:'Read',write:'Create and update',full:'Full access (sensitive)',manage:'Reports and management',upload:'Upload (sensitive)',granted:'Granted',missing:'Not granted'},
+ de:{read:'Lesen',write:'Erstellen und ändern',full:'Vollzugriff (sensibel)',manage:'Berichte und Verwaltung',upload:'Hochladen (sensibel)',granted:'Erteilt',missing:'Nicht erteilt'},
+ es:{read:'Lectura',write:'Crear y modificar',full:'Acceso completo (sensible)',manage:'Informes y gestión',upload:'Subir (sensible)',granted:'Concedido',missing:'Sin conceder'},
+ pt:{read:'Leitura',write:'Criar e editar',full:'Acesso total (sensível)',manage:'Relatórios e gestão',upload:'Carregar (sensível)',granted:'Concedido',missing:'Não concedido'},
+ it:{read:'Lettura',write:'Creazione e modifica',full:'Accesso completo (sensibile)',manage:'Report e gestione',upload:'Caricamento (sensibile)',granted:'Concesso',missing:'Non concesso'},
+ ru:{read:'Чтение',write:'Создание и изменение',full:'Полный доступ',manage:'Отчёты и управление',upload:'Загрузка',granted:'Разрешено',missing:'Не разрешено'},
+ zh:{read:'读取',write:'创建和修改',full:'完整访问（敏感）',manage:'报告和管理',upload:'上传（敏感）',granted:'已授权',missing:'未授权'},
+ ja:{read:'読み取り',write:'作成・変更',full:'フルアクセス（機密）',manage:'レポート・管理',upload:'アップロード（機密）',granted:'許可済み',missing:'未許可'},
+ ko:{read:'읽기',write:'생성 및 수정',full:'전체 액세스 (민감)',manage:'보고서 및 관리',upload:'업로드 (민감)',granted:'허용됨',missing:'허용되지 않음'},
+ ar:{read:'قراءة',write:'إنشاء وتعديل',full:'وصول كامل (حساس)',manage:'تقارير وإدارة',upload:'رفع (حساس)',granted:'ممنوح',missing:'غير ممنوح'}
+ };
+ return (dict[lang]||dict.en)[key];
+};
 const scopeUrl=(s:string)=>'https://www.googleapis.com/auth/'+s;
 /** "Select all" never ticks full Drive access (it allows trashing any file): that one stays an explicit choice. */
 const RECOMMENDED_SCOPES=['webmasters.readonly','analytics.readonly'].map(scopeUrl);
@@ -22,6 +49,7 @@ const fill=(s:string,v:Record<string,string|number>)=>s.replace(/\{(\w+)\}/g,(_,
 
 export default function AccountView(){
  const t=useT(accountCopy);
+ const {lang}=useLang();
  const [email,setEmail]=useState('');
  const [userEmail,setUserEmail]=useState<string|null>(null);
  const [token,setToken]=useState<string|null>(null);
@@ -121,7 +149,25 @@ export default function AccountView(){
     <fieldset className="acc-apis"><legend>{t.apis}</legend>
      <p className="acc-note">Recommended: Search Console and Analytics (read-only). Select additional Google services only when you need them. Sensitive Google permissions may require OAuth verification by the owner of the selected Google Cloud project.</p>
      <label className="acc-all"><input type="checkbox" checked={SELECT_ALL.every(x=>scopes.includes(x))} onChange={e=>setScopes(e.target.checked?[...SELECT_ALL,...scopes.filter(x=>!SELECT_ALL.includes(x))]:[])}/>{t.selectAll}</label>
-     {APIS.map(([name,id])=><label key={id}><input type="checkbox" checked={scopes.includes(scopeUrl(id))} onChange={e=>setScopes(s=>e.target.checked?[...s,scopeUrl(id)]:s.filter(x=>x!==scopeUrl(id)))}/>{name}</label>)}
+     {Array.from(new Set(APIS.map(([name])=>serviceName(name)))).map(name=>{
+      const options=APIS.filter(([n])=>serviceName(n)===name);
+      const granted=new Set([...(acc?.google.scopes??[]),...(acc?.google.driveWrite??[])]);
+      const anyGranted=options.some(([,id])=>granted.has(scopeUrl(id)));
+      return <div key={name} style={{padding:'12px 8px',borderBottom:'1px solid #e2e8f0',display:'grid',gap:8}}>
+       <div style={{display:'flex',alignItems:'center',gap:10}}>
+        <img src={LOGOS[name]} width={28} height={28} alt="" style={{objectFit:'contain',flexShrink:0}}/>
+        <strong style={{flex:1}}>{name}</strong>
+        <span aria-label={anyGranted?'Granted permissions':'No granted permissions'} style={{fontSize:12,color:anyGranted?'#166534':'#64748b'}}>{anyGranted?'✓':'×'}</span>
+       </div>
+       <div style={{display:'flex',flexWrap:'wrap',gap:'8px 14px',paddingLeft:38}}>
+        {options.map(([,id])=><label key={id} style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:13}}>
+         <input type="checkbox" checked={scopes.includes(scopeUrl(id))} onChange={e=>setScopes(current=>e.target.checked?Array.from(new Set([...current,scopeUrl(id)])):current.filter(x=>x!==scopeUrl(id)))}/>
+         <span>{permissionName(id,lang)}</span>
+         <span aria-label={granted.has(scopeUrl(id))?'Granted':'Not granted'} title={granted.has(scopeUrl(id))?'Granted':'Not granted'} style={{color:granted.has(scopeUrl(id))?'#15803d':'#b91c1c',fontWeight:800,fontSize:15}}>{granted.has(scopeUrl(id))?'✓':'×'}</span>
+        </label>)}
+       </div>
+      </div>;
+     })}
     </fieldset>
     {acc?.admin&&<label className="acc-shared"><input type="checkbox" checked={useShared} onChange={e=>setUseShared(e.target.checked)}/>{t.useShared}</label>}
     {!acc?.client&&!(acc?.admin&&useShared)&&<p className="acc-warn">{t.needClient}</p>}

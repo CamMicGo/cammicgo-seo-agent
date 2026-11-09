@@ -37,10 +37,11 @@ export default function ScienceKeys({token}:{token:string}){
   <h2 id="acc-sci-title">🔬 {t.title}</h2>
   <p>{t.lead} <a href="/setup/science">{t.guide} →</a></p>
   <p className="acc-sci-rec">⭐ {t.recommend}</p>
+  <div style={{display:"flex",gap:16,flexWrap:"wrap",margin:"12px 0"}}>{[{name:"HAL",icon:"hal",url:"https://hal.science/"},{name:"arXiv",icon:"arxiv",url:"https://arxiv.org/"}].map(p=><a key={p.icon} href={p.url} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:7}}><img src={"/service-icons/"+p.icon+".png"} width={26} height={26} alt="" style={{objectFit:"contain"}}/>{p.name}</a>)}</div>
   {msg&&<p role="status" className={'acc-msg '+msg.kind}>{msg.text}</p>}
   <div className="acc-sci-list">
    {KEYED.map(k=>{const s=saved.find(x=>x.provider===k.id);return <div className="acc-sci-row" key={k.id}>
-    <div className="acc-sci-head"><strong>{k.name}</strong><span className={s?'acc-ok':'acc-sci-muted'}>{s?'✓ '+s.hint+(s.verifiedAt?' · '+t.verified:''):t.noKey}</span></div>
+    <div className="acc-sci-head"><strong style={{display:"inline-flex",alignItems:"center",gap:8}}><img src={"/service-icons/"+(k.id==="semanticscholar"?"semantic-scholar":k.id)+".png"} width={28} height={28} alt="" style={{objectFit:"contain"}}/>{k.name}</strong><span className={s?'acc-ok':'acc-sci-muted'}>{s?'✓ '+s.hint+(s.verifiedAt?' · '+t.verified:''):t.noKey}</span></div>
     <p className="acc-note">{t.withoutKey}: {t[k.no]} · {t.withKey}: {t[k.yes]}</p>
     <div className="acc-row">
      <input type="password" dir="ltr" autoComplete="off" spellCheck={false} aria-label={k.name} placeholder={t.placeholder} value={draft[k.id]??''} onChange={e=>setDraft(d=>({...d,[k.id]:e.target.value}))}/>
