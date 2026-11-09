@@ -70,7 +70,7 @@ const actionsFor=(service:string,ids:string[])=>{
  // Document filenames, moving and trashing are Drive operations, not Docs/Sheets/Slides scopes.
  if(['Google Docs','Google Sheets','Google Slides'].includes(service)){
   if(ids.includes('documents')||ids.includes('spreadsheets')||ids.includes('presentations')){actions.add('create');actions.add('edit');}
-  if(ids.includes('drive.file')||ids.includes('drive'))for(const a of ['rename','move','delete'] as Action[])actions.add(a);
+  if(actions.has('read')&&(ids.includes('drive.file')||ids.includes('drive')))for(const a of ['rename','move','delete'] as Action[])actions.add(a);
  }
  return (['read','create','edit','rename','move','delete','upload','manage'] as Action[]).filter(a=>actions.has(a));
 };
