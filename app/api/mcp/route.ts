@@ -924,6 +924,32 @@ async function handler(req:NextRequest){
      undo:'Restorable for 30 days from the Google Drive trash, or with drive_restore_file and these IDs.'});
    });
 
+   server.registerTool('drive_rename_file',{annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:true},title:'Rename Google Drive file or folder',
+    description:'Rename an accessible Google Drive file, folder, Google Doc, Sheet or Slide. Requires drive.file for files available to this app, or full drive scope for broader access. Does not change file contents.',
+    inputSchema:z.object({fileId:driveId,newName:z.string().min(1).max(255)})},async args=>{
+     const access=await driveAccess();if(!access.write)return asText(driveScopeMessage(true));
+     const name=drive.cleanName(args.newName);if(!name)return asText({error:'invalid_name'});
+     const meta=await fileMeta(args.fileId);if('failure' in meta)return asText(meta.failure);
+     if(meta.data.trashed)return asText({error:'file_trashed'});
+     const result=await driveJson<drive.DriveFile>(drive.DRIVE_API+'/files/'+encodeURIComponent(args.fileId)+'?'+new URLSearchParams({fields:'id,name,mimeType,webViewLink',supportsAllDrives:'true'}),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})},true);
+     return asText('failure' in result?result.failure:{renamed:true,file:drive.slimFile(result.data)});
+    });
+   server.registerTool('drive_move_file',{annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:true},title:'Move Google Drive file to folder',
+    description:'Move one accessible Drive file, Google Doc, Sheet or Slide to another folder, without deleting or replacing it. Requires Drive write access to the file and destination folder. Does not move shared-drive items across drives.',
+    inputSchema:z.object({fileId:driveId,destinationFolderId:driveId})},async args=>{
+     const access=await driveAccess();if(!access.write)return asText(driveScopeMessage(true));
+     if(args.fileId===args.destinationFolderId)return asText({error:'same_file_and_destination'});
+     const parent=await checkParent(args.destinationFolderId);if(!parent.ok)return asText(parent.failure);
+     const meta=await driveJson<drive.DriveFile>(drive.DRIVE_API+'/files/'+encodeURIComponent(args.fileId)+'?'+new URLSearchParams({fields:'id,name,mimeType,parents,trashed,capabilities(canMoveItemWithinDrive,canMoveItemOutOfDrive)',supportsAllDrives:'true'}));
+     if('failure' in meta)return asText(meta.failure);
+     if(meta.data.trashed)return asText({error:'file_trashed'});
+     const parents=meta.data.parents??[];
+     if(parents.includes(args.destinationFolderId))return asText({moved:false,alreadyInDestination:true,fileId:args.fileId});
+     const query=new URLSearchParams({addParents:args.destinationFolderId,fields:'id,name,parents,webViewLink',supportsAllDrives:'true'});
+     if(parents.length)query.set('removeParents',parents.join(','));
+     const result=await driveJson<drive.DriveFile>(drive.DRIVE_API+'/files/'+encodeURIComponent(args.fileId)+'?'+query,{method:'PATCH'},true);
+     return asText('failure' in result?result.failure:{moved:true,fileId:args.fileId,destinationFolderId:args.destinationFolderId,file:drive.slimFile(result.data)});
+    });
    server.registerTool('drive_restore_file',{annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:true,openWorldHint:true},title:'Restore Google Drive files from the trash',
     description:'Take up to '+drive.MAX_TRASH_BATCH+' items out of the Google Drive trash (undo of drive_trash_file). Find them with drive_list_files inTrash=true. Same permission rules as drive_trash_file.',
     inputSchema:z.object({fileIds:z.array(driveId).min(1).max(drive.MAX_TRASH_BATCH)})},async args=>{
