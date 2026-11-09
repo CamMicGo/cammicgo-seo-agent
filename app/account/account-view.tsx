@@ -198,16 +198,12 @@ export default function AccountView(){
         {(['read','create','edit','rename','move','delete','upload','manage'] as Action[]).filter(action=>name==='Gmail'?['read','edit','send','delete'].includes(action):name==='YouTube'?['read','upload'].includes(action):name==='Google Ads'?['read','manage'].includes(action):name==='Google Calendar'?['read','create','edit','delete'].includes(action):['Google Drive','Google Docs','Google Sheets','Google Slides'].includes(name)?['read','create','edit','rename','move','delete'].includes(action):['read'].includes(action)).map(action=>{
          const ids=[...granted].map(scope=>scope.split('/auth/')[1]).filter((id):id is string=>Boolean(id));
          const enabled=actionsFor(name,ids).includes(action);
-         return <span key={action} aria-label={actionLabels(lang)[action]} style={{fontSize:12,padding:'4px 8px',borderRadius:8,background:enabled?'#245edc':'#e5e7eb',color:enabled?'#fff':'#6b7280',fontWeight:650,opacity:enabled?1:.85}}>{actionLabels(lang)[action]}</span>;
+         const desiredScope=action==='send'?'gmail.send':name==='Gmail'?(action==='read'?'gmail.readonly':'gmail.modify'):name==='Google Calendar'?(action==='read'?'calendar.readonly':'calendar.events'):name==='Google Drive'?(action==='read'?'drive.readonly':'drive.file'):['Google Docs','Google Sheets','Google Slides'].includes(name)?(['rename','move','delete'].includes(action)?'drive.file':({ 'Google Docs':'documents.readonly','Google Sheets':'spreadsheets.readonly','Google Slides':'presentations.readonly' } as Record<string,string>)[name]):options[0]?.[1];
+         const selected=desiredScope?scopes.includes(scopeUrl(desiredScope)):false;
+         return <button type="button" key={action} aria-label={actionLabels(lang)[action]} title={enabled?'Authorized':selected?'Selected: reconnect Google to grant':'Select and reconnect Google to grant'} onClick={()=>{if(!desiredScope)return;setScopes(current=>selected?current.filter(x=>x!==scopeUrl(desiredScope)):Array.from(new Set([...current,scopeUrl(desiredScope)])));}} style={{fontSize:12,padding:'4px 8px',borderRadius:8,border:selected?'2px solid #245edc':'2px solid transparent',background:enabled?'#245edc':'#e5e7eb',color:enabled?'#fff':'#6b7280',fontWeight:650,cursor:'pointer'}}>{actionLabels(lang)[action]}</button>;
         })}
        </div>
-       <div style={{display:'flex',flexWrap:'wrap',gap:'8px 14px',paddingLeft:38}}>
-        {options.map(([,id])=><label key={id} style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:13}}>
-         <input type="checkbox" checked={scopes.includes(scopeUrl(id))} onChange={e=>setScopes(current=>e.target.checked?Array.from(new Set([...current,scopeUrl(id)])):current.filter(x=>x!==scopeUrl(id)))}/>
-         <span>{permissionName(id,lang)}</span>
-         <span aria-label={granted.has(scopeUrl(id))?'Granted':'Not granted'} title={granted.has(scopeUrl(id))?'Granted':'Not granted'} style={{color:granted.has(scopeUrl(id))?'#15803d':'#b91c1c',fontWeight:800,fontSize:15}}>{granted.has(scopeUrl(id))?'✓':'×'}</span>
-        </label>)}
-       </div>
+
       </div>;
      })}
     </fieldset>
