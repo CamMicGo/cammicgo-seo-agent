@@ -35,9 +35,42 @@ export default function OAuthConsent(){
  const [clientId,setClientId]=useState('');
  const [clientSecret,setClientSecret]=useState('');
  const [selectedScopes,setSelectedScopes]=useState<string[]>(['https://www.googleapis.com/auth/webmasters.readonly','https://www.googleapis.com/auth/analytics.readonly','https://www.googleapis.com/auth/youtube.readonly','https://www.googleapis.com/auth/calendar.readonly']);
- const apiOptions=[{label:'Gmail',scope:'https://www.googleapis.com/auth/gmail.readonly'},{label:'Google Drive',scope:'https://www.googleapis.com/auth/drive.readonly'},{label:'Google Drive ✎ (drive.file)',scope:'https://www.googleapis.com/auth/drive.file'},{label:'Google Drive ⚠ full access (drive)',scope:'https://www.googleapis.com/auth/drive'},{label:'Google Docs',scope:'https://www.googleapis.com/auth/documents.readonly'},{label:'Google Sheets',scope:'https://www.googleapis.com/auth/spreadsheets.readonly'},{label:'Google Tasks',scope:'https://www.googleapis.com/auth/tasks.readonly'},{label:'Google Slides',scope:'https://www.googleapis.com/auth/presentations.readonly'},{label:'Google Contacts',scope:'https://www.googleapis.com/auth/contacts.readonly'},{label:'Google Classroom',scope:'https://www.googleapis.com/auth/classroom.courses.readonly'},{label:'Google Chat',scope:'https://www.googleapis.com/auth/chat.spaces.readonly'},{label:'Apps Script',scope:'https://www.googleapis.com/auth/script.projects.readonly'},{label:'Google Ads (rapports + campagnes en pause)',scope:'https://www.googleapis.com/auth/adwords'},{label:'Search Console',scope:'https://www.googleapis.com/auth/webmasters.readonly'},{label:'Google Analytics 4',scope:'https://www.googleapis.com/auth/analytics.readonly'},{label:'YouTube',scope:'https://www.googleapis.com/auth/youtube.readonly'},{label:'YouTube Analytics',scope:'https://www.googleapis.com/auth/yt-analytics.readonly'},{label:'YouTube ✎ (mise en ligne de vidéos)',scope:'https://www.googleapis.com/auth/youtube.upload'},{label:'Google Calendar',scope:'https://www.googleapis.com/auth/calendar.readonly'}];
- // "Select all" never ticks full Drive access (it allows trashing any file): that one stays an explicit choice.
- const safeAll=apiOptions.map(o=>o.scope).filter(x=>x!=='https://www.googleapis.com/auth/drive'&&x!=='https://www.googleapis.com/auth/youtube.upload');
+ const apiOptions=[
+  {label:'Gmail',scope:'https://www.googleapis.com/auth/gmail.readonly',logo:'/google-logos/gmail.png',service:'gmail',permission:'read'},
+  {label:'Google Drive',scope:'https://www.googleapis.com/auth/drive.readonly',logo:'/google-logos/drive.png',service:'drive',permission:'read'},
+  {label:'Google Drive',scope:'https://www.googleapis.com/auth/drive.file',logo:'/google-logos/drive.png',service:'drive',permission:'write'},
+  {label:'Google Drive',scope:'https://www.googleapis.com/auth/drive',logo:'/google-logos/drive.png',service:'drive',permission:'full',sensitive:true},
+  {label:'Google Docs',scope:'https://www.googleapis.com/auth/documents.readonly',service:'docs',permission:'read'},
+  {label:'Google Sheets',scope:'https://www.googleapis.com/auth/spreadsheets.readonly',service:'sheets',permission:'read'},
+  {label:'Google Tasks',scope:'https://www.googleapis.com/auth/tasks.readonly',service:'tasks',permission:'read'},
+  {label:'Google Slides',scope:'https://www.googleapis.com/auth/presentations.readonly',service:'slides',permission:'read'},
+  {label:'Google Contacts',scope:'https://www.googleapis.com/auth/contacts.readonly',service:'contacts',permission:'read'},
+  {label:'Google Classroom',scope:'https://www.googleapis.com/auth/classroom.courses.readonly',service:'classroom',permission:'read'},
+  {label:'Google Chat',scope:'https://www.googleapis.com/auth/chat.spaces.readonly',service:'chat',permission:'read'},
+  {label:'Apps Script',scope:'https://www.googleapis.com/auth/script.projects.readonly',service:'script',permission:'read'},
+  {label:'Google Ads',scope:'https://www.googleapis.com/auth/adwords',logo:'/google-logos/google-ads.png',service:'ads',permission:'manage'},
+  {label:'Search Console',scope:'https://www.googleapis.com/auth/webmasters.readonly',logo:'/google-search-console.svg',service:'search',permission:'read'},
+  {label:'Google Analytics 4',scope:'https://www.googleapis.com/auth/analytics.readonly',logo:'/google-analytics.svg',service:'analytics',permission:'read'},
+  {label:'YouTube',scope:'https://www.googleapis.com/auth/youtube.readonly',logo:'/google-logos/youtube.svg',service:'youtube',permission:'read'},
+  {label:'YouTube Analytics',scope:'https://www.googleapis.com/auth/yt-analytics.readonly',logo:'/google-logos/youtube.svg',service:'ytanalytics',permission:'read'},
+  {label:'YouTube',scope:'https://www.googleapis.com/auth/youtube.upload',logo:'/google-logos/youtube.svg',service:'youtube',permission:'upload',sensitive:true},
+  {label:'Google Calendar',scope:'https://www.googleapis.com/auth/calendar.readonly',logo:'/google-logos/calendar.png',service:'calendar',permission:'read'},
+  {label:'Google Calendar',scope:'https://www.googleapis.com/auth/calendar.events',logo:'/google-logos/calendar.png',service:'calendar',permission:'write'}
+ ];
+ const services=Array.from(new Set(apiOptions.map(o=>o.service)));
+ const safeAll=apiOptions.filter(o=>!o.sensitive).map(o=>o.scope);
+ const [grantedScopes,setGrantedScopes]=useState<string[]>([]);
+ const locale=typeof navigator==='undefined'?'en':navigator.language.slice(0,2);
+ const labels:Record<string,Record<string,string>>={
+  fr:{read:'Lecture',write:'Création et modification',full:'Accès complet (sensible)',manage:'Rapports et gestion',upload:'Mise en ligne (sensible)',granted:'Accordé',pending:'À autoriser',newAccess:'Nouveaux accès sélectionnés',allSafe:'Tout sélectionner (hors accès sensibles)',permission:'Autorisations'},
+  en:{read:'Read',write:'Create and update',full:'Full access (sensitive)',manage:'Reports and management',upload:'Upload (sensitive)',granted:'Granted',pending:'Not granted',newAccess:'New permissions selected',allSafe:'Select all (excluding sensitive access)',permission:'Permissions'},
+  de:{read:'Lesen',write:'Erstellen und ändern',full:'Vollzugriff (sensibel)',manage:'Berichte und Verwaltung',upload:'Hochladen (sensibel)',granted:'Erteilt',pending:'Nicht erteilt',newAccess:'Neue Berechtigungen',allSafe:'Alle auswählen (ohne sensible Rechte)',permission:'Berechtigungen'},
+  es:{read:'Lectura',write:'Crear y modificar',full:'Acceso completo (sensible)',manage:'Informes y gestión',upload:'Subir (sensible)',granted:'Concedido',pending:'Sin conceder',newAccess:'Nuevos permisos',allSafe:'Seleccionar todo (excepto sensibles)',permission:'Permisos'},
+  ru:{read:'Чтение',write:'Создание и изменение',full:'Полный доступ (важно)',manage:'Отчёты и управление',upload:'Загрузка (важно)',granted:'Разрешено',pending:'Не разрешено',newAccess:'Новые разрешения',allSafe:'Выбрать всё (кроме важных)',permission:'Разрешения'},
+  ja:{read:'読み取り',write:'作成・更新',full:'フルアクセス（機密）',manage:'レポート・管理',upload:'アップロード（機密）',granted:'許可済み',pending:'未許可',newAccess:'新しい権限',allSafe:'すべて選択（機密権限を除く）',permission:'権限'},
+  zh:{read:'读取',write:'创建和修改',full:'完整访问（敏感）',manage:'报告和管理',upload:'上传（敏感）',granted:'已授权',pending:'未授权',newAccess:'新权限',allSafe:'全选（不含敏感权限）',permission:'权限'}
+ };
+ const words=labels[locale]||labels.en;
  useEffect(()=>{
   const remembered=savedScopes();if(remembered)setSelectedScopes(remembered);
   const authorizationId=new URLSearchParams(window.location.search).get('authorization_id')||'';
@@ -48,7 +81,7 @@ export default function OAuthConsent(){
    if(!publicKey){setError(t.noSupabase);return;}
    const {data:{user}}=await getSupabase().auth.getUser();
    setLoggedIn(!!user);
-   if(user){try{const {data:{session}}=await getSupabase().auth.getSession();if(session){const acc=await fetch('/api/account',{headers:{Authorization:'Bearer '+session.access_token},cache:'no-store'});if(acc.ok){const info=await acc.json() as {admin?:boolean;client?:{projectId:string|null;clientId:string;secretHint:string}|null};setAdmin(info.admin===true);setSavedClient(info.client??null);if(info.admin)setGoogleMode('shared');}const status=await fetch('/api/mcp/google/status',{headers:{Authorization:'Bearer '+session.access_token},cache:'no-store'});if(status.ok){const body=await status.json() as {connected?:boolean;scopes?:string[]|null};setGoogleConnected(body.connected===true);if(!savedScopes()&&Array.isArray(body.scopes)){const granted=body.scopes.filter(x=>apiOptions.some(o=>o.scope===x));if(granted.length)setSelectedScopes(granted);}}}}catch{/* Google linking remains optional. */}}
+   if(user){try{const {data:{session}}=await getSupabase().auth.getSession();if(session){const acc=await fetch('/api/account',{headers:{Authorization:'Bearer '+session.access_token},cache:'no-store'});if(acc.ok){const info=await acc.json() as {admin?:boolean;client?:{projectId:string|null;clientId:string;secretHint:string}|null};setAdmin(info.admin===true);setSavedClient(info.client??null);if(info.admin)setGoogleMode('shared');}const status=await fetch('/api/mcp/google/status',{headers:{Authorization:'Bearer '+session.access_token},cache:'no-store'});if(status.ok){const body=await status.json() as {connected?:boolean;scopes?:string[]|null};setGoogleConnected(body.connected===true);if(Array.isArray(body.scopes)){const granted=body.scopes.filter(x=>apiOptions.some(o=>o.scope===x));setGrantedScopes(granted);setSelectedScopes(granted);}}}}catch{/* Google linking remains optional. */}}
    if(!authorizationId)return;
    const {data,error:err}=await getSupabase().auth.oauth.getAuthorizationDetails(authorizationId);
    if(err){setError(/cannot be processed|no longer pending|expired|not found/i.test(err.message)?t.stale:err.message);return;}
@@ -116,8 +149,20 @@ export default function OAuthConsent(){
      <p style={{margin:0,color:'#64748b',fontSize:13}}>{a.testUsers}</p>
     </fieldset>
     <fieldset style={{border:'1px solid #e2e8f0',borderRadius:12,padding:16,display:'grid',gap:10}}><legend style={{fontWeight:700,padding:'0 6px'}}>{t.apis}</legend>
-     <label style={{display:'flex',gap:10,alignItems:'center',fontWeight:700,paddingBottom:8,borderBottom:'1px solid #e2e8f0'}}><input type="checkbox" checked={safeAll.every(x=>selectedScopes.includes(x))} ref={el=>{if(el)el.indeterminate=selectedScopes.length>0&&!safeAll.every(x=>selectedScopes.includes(x))}} onChange={e=>setSelectedScopes(e.target.checked?[...safeAll,...selectedScopes.filter(x=>!safeAll.includes(x))]:[])}/>{t.selectAll}</label>
-     {apiOptions.map(option=><label key={option.scope} style={{display:'flex',gap:10,alignItems:'center'}}><input type="checkbox" checked={selectedScopes.includes(option.scope)} onChange={e=>setSelectedScopes(current=>e.target.checked?[...current,option.scope]:current.filter(scope=>scope!==option.scope))}/>{option.label}</label>)}
+     <label style={{display:'flex',gap:10,alignItems:'center',fontWeight:700,paddingBottom:8,borderBottom:'1px solid #e2e8f0'}}><input type="checkbox" checked={safeAll.every(x=>selectedScopes.includes(x))} onChange={e=>setSelectedScopes(e.target.checked?Array.from(new Set([...safeAll,...selectedScopes.filter(x=>!safeAll.includes(x))])):selectedScopes.filter(x=>!safeAll.includes(x)))}/>{words.allSafe}</label>
+     {services.map(service=>{const options=apiOptions.filter(o=>o.service===service);const first=options[0];const granted=options.some(o=>grantedScopes.includes(o.scope));return <div key={service} style={{display:'grid',gap:6,padding:'10px 0',borderBottom:'1px solid #e2e8f0'}}>
+      <div style={{display:'flex',gap:10,alignItems:'center'}}>
+       {first.logo?<img src={first.logo} width={26} height={26} alt="" style={{objectFit:'contain'}}/>:<span aria-hidden="true" style={{width:26,height:26,display:'grid',placeItems:'center',background:'#e8eefb',borderRadius:6,color:'#245edc',fontWeight:700}}>{first.label[0]}</span>}
+       <strong style={{flex:1}}>{first.label}</strong><span style={{fontSize:12,color:granted?'#166534':'#64748b'}}>{granted?'✓ '+words.granted:words.pending}</span>
+      </div>
+      <div style={{display:'flex',gap:12,flexWrap:'wrap',paddingLeft:36}}>
+       {options.map(option=><label key={option.scope} style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:13}}>
+        <input type="checkbox" checked={selectedScopes.includes(option.scope)} onChange={e=>setSelectedScopes(current=>e.target.checked?Array.from(new Set([...current,option.scope])):current.filter(scope=>scope!==option.scope))}/>
+        {words[option.permission]}{grantedScopes.includes(option.scope)?' ✓':''}
+       </label>)}
+      </div>
+     </div>})}
+     {selectedScopes.some(x=>!grantedScopes.includes(x))&&<p style={{margin:0,fontSize:13,color:'#245edc'}}>{words.newAccess}: {selectedScopes.filter(x=>!grantedScopes.includes(x)).length}</p>}
      {consentSteps(selectedScopes)>1&&<p role="note" style={{margin:0,color:'#64748b',fontSize:13}}>ℹ️ {t.twoScreens}</p>}
     </fieldset>
     {googleConnected&&<p role="status" style={{margin:0,color:'#166534',fontWeight:600}}>{t.connected}</p>}
