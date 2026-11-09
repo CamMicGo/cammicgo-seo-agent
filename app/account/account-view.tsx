@@ -24,7 +24,7 @@ const LOGOS:Record<string,string>={
 };
 const serviceName=(name:string)=>name.split(' ✎')[0].split(' ⚠')[0];
 const permissionName=(id:string,lang:string)=>{
- const key=id==='youtube.upload'?'upload':id==='drive'?'full':id==='adwords'?'manage':id==='drive.file'||id==='calendar.events'?'write':'read';
+ const key=id==='gmail.send'?'send':id==='youtube.upload'?'upload':id==='drive'?'full':id==='adwords'?'manage':id==='drive.file'||id==='calendar.events'?'write':'read';
  const dict:Record<string,Record<string,string>>={
  fr:{read:'Lecture',write:'Création et modification',full:'Accès complet (sensible)',manage:'Rapports et gestion',send:'Envoyer',upload:'Mise en ligne (sensible)',granted:'Accordé',missing:'Non accordé'},
  en:{read:'Read',write:'Create and update',full:'Full access (sensitive)',manage:'Reports and management',send:'Send',upload:'Upload (sensitive)',granted:'Granted',missing:'Not granted'},
@@ -79,7 +79,7 @@ const scopeUrl=(s:string)=>'https://www.googleapis.com/auth/'+s;
 /** "Select all" never ticks full Drive access (it allows trashing any file): that one stays an explicit choice. */
 const RECOMMENDED_SCOPES=['webmasters.readonly','analytics.readonly'].map(scopeUrl);
 // Keep the quick selection limited to the core SEO reports. Other services require explicit opt-in.
-const SELECT_ALL=RECOMMENDED_SCOPES;
+const SELECT_ALL=[...new Set(APIS.map(([,id])=>scopeUrl(id)))];
 const fill=(s:string,v:Record<string,string|number>)=>s.replace(/\{(\w+)\}/g,(_,k)=>String(v[k]??''));
 
 export default function AccountView(){
@@ -183,7 +183,7 @@ export default function AccountView(){
     <p className={acc?.google.connected?'acc-ok':''}>{acc?.google.connected?(acc.google.mode==='shared'?t.googleShared:t.googleByo):t.googleNone}</p>
     <fieldset className="acc-apis"><legend>{t.apis}</legend>
      <p className="acc-note">Recommended: Search Console and Analytics (read-only). Select additional Google services only when you need them. Sensitive Google permissions may require OAuth verification by the owner of the selected Google Cloud project.</p>
-     <label className="acc-all"><input type="checkbox" checked={SELECT_ALL.every(x=>scopes.includes(x))} onChange={e=>setScopes(e.target.checked?[...SELECT_ALL,...scopes.filter(x=>!SELECT_ALL.includes(x))]:[])}/>{t.selectAll}</label>
+     <label className="acc-all"><input type="checkbox" checked={SELECT_ALL.every(x=>scopes.includes(x))} onChange={e=>setScopes(e.target.checked?[...SELECT_ALL]:[])}/>{t.selectAll}</label>
      {Array.from(new Set(APIS.map(([name])=>serviceName(name)))).map(name=>{
       const options=APIS.filter(([n])=>serviceName(n)===name);
       const granted=new Set([...(acc?.google.scopes??[]),...(acc?.google.driveWrite??[])]);
@@ -200,7 +200,7 @@ export default function AccountView(){
          const enabled=actionsFor(name,ids).includes(action);
          const desiredScope=action==='send'?'gmail.send':name==='Gmail'?(action==='read'?'gmail.readonly':'gmail.modify'):name==='Google Calendar'?(action==='read'?'calendar.readonly':'calendar.events'):name==='Google Drive'?(action==='read'?'drive.readonly':'drive.file'):['Google Docs','Google Sheets','Google Slides'].includes(name)?(['rename','move','delete'].includes(action)?'drive.file':({ 'Google Docs':'documents.readonly','Google Sheets':'spreadsheets.readonly','Google Slides':'presentations.readonly' } as Record<string,string>)[name]):options[0]?.[1];
          const selected=desiredScope?scopes.includes(scopeUrl(desiredScope)):false;
-         return <button type="button" key={action} aria-label={actionLabels(lang)[action]} title={enabled?'Authorized':selected?'Selected: reconnect Google to grant':'Select and reconnect Google to grant'} onClick={()=>{if(!desiredScope)return;setScopes(current=>selected?current.filter(x=>x!==scopeUrl(desiredScope)):Array.from(new Set([...current,scopeUrl(desiredScope)])));}} style={{fontSize:12,padding:'4px 8px',borderRadius:8,border:selected?'2px solid #245edc':'2px solid transparent',background:enabled?'#245edc':'#e5e7eb',color:enabled?'#fff':'#6b7280',fontWeight:650,cursor:'pointer'}}>{actionLabels(lang)[action]}</button>;
+         return <button type="button" key={action} aria-label={actionLabels(lang)[action]} aria-pressed={selected} title={enabled?'Authorized by Google':selected?'Selected: reconnect Google to request':'Select and reconnect Google to request'} onClick={()=>{if(!desiredScope)return;setScopes(current=>selected?current.filter(x=>x!==scopeUrl(desiredScope)):Array.from(new Set([...current,scopeUrl(desiredScope)])));}} style={{fontSize:12,padding:'4px 8px',borderRadius:8,border:selected&&!enabled?'2px solid #245edc':'2px solid transparent',background:enabled?'#245edc':'#e5e7eb',color:enabled?'#fff':'#6b7280',fontWeight:650,cursor:'pointer'}}>{actionLabels(lang)[action]}</button>;
         })}
        </div>
 
