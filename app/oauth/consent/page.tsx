@@ -35,7 +35,7 @@ export default function OAuthConsent(){
  const [clientId,setClientId]=useState('');
  const [clientSecret,setClientSecret]=useState('');
  const [selectedScopes,setSelectedScopes]=useState<string[]>(['https://www.googleapis.com/auth/webmasters.readonly','https://www.googleapis.com/auth/analytics.readonly','https://www.googleapis.com/auth/youtube.readonly','https://www.googleapis.com/auth/calendar.readonly']);
- const apiOptions=[
+ const apiOptions: Array<{label:string;scope:string;service:string;permission:string;logo?:string;sensitive?:boolean}>=[
   {label:'Gmail',scope:'https://www.googleapis.com/auth/gmail.readonly',logo:'/google-logos/gmail.png',service:'gmail',permission:'read'},
   {label:'Google Drive',scope:'https://www.googleapis.com/auth/drive.readonly',logo:'/google-logos/drive.png',service:'drive',permission:'read'},
   {label:'Google Drive',scope:'https://www.googleapis.com/auth/drive.file',logo:'/google-logos/drive.png',service:'drive',permission:'write'},
