@@ -37,6 +37,8 @@ export default function OAuthConsent(){
  const [selectedScopes,setSelectedScopes]=useState<string[]>(['https://www.googleapis.com/auth/webmasters.readonly','https://www.googleapis.com/auth/analytics.readonly','https://www.googleapis.com/auth/youtube.readonly','https://www.googleapis.com/auth/calendar.readonly']);
  const apiOptions: Array<{label:string;scope:string;service:string;permission:string;logo?:string;sensitive?:boolean}>=[
   {label:'Gmail',scope:'https://www.googleapis.com/auth/gmail.readonly',logo:'/google-logos/gmail.png',service:'gmail',permission:'read'},
+  {label:'Gmail',scope:'https://www.googleapis.com/auth/gmail.send',logo:'/google-logos/gmail.png',service:'gmail',permission:'write',sensitive:true},
+  {label:'Gmail',scope:'https://www.googleapis.com/auth/gmail.modify',logo:'/google-logos/gmail.png',service:'gmail',permission:'write',sensitive:true},
   {label:'Google Drive',scope:'https://www.googleapis.com/auth/drive.readonly',logo:'/google-logos/drive.png',service:'drive',permission:'read'},
   {label:'Google Drive',scope:'https://www.googleapis.com/auth/drive.file',logo:'/google-logos/drive.png',service:'drive',permission:'write'},
   {label:'Google Drive',scope:'https://www.googleapis.com/auth/drive',logo:'/google-logos/drive.png',service:'drive',permission:'full',sensitive:true},
