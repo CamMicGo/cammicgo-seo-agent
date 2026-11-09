@@ -28,7 +28,7 @@ export default function BingKey({token}:{token:string}){
   if(r.ok){setSaved(null);setMsg({kind:'ok',text:t.removed});}else setMsg({kind:'err',text:t.error});
  }
  return <section className="acc-card acc-sci" aria-labelledby="acc-bing-title">
-  <h2 id="acc-bing-title">🔎 {t.title}</h2>
+  <h2 id="acc-bing-title" style={{display:"flex",alignItems:"center",gap:10}}><img src="/service-icons/bing-webmaster.jpg" width={32} height={32} alt="" style={{objectFit:"contain",borderRadius:5}}/>{t.title}</h2>
   <p>{t.lead}</p>
   {msg&&<p role="status" className={'acc-msg '+msg.kind}>{msg.text}</p>}
   <div className="acc-sci-list"><div className="acc-sci-row">
