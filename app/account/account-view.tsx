@@ -191,13 +191,13 @@ export default function AccountView(){
        <div style={{display:'flex',alignItems:'center',gap:10}}>
         <img src={LOGOS[name]} width={28} height={28} alt="" style={{objectFit:'contain',flexShrink:0}}/>
         <strong style={{flex:1}}>{name}</strong>
-        <span aria-label={anyGranted?'Granted permissions':'No granted permissions'} style={{fontSize:12,color:anyGranted?'#166534':'#64748b'}}>{anyGranted?'✓':'×'}</span>
+        <span aria-label={anyGranted?'API authorized':'API not authorized'} title={anyGranted?'API authorized':'API not authorized'} style={{fontSize:18,fontWeight:800,color:anyGranted?'#16a34a':'#dc2626',lineHeight:1}}>{anyGranted?'✓':'×'}</span>
        </div>
        <div style={{display:'flex',flexWrap:'wrap',gap:6,paddingLeft:38}} aria-label={name+' actions'}>
         {(['read','create','edit','rename','move','delete','upload','manage'] as Action[]).filter(action=>name==='YouTube'?['read','upload'].includes(action):name==='Google Ads'?['read','manage'].includes(action):name==='Google Calendar'?['read','create','edit','delete'].includes(action):['Google Drive','Google Docs','Google Sheets','Google Slides'].includes(name)?['read','create','edit','rename','move','delete'].includes(action):['read'].includes(action)).map(action=>{
          const ids=[...granted].map(scope=>scope.split('/auth/')[1]).filter((id):id is string=>Boolean(id));
          const enabled=actionsFor(name,ids).includes(action);
-         return <span key={action} aria-label={actionLabels(lang)[action]+(enabled?' ✓':' ×')} style={{fontSize:12,padding:'4px 8px',borderRadius:8,background:enabled?'#245edc':'#e5e7eb',color:enabled?'#fff':'#6b7280',fontWeight:650,opacity:enabled?1:.85}}>{actionLabels(lang)[action]}</span>;
+         return <span key={action} aria-label={actionLabels(lang)[action]} style={{fontSize:12,padding:'4px 8px',borderRadius:8,background:enabled?'#245edc':'#e5e7eb',color:enabled?'#fff':'#6b7280',fontWeight:650,opacity:enabled?1:.85}}>{actionLabels(lang)[action]}</span>;
         })}
        </div>
        <div style={{display:'flex',flexWrap:'wrap',gap:'8px 14px',paddingLeft:38}}>
