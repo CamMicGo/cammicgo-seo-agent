@@ -52,17 +52,17 @@ const ACTIONS:Record<string,Record<string,Action[]>>={
  'Google Ads':{'adwords':['read','manage']}
 };
 const ACTION_LABELS:Record<string,Record<Action,string>>={
- fr:{read:'Lire',create:'Créer',edit:'Modifier',rename:'Renommer',move:'Déplacer',delete:'Supprimer',upload:'Mettre en ligne',manage:'Gérer'},
- en:{read:'Read',create:'Create',edit:'Edit',rename:'Rename',move:'Move',delete:'Delete',upload:'Upload',manage:'Manage'},
- de:{read:'Lesen',create:'Erstellen',edit:'Bearbeiten',rename:'Umbenennen',move:'Verschieben',delete:'Löschen',upload:'Hochladen',manage:'Verwalten'},
- es:{read:'Leer',create:'Crear',edit:'Modificar',rename:'Renombrar',move:'Mover',delete:'Eliminar',upload:'Subir',manage:'Gestionar'},
- pt:{read:'Ler',create:'Criar',edit:'Editar',rename:'Renomear',move:'Mover',delete:'Eliminar',upload:'Carregar',manage:'Gerir'},
- it:{read:'Leggere',create:'Creare',edit:'Modificare',rename:'Rinominare',move:'Spostare',delete:'Eliminare',upload:'Caricare',manage:'Gestire'},
- ru:{read:'Читать',create:'Создать',edit:'Изменить',rename:'Переименовать',move:'Переместить',delete:'Удалить',upload:'Загрузить',manage:'Управлять'},
- zh:{read:'读取',create:'创建',edit:'修改',rename:'重命名',move:'移动',delete:'删除',upload:'上传',manage:'管理'},
- ja:{read:'読み取り',create:'作成',edit:'編集',rename:'名前変更',move:'移動',delete:'削除',upload:'アップロード',manage:'管理'},
- ko:{read:'읽기',create:'만들기',edit:'수정',rename:'이름 변경',move:'이동',delete:'삭제',upload:'업로드',manage:'관리'},
- ar:{read:'قراءة',create:'إنشاء',edit:'تعديل',rename:'إعادة تسمية',move:'نقل',delete:'حذف',upload:'رفع',manage:'إدارة'}
+ fr:{read:'Lire',create:'Créer',edit:'Modifier',rename:'Renommer',move:'Déplacer',delete:'Supprimer',upload:'Mettre en ligne',manage:'Gérer',send:'Envoyer'},
+ en:{read:'Read',create:'Create',edit:'Edit',rename:'Rename',move:'Move',delete:'Delete',upload:'Upload',manage:'Manage',send:'Send'},
+ de:{read:'Lesen',create:'Erstellen',edit:'Bearbeiten',rename:'Umbenennen',move:'Verschieben',delete:'Löschen',upload:'Hochladen',manage:'Verwalten',send:'Senden'},
+ es:{read:'Leer',create:'Crear',edit:'Modificar',rename:'Renombrar',move:'Mover',delete:'Eliminar',upload:'Subir',manage:'Gestionar',send:'Enviar'},
+ pt:{read:'Ler',create:'Criar',edit:'Editar',rename:'Renomear',move:'Mover',delete:'Eliminar',upload:'Carregar',manage:'Gerir',send:'Enviar'},
+ it:{read:'Leggere',create:'Creare',edit:'Modificare',rename:'Rinominare',move:'Spostare',delete:'Eliminare',upload:'Caricare',manage:'Gestire',send:'Inviare'},
+ ru:{read:'Читать',create:'Создать',edit:'Изменить',rename:'Переименовать',move:'Переместить',delete:'Удалить',upload:'Загрузить',manage:'Управлять',send:'Отправить'},
+ zh:{read:'读取',create:'创建',edit:'修改',rename:'重命名',move:'移动',delete:'删除',upload:'上传',manage:'管理',send:'发送'},
+ ja:{read:'読み取り',create:'作成',edit:'編集',rename:'名前変更',move:'移動',delete:'削除',upload:'アップロード',manage:'管理',send:'送信'},
+ ko:{read:'읽기',create:'만들기',edit:'수정',rename:'이름 변경',move:'이동',delete:'삭제',upload:'업로드',manage:'관리',send:'보내기'},
+ ar:{read:'قراءة',create:'إنشاء',edit:'تعديل',rename:'إعادة تسمية',move:'نقل',delete:'حذف',upload:'رفع',manage:'إدارة',send:'إرسال'}
 };
 const actionLabels=(lang:string)=>ACTION_LABELS[lang]||ACTION_LABELS.en;
 const actionsFor=(service:string,ids:string[])=>{
