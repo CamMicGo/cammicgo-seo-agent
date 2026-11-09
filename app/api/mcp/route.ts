@@ -641,8 +641,8 @@ async function handler(req:NextRequest){
    server.registerTool('calendar_delete_event',{annotations:{readOnlyHint:false,destructiveHint:true,openWorldHint:true},title:'Delete Google Calendar event',description:'Delete an event only after explicit user confirmation. Requires calendar.events permission.',inputSchema:z.object({calendarId:z.string().min(1).max(300).default('primary'),eventId:z.string().min(1).max(1024)})},async args=>{const result=await googleRequest(calendarBase(args.calendarId)+'/'+encodeURIComponent(args.eventId),{method:'DELETE'});return asText(result);});
    server.registerTool('gmail_send',{annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:true},title:'Send Gmail message',description:'Send a plain-text Gmail message only after the user explicitly approves recipient, subject and message body. Requires gmail.send.',inputSchema:z.object({to:z.string().email(),subject:z.string().min(1).max(250),body:z.string().min(1).max(50000),confirmed:z.boolean().default(false)})},async args=>{
     if(!args.confirmed)return asText({error:'confirmation_required',messageForUser:'Show the recipient, subject and full message to the user and obtain explicit approval before sending.'});
-    const clean=(v:string)=>v.replace(/[\\r\\n]/g,' ');
-    const mime=['To: '+clean(args.to),'Subject: =?UTF-8?B?'+Buffer.from(args.subject,'utf8').toString('base64')+'?=','MIME-Version: 1.0','Content-Type: text/plain; charset=UTF-8','Content-Transfer-Encoding: base64','',Buffer.from(args.body,'utf8').toString('base64')].join('\\r\\n');
+    const clean=(v:string)=>v.replace(/[\r\n]/g,' ');
+    const mime=['To: '+clean(args.to),'Subject: =?UTF-8?B?'+Buffer.from(args.subject,'utf8').toString('base64')+'?=','MIME-Version: 1.0','Content-Type: text/plain; charset=UTF-8','Content-Transfer-Encoding: base64','',Buffer.from(args.body,'utf8').toString('base64')].join('\r\n');
     const raw=Buffer.from(mime,'utf8').toString('base64url');
     return asText(await googleRequest('https://gmail.googleapis.com/gmail/v1/users/me/messages/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({raw})}));
    });
