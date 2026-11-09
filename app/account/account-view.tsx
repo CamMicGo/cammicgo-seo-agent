@@ -12,7 +12,7 @@ import LinkedInConnect from './linkedin-connect';
 type Client={projectId:string|null;clientId:string;secretHint:string;verifiedAt:string|null;updatedAt:string};
 type Account={admin:boolean;client:Client|null;redirectUri:string;google:{connected:boolean;mode:'shared'|'byo'|null;scopes:string[]|null;driveWrite:string[]|null};usage:{used:number;limit:number;perMinute:number;resetsAt:string}};
 const MCP_URL='https://seo.cammicgo.com/api/mcp';
-const APIS:Array<[string,string]>=[['Search Console','webmasters.readonly'],['Google Analytics 4','analytics.readonly'],['YouTube','youtube.readonly'],['YouTube Analytics','yt-analytics.readonly'],['YouTube ✎ (upload)','youtube.upload'],['Google Calendar','calendar.readonly'],['Google Calendar ✎ (events)','calendar.events'],['Gmail','gmail.readonly'],['Google Drive','drive.readonly'],['Google Drive ✎ (drive.file)','drive.file'],['Google Drive ⚠ full access (drive)','drive'],['Google Docs','documents.readonly'],['Google Sheets','spreadsheets.readonly'],['Google Slides','presentations.readonly'],['Google Tasks','tasks.readonly'],['Google Contacts','contacts.readonly'],['Google Classroom','classroom.courses.readonly'],['Google Chat','chat.spaces.readonly'],['Apps Script','script.projects.readonly'],['Google Ads','adwords']];
+const APIS:Array<[string,string]>=[['Search Console','webmasters.readonly'],['Google Analytics 4','analytics.readonly'],['YouTube','youtube.readonly'],['YouTube Analytics','yt-analytics.readonly'],['YouTube ✎ (upload)','youtube.upload'],['Google Calendar','calendar.readonly'],['Google Calendar ✎ (events)','calendar.events'],['Gmail','gmail.readonly'],['Gmail ✎ (send)','gmail.send'],['Gmail ✎ (modify)','gmail.modify'],['Google Drive','drive.readonly'],['Google Drive ✎ (drive.file)','drive.file'],['Google Drive ⚠ full access (drive)','drive'],['Google Docs','documents.readonly'],['Google Sheets','spreadsheets.readonly'],['Google Slides','presentations.readonly'],['Google Tasks','tasks.readonly'],['Google Contacts','contacts.readonly'],['Google Classroom','classroom.courses.readonly'],['Google Chat','chat.spaces.readonly'],['Apps Script','script.projects.readonly'],['Google Ads','adwords']];
 const LOGOS:Record<string,string>={
  'Search Console':'/google-search-console.svg','Google Analytics 4':'/api/assets/google-analytics',
  'YouTube':'/google-logos/youtube.svg','YouTube Analytics':'/google-logos/youtube.svg',
@@ -26,22 +26,23 @@ const serviceName=(name:string)=>name.split(' ✎')[0].split(' ⚠')[0];
 const permissionName=(id:string,lang:string)=>{
  const key=id==='youtube.upload'?'upload':id==='drive'?'full':id==='adwords'?'manage':id==='drive.file'||id==='calendar.events'?'write':'read';
  const dict:Record<string,Record<string,string>>={
- fr:{read:'Lecture',write:'Création et modification',full:'Accès complet (sensible)',manage:'Rapports et gestion',upload:'Mise en ligne (sensible)',granted:'Accordé',missing:'Non accordé'},
- en:{read:'Read',write:'Create and update',full:'Full access (sensitive)',manage:'Reports and management',upload:'Upload (sensitive)',granted:'Granted',missing:'Not granted'},
- de:{read:'Lesen',write:'Erstellen und ändern',full:'Vollzugriff (sensibel)',manage:'Berichte und Verwaltung',upload:'Hochladen (sensibel)',granted:'Erteilt',missing:'Nicht erteilt'},
- es:{read:'Lectura',write:'Crear y modificar',full:'Acceso completo (sensible)',manage:'Informes y gestión',upload:'Subir (sensible)',granted:'Concedido',missing:'Sin conceder'},
- pt:{read:'Leitura',write:'Criar e editar',full:'Acesso total (sensível)',manage:'Relatórios e gestão',upload:'Carregar (sensível)',granted:'Concedido',missing:'Não concedido'},
- it:{read:'Lettura',write:'Creazione e modifica',full:'Accesso completo (sensibile)',manage:'Report e gestione',upload:'Caricamento (sensibile)',granted:'Concesso',missing:'Non concesso'},
- ru:{read:'Чтение',write:'Создание и изменение',full:'Полный доступ',manage:'Отчёты и управление',upload:'Загрузка',granted:'Разрешено',missing:'Не разрешено'},
- zh:{read:'读取',write:'创建和修改',full:'完整访问（敏感）',manage:'报告和管理',upload:'上传（敏感）',granted:'已授权',missing:'未授权'},
- ja:{read:'読み取り',write:'作成・変更',full:'フルアクセス（機密）',manage:'レポート・管理',upload:'アップロード（機密）',granted:'許可済み',missing:'未許可'},
- ko:{read:'읽기',write:'생성 및 수정',full:'전체 액세스 (민감)',manage:'보고서 및 관리',upload:'업로드 (민감)',granted:'허용됨',missing:'허용되지 않음'},
- ar:{read:'قراءة',write:'إنشاء وتعديل',full:'وصول كامل (حساس)',manage:'تقارير وإدارة',upload:'رفع (حساس)',granted:'ممنوح',missing:'غير ممنوح'}
+ fr:{read:'Lecture',write:'Création et modification',full:'Accès complet (sensible)',manage:'Rapports et gestion',send:'Envoyer',upload:'Mise en ligne (sensible)',granted:'Accordé',missing:'Non accordé'},
+ en:{read:'Read',write:'Create and update',full:'Full access (sensitive)',manage:'Reports and management',send:'Send',upload:'Upload (sensitive)',granted:'Granted',missing:'Not granted'},
+ de:{read:'Lesen',write:'Erstellen und ändern',full:'Vollzugriff (sensibel)',manage:'Berichte und Verwaltung',send:'Senden',upload:'Hochladen (sensibel)',granted:'Erteilt',missing:'Nicht erteilt'},
+ es:{read:'Lectura',write:'Crear y modificar',full:'Acceso completo (sensible)',manage:'Informes y gestión',send:'Enviar',upload:'Subir (sensible)',granted:'Concedido',missing:'Sin conceder'},
+ pt:{read:'Leitura',write:'Criar e editar',full:'Acesso total (sensível)',manage:'Relatórios e gestão',send:'Enviar',upload:'Carregar (sensível)',granted:'Concedido',missing:'Não concedido'},
+ it:{read:'Lettura',write:'Creazione e modifica',full:'Accesso completo (sensibile)',manage:'Report e gestione',send:'Inviare',upload:'Caricamento (sensibile)',granted:'Concesso',missing:'Non concesso'},
+ ru:{read:'Чтение',write:'Создание и изменение',full:'Полный доступ',manage:'Отчёты и управление',send:'Отправить',upload:'Загрузка',granted:'Разрешено',missing:'Не разрешено'},
+ zh:{read:'读取',write:'创建和修改',full:'完整访问（敏感）',manage:'报告和管理',send:'发送',upload:'上传（敏感）',granted:'已授权',missing:'未授权'},
+ ja:{read:'読み取り',write:'作成・変更',full:'フルアクセス（機密）',manage:'レポート・管理',send:'送信',upload:'アップロード（機密）',granted:'許可済み',missing:'未許可'},
+ ko:{read:'읽기',write:'생성 및 수정',full:'전체 액세스 (민감)',manage:'보고서 및 관리',send:'보내기',upload:'업로드 (민감)',granted:'허용됨',missing:'허용되지 않음'},
+ ar:{read:'قراءة',write:'إنشاء وتعديل',full:'وصول كامل (حساس)',manage:'تقارير وإدارة',send:'إرسال',upload:'رفع (حساس)',granted:'ممنوح',missing:'غير ممنوح'}
  };
  return (dict[lang]||dict.en)[key];
 };
-type Action='read'|'create'|'edit'|'rename'|'move'|'delete'|'upload'|'manage';
+type Action='read'|'create'|'edit'|'rename'|'move'|'delete'|'upload'|'manage'|'send';
 const ACTIONS:Record<string,Record<string,Action[]>>={
+ 'Gmail':{'gmail.readonly':['read'],'gmail.send':['send'],'gmail.modify':['read','edit','delete']},
  'Google Calendar':{'calendar.readonly':['read'],'calendar.events':['read','create','edit','delete']},
  'Google Drive':{'drive.readonly':['read'],'drive.file':['read','create','edit','rename','move','delete'],'drive':['read','create','edit','rename','move','delete']},
  'Google Docs':{'documents.readonly':['read']},
@@ -72,7 +73,7 @@ const actionsFor=(service:string,ids:string[])=>{
   if(ids.includes('documents')||ids.includes('spreadsheets')||ids.includes('presentations')){actions.add('create');actions.add('edit');}
   if(actions.has('read')&&(ids.includes('drive.file')||ids.includes('drive')))for(const a of ['rename','move','delete'] as Action[])actions.add(a);
  }
- return (['read','create','edit','rename','move','delete','upload','manage'] as Action[]).filter(a=>actions.has(a));
+ return (['read','create','edit','rename','move','delete','upload','manage','send'] as Action[]).filter(a=>actions.has(a));
 };
 const scopeUrl=(s:string)=>'https://www.googleapis.com/auth/'+s;
 /** "Select all" never ticks full Drive access (it allows trashing any file): that one stays an explicit choice. */
@@ -194,19 +195,15 @@ export default function AccountView(){
         <span aria-label={anyGranted?'API authorized':'API not authorized'} title={anyGranted?'API authorized':'API not authorized'} style={{fontSize:18,fontWeight:800,color:anyGranted?'#16a34a':'#dc2626',lineHeight:1}}>{anyGranted?'✓':'×'}</span>
        </div>
        <div style={{display:'flex',flexWrap:'wrap',gap:6,paddingLeft:38}} aria-label={name+' actions'}>
-        {(['read','create','edit','rename','move','delete','upload','manage'] as Action[]).filter(action=>name==='YouTube'?['read','upload'].includes(action):name==='Google Ads'?['read','manage'].includes(action):name==='Google Calendar'?['read','create','edit','delete'].includes(action):['Google Drive','Google Docs','Google Sheets','Google Slides'].includes(name)?['read','create','edit','rename','move','delete'].includes(action):['read'].includes(action)).map(action=>{
+        {(['read','create','edit','rename','move','delete','upload','manage'] as Action[]).filter(action=>name==='Gmail'?['read','edit','send','delete'].includes(action):name==='YouTube'?['read','upload'].includes(action):name==='Google Ads'?['read','manage'].includes(action):name==='Google Calendar'?['read','create','edit','delete'].includes(action):['Google Drive','Google Docs','Google Sheets','Google Slides'].includes(name)?['read','create','edit','rename','move','delete'].includes(action):['read'].includes(action)).map(action=>{
          const ids=[...granted].map(scope=>scope.split('/auth/')[1]).filter((id):id is string=>Boolean(id));
          const enabled=actionsFor(name,ids).includes(action);
-         return <span key={action} aria-label={actionLabels(lang)[action]} style={{fontSize:12,padding:'4px 8px',borderRadius:8,background:enabled?'#245edc':'#e5e7eb',color:enabled?'#fff':'#6b7280',fontWeight:650,opacity:enabled?1:.85}}>{actionLabels(lang)[action]}</span>;
+         const desiredScope=action==='send'?'gmail.send':name==='Gmail'?(action==='read'?'gmail.readonly':'gmail.modify'):name==='Google Calendar'?(action==='read'?'calendar.readonly':'calendar.events'):name==='Google Drive'?(action==='read'?'drive.readonly':'drive.file'):['Google Docs','Google Sheets','Google Slides'].includes(name)?(['rename','move','delete'].includes(action)?'drive.file':({ 'Google Docs':'documents.readonly','Google Sheets':'spreadsheets.readonly','Google Slides':'presentations.readonly' } as Record<string,string>)[name]):options[0]?.[1];
+         const selected=desiredScope?scopes.includes(scopeUrl(desiredScope)):false;
+         return <button type="button" key={action} aria-label={actionLabels(lang)[action]} title={enabled?'Authorized':selected?'Selected: reconnect Google to grant':'Select and reconnect Google to grant'} onClick={()=>{if(!desiredScope)return;setScopes(current=>selected?current.filter(x=>x!==scopeUrl(desiredScope)):Array.from(new Set([...current,scopeUrl(desiredScope)])));}} style={{fontSize:12,padding:'4px 8px',borderRadius:8,border:selected?'2px solid #245edc':'2px solid transparent',background:enabled?'#245edc':'#e5e7eb',color:enabled?'#fff':'#6b7280',fontWeight:650,cursor:'pointer'}}>{actionLabels(lang)[action]}</button>;
         })}
        </div>
-       <div style={{display:'flex',flexWrap:'wrap',gap:'8px 14px',paddingLeft:38}}>
-        {options.map(([,id])=><label key={id} style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:13}}>
-         <input type="checkbox" checked={scopes.includes(scopeUrl(id))} onChange={e=>setScopes(current=>e.target.checked?Array.from(new Set([...current,scopeUrl(id)])):current.filter(x=>x!==scopeUrl(id)))}/>
-         <span>{permissionName(id,lang)}</span>
-         <span aria-label={granted.has(scopeUrl(id))?'Granted':'Not granted'} title={granted.has(scopeUrl(id))?'Granted':'Not granted'} style={{color:granted.has(scopeUrl(id))?'#15803d':'#b91c1c',fontWeight:800,fontSize:15}}>{granted.has(scopeUrl(id))?'✓':'×'}</span>
-        </label>)}
-       </div>
+
       </div>;
      })}
     </fieldset>
