@@ -157,12 +157,13 @@ export default function AccountView(){
        <div style={{display:'flex',alignItems:'center',gap:10}}>
         <img src={LOGOS[name]} width={28} height={28} alt="" style={{objectFit:'contain',flexShrink:0}}/>
         <strong style={{flex:1}}>{name}</strong>
-        <span style={{fontSize:12,color:anyGranted?'#166534':'#64748b'}}>{anyGranted?'✓':''}</span>
+        <span aria-label={anyGranted?'Granted permissions':'No granted permissions'} style={{fontSize:12,color:anyGranted?'#166534':'#64748b'}}>{anyGranted?'✓':'×'}</span>
        </div>
        <div style={{display:'flex',flexWrap:'wrap',gap:'8px 14px',paddingLeft:38}}>
         {options.map(([,id])=><label key={id} style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:13}}>
          <input type="checkbox" checked={scopes.includes(scopeUrl(id))} onChange={e=>setScopes(current=>e.target.checked?Array.from(new Set([...current,scopeUrl(id)])):current.filter(x=>x!==scopeUrl(id)))}/>
-         {permissionName(id,lang)} {granted.has(scopeUrl(id))?'✓':''}
+         <span>{permissionName(id,lang)}</span>
+         <span aria-label={granted.has(scopeUrl(id))?'Granted':'Not granted'} title={granted.has(scopeUrl(id))?'Granted':'Not granted'} style={{color:granted.has(scopeUrl(id))?'#15803d':'#b91c1c',fontWeight:800,fontSize:15}}>{granted.has(scopeUrl(id))?'✓':'×'}</span>
         </label>)}
        </div>
       </div>;
