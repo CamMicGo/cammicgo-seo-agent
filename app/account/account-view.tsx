@@ -40,6 +40,40 @@ const permissionName=(id:string,lang:string)=>{
  };
  return (dict[lang]||dict.en)[key];
 };
+type Action='read'|'create'|'edit'|'rename'|'move'|'delete'|'upload'|'manage';
+const ACTIONS:Record<string,Record<string,Action[]>>={
+ 'Google Calendar':{'calendar.readonly':['read'],'calendar.events':['read','create','edit','delete']},
+ 'Google Drive':{'drive.readonly':['read'],'drive.file':['read','create','edit','rename','move','delete'],'drive':['read','create','edit','rename','move','delete']},
+ 'Google Docs':{'documents.readonly':['read']},
+ 'Google Sheets':{'spreadsheets.readonly':['read']},
+ 'Google Slides':{'presentations.readonly':['read']},
+ 'YouTube':{'youtube.readonly':['read'],'youtube.upload':['upload']},
+ 'Google Ads':{'adwords':['read','manage']}
+};
+const ACTION_LABELS:Record<string,Record<Action,string>>={
+ fr:{read:'Lire',create:'Créer',edit:'Modifier',rename:'Renommer',move:'Déplacer',delete:'Supprimer',upload:'Mettre en ligne',manage:'Gérer'},
+ en:{read:'Read',create:'Create',edit:'Edit',rename:'Rename',move:'Move',delete:'Delete',upload:'Upload',manage:'Manage'},
+ de:{read:'Lesen',create:'Erstellen',edit:'Bearbeiten',rename:'Umbenennen',move:'Verschieben',delete:'Löschen',upload:'Hochladen',manage:'Verwalten'},
+ es:{read:'Leer',create:'Crear',edit:'Modificar',rename:'Renombrar',move:'Mover',delete:'Eliminar',upload:'Subir',manage:'Gestionar'},
+ pt:{read:'Ler',create:'Criar',edit:'Editar',rename:'Renomear',move:'Mover',delete:'Eliminar',upload:'Carregar',manage:'Gerir'},
+ it:{read:'Leggere',create:'Creare',edit:'Modificare',rename:'Rinominare',move:'Spostare',delete:'Eliminare',upload:'Caricare',manage:'Gestire'},
+ ru:{read:'Читать',create:'Создать',edit:'Изменить',rename:'Переименовать',move:'Переместить',delete:'Удалить',upload:'Загрузить',manage:'Управлять'},
+ zh:{read:'读取',create:'创建',edit:'修改',rename:'重命名',move:'移动',delete:'删除',upload:'上传',manage:'管理'},
+ ja:{read:'読み取り',create:'作成',edit:'編集',rename:'名前変更',move:'移動',delete:'削除',upload:'アップロード',manage:'管理'},
+ ko:{read:'읽기',create:'만들기',edit:'수정',rename:'이름 변경',move:'이동',delete:'삭제',upload:'업로드',manage:'관리'},
+ ar:{read:'قراءة',create:'إنشاء',edit:'تعديل',rename:'إعادة تسمية',move:'نقل',delete:'حذف',upload:'رفع',manage:'إدارة'}
+};
+const actionLabels=(lang:string)=>ACTION_LABELS[lang]||ACTION_LABELS.en;
+const actionsFor=(service:string,ids:string[])=>{
+ const actions=new Set<Action>();
+ for(const id of ids)for(const a of ACTIONS[service]?.[id]??(id.endsWith('.readonly')?['read' as Action]:[]))actions.add(a);
+ // Document filenames, moving and trashing are Drive operations, not Docs/Sheets/Slides scopes.
+ if(['Google Docs','Google Sheets','Google Slides'].includes(service)){
+  if(ids.includes('documents')||ids.includes('spreadsheets')||ids.includes('presentations')){actions.add('create');actions.add('edit');}
+  if(actions.has('read')&&(ids.includes('drive.file')||ids.includes('drive')))for(const a of ['rename','move','delete'] as Action[])actions.add(a);
+ }
+ return (['read','create','edit','rename','move','delete','upload','manage'] as Action[]).filter(a=>actions.has(a));
+};
 const scopeUrl=(s:string)=>'https://www.googleapis.com/auth/'+s;
 /** "Select all" never ticks full Drive access (it allows trashing any file): that one stays an explicit choice. */
 const RECOMMENDED_SCOPES=['webmasters.readonly','analytics.readonly'].map(scopeUrl);
@@ -157,7 +191,14 @@ export default function AccountView(){
        <div style={{display:'flex',alignItems:'center',gap:10}}>
         <img src={LOGOS[name]} width={28} height={28} alt="" style={{objectFit:'contain',flexShrink:0}}/>
         <strong style={{flex:1}}>{name}</strong>
-        <span aria-label={anyGranted?'Granted permissions':'No granted permissions'} style={{fontSize:12,color:anyGranted?'#166534':'#64748b'}}>{anyGranted?'✓':'×'}</span>
+        <span aria-label={anyGranted?'API authorized':'API not authorized'} title={anyGranted?'API authorized':'API not authorized'} style={{fontSize:18,fontWeight:800,color:anyGranted?'#16a34a':'#dc2626',lineHeight:1}}>{anyGranted?'✓':'×'}</span>
+       </div>
+       <div style={{display:'flex',flexWrap:'wrap',gap:6,paddingLeft:38}} aria-label={name+' actions'}>
+        {(['read','create','edit','rename','move','delete','upload','manage'] as Action[]).filter(action=>name==='YouTube'?['read','upload'].includes(action):name==='Google Ads'?['read','manage'].includes(action):name==='Google Calendar'?['read','create','edit','delete'].includes(action):['Google Drive','Google Docs','Google Sheets','Google Slides'].includes(name)?['read','create','edit','rename','move','delete'].includes(action):['read'].includes(action)).map(action=>{
+         const ids=[...granted].map(scope=>scope.split('/auth/')[1]).filter((id):id is string=>Boolean(id));
+         const enabled=actionsFor(name,ids).includes(action);
+         return <span key={action} aria-label={actionLabels(lang)[action]} style={{fontSize:12,padding:'4px 8px',borderRadius:8,background:enabled?'#245edc':'#e5e7eb',color:enabled?'#fff':'#6b7280',fontWeight:650,opacity:enabled?1:.85}}>{actionLabels(lang)[action]}</span>;
+        })}
        </div>
        <div style={{display:'flex',flexWrap:'wrap',gap:'8px 14px',paddingLeft:38}}>
         {options.map(([,id])=><label key={id} style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:13}}>
