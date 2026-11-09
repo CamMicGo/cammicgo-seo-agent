@@ -35,42 +35,6 @@ export default function OAuthConsent(){
  const [clientId,setClientId]=useState('');
  const [clientSecret,setClientSecret]=useState('');
  const [selectedScopes,setSelectedScopes]=useState<string[]>(['https://www.googleapis.com/auth/webmasters.readonly','https://www.googleapis.com/auth/analytics.readonly','https://www.googleapis.com/auth/youtube.readonly','https://www.googleapis.com/auth/calendar.readonly']);
- const apiOptions: Array<{label:string;scope:string;service:string;permission:string;logo?:string;sensitive?:boolean}>=[
-  {label:'Gmail',scope:'https://www.googleapis.com/auth/gmail.readonly',logo:'/google-logos/gmail.png',service:'gmail',permission:'read'},
-  {label:'Google Drive',scope:'https://www.googleapis.com/auth/drive.readonly',logo:'/google-logos/drive.png',service:'drive',permission:'read'},
-  {label:'Google Drive',scope:'https://www.googleapis.com/auth/drive.file',logo:'/google-logos/drive.png',service:'drive',permission:'write'},
-  {label:'Google Drive',scope:'https://www.googleapis.com/auth/drive',logo:'/google-logos/drive.png',service:'drive',permission:'full',sensitive:true},
-  {label:'Google Docs',scope:'https://www.googleapis.com/auth/documents.readonly',service:'docs',permission:'read'},
-  {label:'Google Sheets',scope:'https://www.googleapis.com/auth/spreadsheets.readonly',service:'sheets',permission:'read'},
-  {label:'Google Tasks',scope:'https://www.googleapis.com/auth/tasks.readonly',service:'tasks',permission:'read'},
-  {label:'Google Slides',scope:'https://www.googleapis.com/auth/presentations.readonly',service:'slides',permission:'read'},
-  {label:'Google Contacts',scope:'https://www.googleapis.com/auth/contacts.readonly',service:'contacts',permission:'read'},
-  {label:'Google Classroom',scope:'https://www.googleapis.com/auth/classroom.courses.readonly',service:'classroom',permission:'read'},
-  {label:'Google Chat',scope:'https://www.googleapis.com/auth/chat.spaces.readonly',service:'chat',permission:'read'},
-  {label:'Apps Script',scope:'https://www.googleapis.com/auth/script.projects.readonly',service:'script',permission:'read'},
-  {label:'Google Ads',scope:'https://www.googleapis.com/auth/adwords',logo:'/google-logos/google-ads.png',service:'ads',permission:'manage'},
-  {label:'Search Console',scope:'https://www.googleapis.com/auth/webmasters.readonly',logo:'/google-search-console.svg',service:'search',permission:'read'},
-  {label:'Google Analytics 4',scope:'https://www.googleapis.com/auth/analytics.readonly',logo:'/google-analytics.svg',service:'analytics',permission:'read'},
-  {label:'YouTube',scope:'https://www.googleapis.com/auth/youtube.readonly',logo:'/google-logos/youtube.svg',service:'youtube',permission:'read'},
-  {label:'YouTube Analytics',scope:'https://www.googleapis.com/auth/yt-analytics.readonly',logo:'/google-logos/youtube.svg',service:'ytanalytics',permission:'read'},
-  {label:'YouTube',scope:'https://www.googleapis.com/auth/youtube.upload',logo:'/google-logos/youtube.svg',service:'youtube',permission:'upload',sensitive:true},
-  {label:'Google Calendar',scope:'https://www.googleapis.com/auth/calendar.readonly',logo:'/google-logos/calendar.png',service:'calendar',permission:'read'},
-  {label:'Google Calendar',scope:'https://www.googleapis.com/auth/calendar.events',logo:'/google-logos/calendar.png',service:'calendar',permission:'write'}
- ];
- const services=Array.from(new Set(apiOptions.map(o=>o.service)));
- const safeAll=apiOptions.filter(o=>!o.sensitive).map(o=>o.scope);
- const [grantedScopes,setGrantedScopes]=useState<string[]>([]);
- const locale=typeof navigator==='undefined'?'en':navigator.language.slice(0,2);
- const labels:Record<string,Record<string,string>>={
-  fr:{read:'Lecture',write:'Création et modification',full:'Accès complet (sensible)',manage:'Rapports et gestion',upload:'Mise en ligne (sensible)',granted:'Accordé',pending:'À autoriser',newAccess:'Nouveaux accès sélectionnés',allSafe:'Tout sélectionner (hors accès sensibles)',permission:'Autorisations'},
-  en:{read:'Read',write:'Create and update',full:'Full access (sensitive)',manage:'Reports and management',upload:'Upload (sensitive)',granted:'Granted',pending:'Not granted',newAccess:'New permissions selected',allSafe:'Select all (excluding sensitive access)',permission:'Permissions'},
-  de:{read:'Lesen',write:'Erstellen und ändern',full:'Vollzugriff (sensibel)',manage:'Berichte und Verwaltung',upload:'Hochladen (sensibel)',granted:'Erteilt',pending:'Nicht erteilt',newAccess:'Neue Berechtigungen',allSafe:'Alle auswählen (ohne sensible Rechte)',permission:'Berechtigungen'},
-  es:{read:'Lectura',write:'Crear y modificar',full:'Acceso completo (sensible)',manage:'Informes y gestión',upload:'Subir (sensible)',granted:'Concedido',pending:'Sin conceder',newAccess:'Nuevos permisos',allSafe:'Seleccionar todo (excepto sensibles)',permission:'Permisos'},
-  ru:{read:'Чтение',write:'Создание и изменение',full:'Полный доступ (важно)',manage:'Отчёты и управление',upload:'Загрузка (важно)',granted:'Разрешено',pending:'Не разрешено',newAccess:'Новые разрешения',allSafe:'Выбрать всё (кроме важных)',permission:'Разрешения'},
-  ja:{read:'読み取り',write:'作成・更新',full:'フルアクセス（機密）',manage:'レポート・管理',upload:'アップロード（機密）',granted:'許可済み',pending:'未許可',newAccess:'新しい権限',allSafe:'すべて選択（機密権限を除く）',permission:'権限'},
-  zh:{read:'读取',write:'创建和修改',full:'完整访问（敏感）',manage:'报告和管理',upload:'上传（敏感）',granted:'已授权',pending:'未授权',newAccess:'新权限',allSafe:'全选（不含敏感权限）',permission:'权限'}
- };
- const words=labels[locale]||labels.en;
  useEffect(()=>{
   const remembered=savedScopes();if(remembered)setSelectedScopes(remembered);
   const authorizationId=new URLSearchParams(window.location.search).get('authorization_id')||'';
