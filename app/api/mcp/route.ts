@@ -945,7 +945,6 @@ async function handler(req:NextRequest){
      if(meta.data.trashed)return asText({error:'file_trashed'});
      const parents=meta.data.parents??[];
      if(parents.includes(args.destinationFolderId))return asText({moved:false,alreadyInDestination:true,fileId:args.fileId});
-     if(meta.data.capabilities?.canMoveItemWithinDrive===false)return asText({error:'move_not_permitted'});
      const query=new URLSearchParams({addParents:args.destinationFolderId,fields:'id,name,parents,webViewLink',supportsAllDrives:'true'});
      if(parents.length)query.set('removeParents',parents.join(','));
      const result=await driveJson<drive.DriveFile>(drive.DRIVE_API+'/files/'+encodeURIComponent(args.fileId)+'?'+query,{method:'PATCH'},true);
