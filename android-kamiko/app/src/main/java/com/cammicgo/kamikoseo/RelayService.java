@@ -229,6 +229,37 @@ public class RelayService extends Service {
         current(null);
         throw e;
       }
+      // Only use the audio fallback when a trusted relay job explicitly provides
+      // a direct, authorized media URL. A YouTube watch URL is not downloadable audio.
+      String audioUrl = job.optString("authorizedAudioUrl", "");
+      if (job.optBoolean("audioAuthorized", false) && !audioUrl.isEmpty()) {
+        if (!LocalAsr.installed(this)) {
+          msg += " ; transcription audio locale impossible : modèle Qwen3-ASR non installé.";
+        } else {
+          status("Sous-titres absents : transcription audio locale en cours…");
+          java.util.concurrent.atomic.AtomicBoolean cancelled = new java.util.concurrent.atomic.AtomicBoolean(false);
+          try {
+            r = AuthorizedAudioFallback.transcribe(this, audioUrl, videoId,
+                getSharedPreferences("cammicgo_asr", MODE_PRIVATE).getInt("relayMaxMinutes", 90), cancelled);
+            if (r.segments.isEmpty()) throw new IOException("Transcription audio locale vide.");
+            // Continue with the same MCP result-upload path as native captions.
+            msg = null;
+          } catch (Exception fallbackError) {
+            msg += " ; transcription audio locale : " + firstLine(fallbackError.getMessage());
+          }
+          if (msg == null) {
+            // r is assigned in the successful fallback branch.
+            String payload = TranscriptFetcher.toJson(r, false);
+            RelayClient.sendResult(token, id, payload);
+            current(null);
+            SharedPreferences prefs = RelayClient.prefs(this);
+            prefs.edit().putInt("jobsDone", prefs.getInt("jobsDone", 0) + 1).apply();
+            history(videoId, r.title, "done", r.segments.size(), null, agentName);
+            status("Transcription Qwen3-ASR envoyée au MCP ; cache audio supprimé.");
+            return;
+          }
+        }
+      }
       RelayClient.sendError(token, id, msg);
       history(videoId, null, "failed", 0, firstLine(msg), agentName);
       status(I18n.t(this, "fail_for", videoId, firstLine(msg)));
