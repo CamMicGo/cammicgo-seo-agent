@@ -1,0 +1,31 @@
+name: Local ASR benchmark (Qwen3-ASR 0.6B int8)
+on:
+  workflow_dispatch:
+  push:
+    branches-ignore: [main]
+    paths: [benchmarks/asr/**, .github/workflows/asr-bench.yml]
+permissions: {contents: read}
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Model (cached)
+        id: model
+        uses: actions/cache@v4
+        with: {path: model, key: qwen3-asr-0.6b-int8-2026-03-25}
+      - name: Download model
+        if: steps.model.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL -o m.tar.bz2 https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25.tar.bz2
+          echo "TARBALL_BYTES $(stat -c %s m.tar.bz2) SHA256 $(sha256sum m.tar.bz2 | cut -d' ' -f1)"
+          mkdir model && tar -xjf m.tar.bz2 -C model --strip-components=1 && rm m.tar.bz2 && rm -rf model/test_wavs && du -sh model/*
+      - run: pip install -q "sherpa-onnx==2.0.1" supertonic soundfile numpy
+      - run: python benchmarks/asr/make_audio.py audio
+      - name: Benchmark, 2 threads (phone-like)
+        run: THREADS=2 python benchmarks/asr/bench.py model audio
+      - name: Benchmark, 4 threads
+        run: THREADS=4 python benchmarks/asr/bench.py model audio | grep -E "LOAD|RESULT"

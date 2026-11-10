@@ -1,0 +1,12 @@
+Welcome to this local transcription test. We are going to speak for about five minutes, to check that a phone can turn speech into text without sending any audio to a server.
+Let us start with some context. A team that publishes videos often wants to recover what was said, to write an article, prepare a summary or find an exact quote. Captions are not always available, so another solution is needed.
+Speech recognition has improved a lot in recent years. Compact models now fit in the memory of a smartphone, and they understand dozens of languages. The model we are testing today has about six hundred million parameters.
+To make it work on a phone, the recording is cut into pieces of about twenty seconds. Each piece is analysed in turn, and the texts are joined together. This way, even a long conference never fills the memory.
+Now let us talk about sound quality. A microphone placed too far away, a room with echo or a noisy fan make the task harder. The model is robust, but a clear voice at a reasonable distance always gives better results.
+We also need to think about privacy. When transcription happens on the device, the audio never leaves the phone. That is reassuring for an internal meeting, an interview or a medical appointment, where the words should not travel.
+Of course, this approach has a cost. The model weighs close to one gigabyte, so it has to be downloaded once, preferably over Wi-Fi. After that, everything works offline, even on a plane or on a train with no signal.
+Speed depends on the processor. On a recent phone, one minute of speech is transcribed in a few dozen seconds. On an older device, more patience is required, and the app should warn the user when available memory is too low.
+Back to our example. Imagine a talk about search engine optimisation. The speaker explains how to choose keywords, how to structure a page and how to measure results in the search console. The transcript turns that talk into a summary sheet.
+That sheet can then be exported as text or as a table, and added as a source in a notebook. It saves precious time, without having to listen to the whole video again.
+To finish, here are a few good habits. Always check that you have the right to use the recording. Read the transcript again before publishing it, because no model is perfect. And keep the original, in case a passage was misunderstood.
+Thank you for listening to this test until the end. If the transcript matches what you just heard, then the model works correctly on this device, and you can use it for your own audio files.
