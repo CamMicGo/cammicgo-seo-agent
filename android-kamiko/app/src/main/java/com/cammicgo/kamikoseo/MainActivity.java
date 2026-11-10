@@ -798,7 +798,24 @@ public class MainActivity extends Activity {
     runButton.setOnClickListener(v -> extract());
     Button audioButton = secondary("Télécharger l'audio YouTube (test)");
     c.addView(audioButton, gapTop(10));
-    TextView audioStatus = text(c, "Audio uniquement, sans transcription ni modèle IA.", 12, MUTED, false);
+    TextView audioStatus = text(c, "Audio uniquement, gardé temporairement dans l'app (24 h max).", 12, MUTED, false);
+    Button audioShare = secondary("Partager l'audio (test)");
+    audioShare.setVisibility(View.GONE);
+    c.addView(audioShare, gapTop(6));
+    final String[] lastAudio = {null};
+    audioShare.setOnClickListener(v -> {
+      if (lastAudio[0] == null) return;
+      java.io.File file = new java.io.File(lastAudio[0]);
+      if (!file.isFile()) { audioStatus.setText("L'audio temporaire a été supprimé, relance le téléchargement."); audioShare.setVisibility(View.GONE); return; }
+      try {
+        Uri uri = androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", file);
+        Intent send = new Intent(Intent.ACTION_SEND).setType(file.getName().endsWith(".m4a") ? "audio/mp4" : "audio/webm")
+            .putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        startActivity(Intent.createChooser(send, "Partager l'audio"));
+      } catch (Exception error) {
+        audioStatus.setText("Partage impossible : " + error.getMessage());
+      }
+    });
     audioButton.setOnClickListener(v -> {
       String videoId = TranscriptFetcher.videoId(urlInput.getText().toString());
       if (videoId == null) {
@@ -810,7 +827,11 @@ public class MainActivity extends Activity {
       worker.execute(() -> {
         try {
           JSONObject result = YouTubeAudioOnly.probeAndDownload(this, videoId);
-          ui.post(() -> audioStatus.setText("Audio enregistré : " + result.optString("savedTo") + " (" + result.optLong("audioBytes") + " octets)."));
+          lastAudio[0] = result.optString("savedTo");
+          ui.post(() -> {
+            audioStatus.setText("Audio prêt (temporaire, " + (result.optLong("audioBytes") / 1024) + " Ko, " + result.optString("mime") + ").");
+            audioShare.setVisibility(View.VISIBLE);
+          });
         } catch (Exception error) {
           ui.post(() -> audioStatus.setText("Échec audio : " + error.getMessage()));
         } finally {
