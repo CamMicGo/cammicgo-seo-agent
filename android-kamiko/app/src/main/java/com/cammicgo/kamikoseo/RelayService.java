@@ -229,11 +229,21 @@ public class RelayService extends Service {
         current(null);
         throw e;
       }
-      RelayClient.sendError(token, id, msg);
-      history(videoId, null, "failed", 0, firstLine(msg), agentName);
-      status(I18n.t(this, "fail_for", videoId, firstLine(msg)));
-      current(null);
-      return;
+      TranscriptFetcher.Result local = null;
+      if (LocalAsr.noCaptions(msg) && LocalAsr.fallbackEnabled(this)) {
+        try { local = localTranscript(token, id, videoId, lang); }
+        catch (Exception e2) { msg = msg + "\nTranscription locale (Whisper) impossible : " + e2.getMessage(); }
+      } else if (LocalAsr.noCaptions(msg) && !LocalAsr.installed(this)) {
+        msg = msg + "\nAstuce : installe le modèle Whisper small dans l'application CamMicGo pour transcrire sur le téléphone les vidéos sans sous-titres.";
+      }
+      if (local == null) {
+        RelayClient.sendError(token, id, msg);
+        history(videoId, null, "failed", 0, firstLine(msg), agentName);
+        status(I18n.t(this, "fail_for", videoId, firstLine(msg)));
+        current(null);
+        return;
+      }
+      r = local;
     }
     // Upload with retries so a short network drop does not lose a finished transcript.
     String payload = TranscriptFetcher.toJson(r, false);
@@ -266,6 +276,25 @@ public class RelayService extends Service {
     nextTranscriptAt = System.currentTimeMillis() + 60_000L + (long)(Math.random() * 60_000L);
     RelayClient.prefs(this).edit().putLong("nextTranscriptAt", nextTranscriptAt).apply();
     // Do not erase the rate-limit history immediately after one successful fetch.
+  }
+
+  /**
+   * No captions: temporary audio download + Whisper small on this phone. The claim is renewed every
+   * 30 s so the server does not hand the job to another device while it runs.
+   */
+  private TranscriptFetcher.Result localTranscript(String token, String id, String videoId, String lang) throws Exception {
+    java.util.concurrent.atomic.AtomicBoolean cancel = new java.util.concurrent.atomic.AtomicBoolean(false);
+    long[] lastPing = {0};
+    return LocalAsr.transcribeVideo(this, videoId, "original".equals(lang) ? null : lang, cancel, (phase, percent) -> {
+      if (!running) cancel.set(true);
+      status("audio".equals(phase) ? "Pas de sous-titres : téléchargement temporaire de l'audio…"
+          : "Transcription locale (" + LocalAsr.MODEL_LABEL + ")" + (percent >= 0 ? " : " + percent + " %" : "…"));
+      long now = System.currentTimeMillis();
+      if (now - lastPing[0] > 30_000L) {
+        lastPing[0] = now;
+        try { RelayClient.progress(token, id, phase, percent); } catch (IOException ignored) { /* next ping retries */ }
+      }
+    });
   }
 
   /** Notebook tasks are tracked separately; never pass them to the YouTube transcript parser. */

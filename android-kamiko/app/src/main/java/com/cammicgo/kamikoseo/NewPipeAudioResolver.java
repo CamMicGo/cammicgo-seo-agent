@@ -34,6 +34,8 @@ final class NewPipeAudioResolver {
   static final class Candidate {
     final String url, userAgent, extension, mime;
     final int bitrate;
+    /** Video title and duration from the same YouTube answer (used to label local transcripts). */
+    String title; long durationSeconds = -1;
     Candidate(String url, String userAgent, String extension, String mime, int bitrate) {
       this.url = url; this.userAgent = userAgent; this.extension = extension; this.mime = mime; this.bitrate = bitrate;
     }
@@ -72,6 +74,7 @@ final class NewPipeAudioResolver {
     }
     // Smallest first: transcription does not need high quality and the file comes faster.
     out.sort((a, b) -> Integer.compare(a.bitrate <= 0 ? Integer.MAX_VALUE : a.bitrate, b.bitrate <= 0 ? Integer.MAX_VALUE : b.bitrate));
+    for (Candidate c : out) { c.title = info.getName(); c.durationSeconds = info.getDuration(); }
     if (out.isEmpty()) throw new IOException("NewPipe: no direct audio stream (" + info.getAudioStreams().size() + " streams, all DASH/HLS or unknown format)");
     return out;
   }

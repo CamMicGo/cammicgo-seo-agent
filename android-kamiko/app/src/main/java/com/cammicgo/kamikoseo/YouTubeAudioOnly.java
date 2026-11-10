@@ -35,6 +35,8 @@ final class YouTubeAudioOnly {
           result.put("source", "newpipe_java");
           result.put("mime", stream.mime);
           result.put("bitrate", stream.bitrate);
+          if (stream.title != null) result.put("title", stream.title);
+          if (stream.durationSeconds > 0) result.put("durationSeconds", stream.durationSeconds);
           result.put("audioBytes", bytes);
           result.put("audioOnly", true);
           return result;
