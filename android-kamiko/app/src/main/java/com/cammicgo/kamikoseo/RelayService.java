@@ -190,6 +190,19 @@ public class RelayService extends Service {
   private void handle(String token, JSONObject job) throws IOException {
     String id = job.optString("id"), videoId = job.optString("videoId"), lang = job.optString("language", "original");
     String agentName = job.optString("agentName", "Assistant inconnu");
+    if ("youtube_audio_probe".equals(job.optString("type"))) {
+      status("Test de téléchargement audio YouTube : " + videoId);
+      current(videoId);
+      try {
+        JSONObject result = YouTubeAudioOnly.probeAndDownload(this, videoId);
+        RelayClient.sendResult(token, id, result.toString());
+        status("Audio téléchargé et supprimé du cache : " + videoId);
+      } catch (Exception e) {
+        RelayClient.sendError(token, id, e.getMessage() == null ? "Échec audio" : e.getMessage());
+        status("Échec audio YouTube : " + firstLine(e.getMessage()));
+      } finally { current(null); }
+      return;
+    }
     if (job.optString("type").startsWith("notebooklm_")) {
       handleNotebook(token, job);
       return;
