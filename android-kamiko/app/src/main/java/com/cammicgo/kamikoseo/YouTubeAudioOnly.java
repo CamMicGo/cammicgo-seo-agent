@@ -24,6 +24,37 @@ final class YouTubeAudioOnly {
   static JSONObject probeAndDownload(Context context, String videoId) throws IOException {
     if (videoId == null || !videoId.matches("[A-Za-z0-9_-]{11}"))
       throw new IOException("Invalid video ID");
+    // First use the maintained Java NewPipe extractor (no Python on the device).
+    IOException newPipeError = null;
+    try {
+      java.util.List<String> streams = NewPipeAudioResolver.resolve(videoId);
+      for (String stream : streams) {
+        String extension = stream.contains("mime=audio%2Fmp4") ? ".m4a" : ".webm";
+        File temp = File.createTempFile("yt-newpipe-", extension, context.getCacheDir());
+        try {
+          URL parsed = new URL(stream);
+          if (!isGoogleVideoHost(parsed.getHost())) continue;
+          long bytes = fetchAudio(stream, temp, "WEB");
+          String saved = saveToDownloads(context, temp, "YouTube-audio-" + videoId + extension);
+          JSONObject result = new JSONObject();
+          result.put("savedTo", saved);
+          result.put("videoId", videoId);
+          result.put("source", "newpipe_java");
+          result.put("audioBytes", bytes);
+          result.put("audioOnly", true);
+          return result;
+        } catch (org.json.JSONException error) {
+          throw new IOException("Résultat NewPipe illisible", error);
+        } catch (IOException error) {
+          newPipeError = error;
+        } finally {
+          if (temp.exists() && !temp.delete())
+            android.util.Log.w("YouTubeAudioOnly", "Temporary NewPipe audio cleanup failed");
+        }
+      }
+    } catch (IOException error) {
+      newPipeError = error;
+    }
     IOException lastError = null;
     int attempted = 0;
     // Try independently obtained player URLs. A URL returned by one YouTube client
@@ -86,7 +117,8 @@ final class YouTubeAudioOnly {
       }
     }
     throw new IOException("Aucun flux audio accessible (" + attempted +
-        " essais). " + (lastError == null ? "Aucun lien direct fourni." : lastError.getMessage()));
+        " essais). NewPipe: " + (newPipeError == null ? "flux refusés" : newPipeError.getMessage()) +
+        " / InnerTube: " + (lastError == null ? "aucun lien direct" : lastError.getMessage()));
   }
 
   private static JSONObject playerFor(String videoId, String clientName) throws IOException {
