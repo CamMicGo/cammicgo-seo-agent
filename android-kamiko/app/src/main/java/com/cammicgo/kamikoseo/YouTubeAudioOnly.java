@@ -51,13 +51,30 @@ final class YouTubeAudioOnly {
     long bytes = 0;
     HttpURLConnection conn = null;
     try {
-      conn = (HttpURLConnection) new URL(stream).openConnection();
-      conn.setConnectTimeout(12000);
-      conn.setReadTimeout(30000);
-      conn.setInstanceFollowRedirects(false);
-      conn.setRequestProperty("User-Agent", TranscriptFetcher.ANDROID_UA);
-      if (conn.getResponseCode() != 200)
-        throw new IOException("HTTP audio " + conn.getResponseCode());
+      URL nextUrl = new URL(stream);
+      int responseCode = -1;
+      for (int redirects = 0; redirects <= 5; redirects++) {
+        if (!"https".equalsIgnoreCase(nextUrl.getProtocol()) ||
+            !isGoogleVideoHost(nextUrl.getHost()))
+          throw new IOException("Redirection audio vers un hôte non autorisé");
+        conn = (HttpURLConnection) nextUrl.openConnection();
+        conn.setConnectTimeout(12000);
+        conn.setReadTimeout(30000);
+        conn.setInstanceFollowRedirects(false);
+        conn.setRequestProperty("User-Agent", TranscriptFetcher.ANDROID_UA);
+        responseCode = conn.getResponseCode();
+        if (responseCode == 200) break;
+        if (responseCode != 301 && responseCode != 302 && responseCode != 303 &&
+            responseCode != 307 && responseCode != 308)
+          throw new IOException("HTTP audio " + responseCode);
+        if (redirects == 5) throw new IOException("Trop de redirections audio");
+        String location = conn.getHeaderField("Location");
+        if (location == null || location.isEmpty())
+          throw new IOException("Redirection audio sans destination");
+        nextUrl = new URL(nextUrl, location);
+        conn.disconnect();
+        conn = null;
+      }
       if (conn.getContentLengthLong() > MAX_BYTES)
         throw new IOException("Audio > 100 MiB");
       try (InputStream in = conn.getInputStream(); FileOutputStream out = new FileOutputStream(temp)) {
@@ -85,6 +102,12 @@ final class YouTubeAudioOnly {
         android.util.Log.w("YouTubeAudioOnly", "Temporary audio file deletion failed");
     }
   }
+  private static boolean isGoogleVideoHost(String host) {
+    if (host == null) return false;
+    String normalized = host.toLowerCase(Locale.ROOT);
+    return normalized.equals("googlevideo.com") || normalized.endsWith(".googlevideo.com");
+  }
+
   private static String saveToDownloads(Context context, File file, String name) throws IOException {
     if (Build.VERSION.SDK_INT < 29) {
       File directory = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
