@@ -865,7 +865,10 @@ public class MainActivity extends Activity {
     asrRefresh.run();
     asrButton.setOnClickListener(v -> {
       if (asrBusy[0]) { asrCancel.set(true); return; }
-      if (LocalAsr.installed(this)) { LocalAsr.delete(this); asrRefresh.run(); return; }
+      if (LocalAsr.installed(this)) {
+        confirmDeleteModel(LocalAsr.MODEL_LABEL, LocalAsr.dir(this), () -> { LocalAsr.release(); asrRefresh.run(); refreshModels(); });
+        return;
+      }
       asrBusy[0] = true; asrCancel.set(false); asrRefresh.run();
       asrStatus.setText("Téléchargement du modèle…");
       new Thread(() -> {
@@ -878,9 +881,16 @@ public class MainActivity extends Activity {
           done = asrCancel.get() ? "Téléchargement annulé." : "Échec : " + e.getMessage();
         }
         final String msg = done;
-        ui.post(() -> { asrBusy[0] = false; asrRefresh.run(); if (msg != null) asrStatus.setText(msg); });
+        ui.post(() -> { asrBusy[0] = false; asrRefresh.run(); refreshModels(); if (msg != null) asrStatus.setText(msg); });
       }, "asr-download").start();
     });
+
+    TextView modelsTitle = text(c, "Modèles installés sur ce téléphone", 14, INK, true);
+    modelsTitle.setPadding(0, dp(16), 0, dp(4));
+    modelsBox = new LinearLayout(this);
+    modelsBox.setOrientation(LinearLayout.VERTICAL);
+    c.addView(modelsBox);
+    refreshModels();
 
 
     resultCard = card(root);
@@ -2916,6 +2926,68 @@ public class MainActivity extends Activity {
         catch (java.io.IOException e) { Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show(); } break;
       default: break;
     }
+  }
+
+  private LinearLayout modelsBox;
+
+  /** Lists every speech model folder in the app's private storage (current, older, interrupted downloads). */
+  private void refreshModels() {
+    if (modelsBox == null) return;
+    modelsBox.removeAllViews();
+    java.io.File root = new java.io.File(getFilesDir(), "asr");
+    java.io.File[] dirs = root.listFiles(java.io.File::isDirectory);
+    long total = 0;
+    if (dirs != null) for (java.io.File d : dirs) {
+      long size = treeSize(d);
+      total += size;
+      String name = d.getName();
+      String label = LocalAsr.MODEL_ID.equals(name) ? LocalAsr.MODEL_LABEL + " — utilisé pour les vidéos sans sous-titres"
+          : name.startsWith("qwen3-asr") ? "Qwen3-ASR 0.6B — ancien modèle, plus utilisé par l'app"
+          : "download.tmp".equals(name) ? "Téléchargement interrompu (fichiers incomplets)"
+          : name + " — non utilisé";
+      LinearLayout row = new LinearLayout(this);
+      row.setGravity(Gravity.CENTER_VERTICAL);
+      TextView info = new TextView(this);
+      info.setText(label + "\n" + LocalAsr.size(size));
+      info.setTextSize(12);
+      info.setTextColor(INK);
+      row.addView(info, new LinearLayout.LayoutParams(0, -2, 1));
+      Button del = secondary("Supprimer");
+      del.setOnClickListener(v -> confirmDeleteModel(label.split(" — ")[0], d, () -> {
+        if (LocalAsr.MODEL_ID.equals(name)) LocalAsr.release();
+        refreshModels();
+      }));
+      row.addView(del, new LinearLayout.LayoutParams(-2, -2));
+      modelsBox.addView(row, gapTop(6));
+    }
+    TextView summary = new TextView(this);
+    summary.setTextSize(12);
+    summary.setTextColor(MUTED);
+    summary.setText((dirs == null || dirs.length == 0 ? "Aucun modèle installé. " : "Total des modèles : " + LocalAsr.size(total) + ". ")
+        + "Espace libre sur le téléphone : " + LocalAsr.size(getFilesDir().getUsableSpace()) + ".");
+    modelsBox.addView(summary, gapTop(6));
+  }
+
+  private static long treeSize(java.io.File f) {
+    if (f.isFile()) return f.length();
+    long s = 0;
+    java.io.File[] kids = f.listFiles();
+    if (kids != null) for (java.io.File k : kids) s += treeSize(k);
+    return s;
+  }
+
+  /** Deleting a model always asks first: it has to be downloaded again to be used. */
+  private void confirmDeleteModel(String label, java.io.File dir, Runnable after) {
+    long size = treeSize(dir);
+    new AlertDialog.Builder(this)
+        .setTitle("Supprimer ce modèle ?")
+        .setMessage(label + " (" + LocalAsr.size(size) + ") sera effacé de ce téléphone. Il faudra le retélécharger pour s'en resservir.")
+        .setNegativeButton("Annuler", null)
+        .setPositiveButton("Supprimer", (dlg, w) -> worker.execute(() -> {
+          LocalAsr.deleteTree(dir);
+          runOnUiThread(after);
+        }))
+        .show();
   }
 
   private void extract() {
