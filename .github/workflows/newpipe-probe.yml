@@ -3,7 +3,10 @@ on:
   workflow_dispatch:
   push:
     branches-ignore: [main]
-    paths: [android-kamiko/app/src/main/java/com/cammicgo/kamikoseo/NewPipeAudioResolver.java, benchmarks/newpipe-probe/**, .github/workflows/newpipe-probe.yml]
+    paths:
+      - 'android-kamiko/app/src/main/java/com/cammicgo/kamikoseo/NewPipeAudioResolver.java'
+      - 'benchmarks/newpipe-probe/**'
+      - '.github/workflows/newpipe-probe.yml'
 permissions: {contents: read}
 jobs:
   probe:
@@ -15,6 +18,6 @@ jobs:
         with: {distribution: temurin, java-version: '17'}
       - uses: gradle/actions/setup-gradle@v4
         with: {gradle-version: '8.9'}
-      - name: Resolve and fetch audio (note: CI runs from a datacenter IP, YouTube may treat it as a bot)
+      - name: "Resolve and fetch audio (CI runs from a datacenter IP, YouTube may treat it as a bot)"
         working-directory: benchmarks/newpipe-probe
         run: gradle run --no-daemon -q --args="UtU5tJDp68o jNQXAC9IVRw dQw4w9WgXcQ"
