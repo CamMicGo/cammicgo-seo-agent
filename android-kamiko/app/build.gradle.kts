@@ -12,6 +12,7 @@ android {
     applicationId = "com.cammicgo.kamikoseo"; minSdk = 26; targetSdk = 35; versionCode = 56; versionName = "0.7.1-whisper-small"
     // sherpa-onnx native libraries: phones (64 and 32 bit ARM) and the x86_64 emulator.
     ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
+    testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
   // Compressed native libraries: a smaller APK to download (unpacked once at install).
   packaging { jniLibs { useLegacyPackaging = true } }
@@ -37,4 +38,6 @@ dependencies {
   // bzip2 + tar, to unpack the model archive while it downloads.
   implementation("org.apache.commons:commons-compress:1.24.0")
   testImplementation("junit:junit:4.13.2")
+  androidTestImplementation("androidx.test:runner:1.6.2")
+  androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }

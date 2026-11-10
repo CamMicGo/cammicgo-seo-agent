@@ -150,6 +150,30 @@ final class LocalAsr {
       throw new UserError("Fichier du modèle corrompu (" + spec[0] + "), réessaie le téléchargement.");
   }
 
+  /**
+   * Installs model files already on the device (a folder in the app's storage) with the same checks
+   * as a download. Used by the emulator test (LocalAsrDeviceTest).
+   */
+  static void installFrom(Context c, File src) throws IOException {
+    byte[] buf = new byte[1 << 16];
+    String[][] all = Arrays.copyOf(FILES, FILES.length + 1);
+    all[FILES.length] = VAD_FILE;
+    for (String[] f : all) {
+      File x = new File(src, f[0]);
+      if (!sized(x, f[1])) throw new UserError("Fichier du modèle absent ou incomplet : " + f[0]);
+      MessageDigest sha = sha256();
+      try (InputStream in = new java.io.FileInputStream(x)) { int n; while ((n = in.read(buf)) > 0) sha.update(buf, 0, n); }
+      if (!hex(sha.digest()).equals(f[2])) throw new UserError("Fichier du modèle corrompu : " + f[0]);
+    }
+    release();
+    File dest = dir(c);
+    deleteTree(dest);
+    File parent = dest.getParentFile();
+    if (parent != null && !parent.isDirectory()) parent.mkdirs();
+    if (!src.renameTo(dest)) throw new IOException("cannot move model into place");
+    try (OutputStream os = new FileOutputStream(marker(c))) { os.write(MODEL_ID.getBytes()); }
+  }
+
   /** Refuses phones that cannot hold the model, instead of letting Android kill the app. */
   static void checkMemory(Context c) throws UserError {
     ActivityManager am = (ActivityManager) c.getSystemService(Context.ACTIVITY_SERVICE);
