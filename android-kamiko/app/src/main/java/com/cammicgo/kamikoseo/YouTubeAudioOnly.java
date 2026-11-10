@@ -1,11 +1,6 @@
 package com.cammicgo.kamikoseo;
 
 import android.content.Context;
-import android.content.ContentValues;
-import android.os.Build;
-import android.os.Environment;
-import android.provider.MediaStore;
-import android.net.Uri;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.File;
@@ -33,7 +28,7 @@ final class YouTubeAudioOnly {
         try {
           if (!isGoogleVideoHost(new URL(stream.url).getHost())) continue;
           long bytes = fetchRanged(stream.url, temp, stream.userAgent);
-          String saved = saveToDownloads(context, temp, "YouTube-audio-" + videoId + stream.extension);
+          String saved = keepTemporary(context, temp, "YouTube-audio-" + videoId + stream.extension);
           JSONObject result = new JSONObject();
           result.put("savedTo", saved);
           result.put("videoId", videoId);
@@ -97,7 +92,7 @@ final class YouTubeAudioOnly {
         File temp = File.createTempFile("yt-audio-", extension, context.getCacheDir());
         try {
           long bytes = fetchAudio(format.optString("url"), temp, client);
-          String saved = saveToDownloads(context, temp, "YouTube-audio-" + videoId + extension);
+          String saved = keepTemporary(context, temp, "YouTube-audio-" + videoId + extension);
           JSONObject result = new JSONObject();
           result.put("savedTo", saved);
           result.put("videoId", videoId);
@@ -258,41 +253,44 @@ final class YouTubeAudioOnly {
     return normalized.equals("googlevideo.com") || normalized.endsWith(".googlevideo.com");
   }
 
-  private static String saveToDownloads(Context context, File file, String name) throws IOException {
-    if (Build.VERSION.SDK_INT < 29) {
-      File directory = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
-      if (directory == null) throw new IOException("Dossier de téléchargement indisponible");
-      File destination = new File(directory, name);
-      try (InputStream in = new java.io.FileInputStream(file);
-           FileOutputStream out = new FileOutputStream(destination)) {
+  /** Temporary audio folder inside the app cache: not visible in Downloads, removed by Android when space is low. */
+  static File tempAudioDir(Context context) {
+    return new File(context.getCacheDir(), "audio-temp");
+  }
+
+  /** Moves the downloaded file into the temporary folder; files older than 24 h and all but the 5 newest are removed. */
+  private static String keepTemporary(Context context, File file, String name) throws IOException {
+    File dir = tempAudioDir(context);
+    if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("Dossier audio temporaire indisponible");
+    purgeTemporary(dir, name);
+    File destination = new File(dir, name);
+    if (destination.exists() && !destination.delete()) throw new IOException("Ancien audio impossible à remplacer");
+    if (!file.renameTo(destination)) {
+      try (InputStream in = new java.io.FileInputStream(file); FileOutputStream out = new FileOutputStream(destination)) {
         byte[] buffer = new byte[32768]; int n;
         while ((n = in.read(buffer)) != -1) out.write(buffer, 0, n);
       }
-      return destination.getAbsolutePath();
     }
-    ContentValues values = new ContentValues();
-    values.put(MediaStore.Downloads.DISPLAY_NAME, name);
-    values.put(MediaStore.Downloads.MIME_TYPE, name.endsWith(".m4a") ? "audio/mp4" : "audio/webm");
-    values.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Kamiko");
-    values.put(MediaStore.Downloads.IS_PENDING, 1);
-    Uri uri = context.getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
-    if (uri == null) throw new IOException("Impossible de créer le fichier audio dans Téléchargements");
-    boolean success = false;
-    try {
-      try (InputStream in = new java.io.FileInputStream(file);
-           java.io.OutputStream out = context.getContentResolver().openOutputStream(uri)) {
-        if (out == null) throw new IOException("Impossible d'ouvrir le fichier de destination");
-        byte[] buffer = new byte[32768]; int n;
-        while ((n = in.read(buffer)) != -1) out.write(buffer, 0, n);
-      }
-      values.clear();
-      values.put(MediaStore.Downloads.IS_PENDING, 0);
-      context.getContentResolver().update(uri, values, null, null);
-      success = true;
-      return "Téléchargements/Kamiko/" + name;
-    } finally {
-      if (!success) context.getContentResolver().delete(uri, null, null);
+    return destination.getAbsolutePath();
+  }
+
+  private static void purgeTemporary(File dir, String keepName) {
+    File[] files = dir.listFiles();
+    if (files == null) return;
+    java.util.Arrays.sort(files, (x, y) -> Long.compare(y.lastModified(), x.lastModified()));
+    long cutoff = System.currentTimeMillis() - 24L * 3600L * 1000L;
+    int kept = 0;
+    for (File f : files) {
+      if (f.getName().equals(keepName)) continue;
+      if (f.lastModified() < cutoff || ++kept >= 5) f.delete();
     }
   }
+
+  /** Removes every temporary audio file (to call once the transcription is done). */
+  static void clearTemporary(Context context) {
+    File[] files = tempAudioDir(context).listFiles();
+    if (files != null) for (File f : files) f.delete();
+  }
+
 
 }
