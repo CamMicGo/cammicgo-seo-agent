@@ -15,6 +15,12 @@ copy() { # local file, path under files/bench
 for f in conv_frontend.onnx encoder.int8.onnx decoder.int8.onnx tokenizer/vocab.json tokenizer/merges.txt tokenizer/tokenizer_config.json; do copy "model/$f" "asr-model/$f"; done
 for f in fr.wav en.wav ref-fr.txt ref-en.txt; do copy "audio/$f" "asr-audio/$f"; done
 adb shell "run-as $PKG ls -lR files/bench" | head -30
+# Offline proof: no network at all while transcribing.
+adb shell svc wifi disable || true
+adb shell svc data disable || true
+adb shell cmd connectivity airplane-mode enable || true
+sleep 3
+adb shell "ping -c 1 -W 2 8.8.8.8" && echo "NETWORK STILL UP" || echo "NETWORK OFF"
 adb shell am instrument -w -r -e class $PKG.LocalAsrDeviceTest $PKG.test/androidx.test.runner.AndroidJUnitRunner | tee instrument.txt
 grep -E "ASR_[a-z_]+=" instrument.txt | sed 's/INSTRUMENTATION_STATUS: //' || true
 grep -q "^OK (" instrument.txt
