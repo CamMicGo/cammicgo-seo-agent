@@ -664,6 +664,23 @@ async function handler(req:NextRequest){
     const h=(n:string)=>msg.payload?.headers?.find(x=>x.name.toLowerCase()===n.toLowerCase())?.value??null;
     return asText({id:msg.id,from:h('From'),to:h('To'),subject:h('Subject'),date:h('Date'),attachments:files,text});
    });
+   server.registerTool('gmail_trash_messages',{annotations:{readOnlyHint:false,destructiveHint:true,openWorldHint:true},title:'Move Gmail messages to Trash',description:'Move explicitly selected Gmail messages to Trash (recoverable for about 30 days). Requires gmail.modify. First preview with confirm=false; execute only after the user explicitly confirms the exact messages. Never permanently delete.',inputSchema:z.object({messageIds:z.array(z.string().regex(/^[A-Za-z0-9]{6,40}$/)).min(1).max(50),confirm:z.boolean().default(false)})},async args=>{
+    const ids=[...new Set(args.messageIds)];
+    const previews=[];
+    for(const id of ids){
+     const msg=await googleRequest('https://gmail.googleapis.com/gmail/v1/users/me/messages/'+encodeURIComponent(id)+'?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date') as {id?:string;payload?:{headers?:Array<{name:string;value:string}>};error?:string};
+     if(msg.error)return asText({error:msg.error,messageId:id,details:msg});
+     const h=(n:string)=>msg.payload?.headers?.find(x=>x.name.toLowerCase()===n.toLowerCase())?.value??null;
+     previews.push({id,from:h('From'),subject:h('Subject'),date:h('Date')});
+    }
+    if(!args.confirm)return asText({preview:true,action:'move_to_trash',messages:previews,confirmationRequired:true,messageForUser:'Review the exact messages and explicitly confirm moving them to Trash before calling confirm=true.'});
+    const results=[];
+    for(const msg of previews){
+     const result=await googleRequest('https://gmail.googleapis.com/gmail/v1/users/me/messages/'+encodeURIComponent(msg.id)+'/trash',{method:'POST'}) as {id?:string;labelIds?:string[];error?:string};
+     results.push({...msg,success:!!result.id&&!result.error,error:result.error??null});
+    }
+    return asText({action:'move_to_trash',results,successCount:results.filter(r=>r.success).length});
+   });
    // ---------- Google Drive (read: drive.readonly · write: drive.file) ----------
    /** Authenticated Drive request for the signed-in user only; returns the raw Response or an error object for the agent. */
    // Drive uses two grants: the main Google connection (reading) and, if the user allowed it, a separate
