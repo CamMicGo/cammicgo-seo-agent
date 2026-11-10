@@ -234,7 +234,7 @@ public class RelayService extends Service {
       // Only use the audio fallback when a trusted relay job explicitly provides
       // a direct, authorized media URL. A YouTube watch URL is not downloadable audio.
       String audioUrl = job.optString("authorizedAudioUrl", "");
-      if (!"youtube".equals(mode) && job.optBoolean("audioAuthorized", false) && !audioUrl.isEmpty()) {
+      if (!"youtube".equals(mode)) {
         if (!LocalAsr.installed(this)) {
           msg += " ; transcription audio locale impossible : modèle Qwen3-ASR non installé.";
         } else {
@@ -242,8 +242,10 @@ public class RelayService extends Service {
           java.util.concurrent.atomic.AtomicBoolean cancelled = new java.util.concurrent.atomic.AtomicBoolean(false);
           TranscriptFetcher.Result fallbackResult = null;
           try {
-            fallbackResult = AuthorizedAudioFallback.transcribe(this, audioUrl, videoId,
-                getSharedPreferences("cammicgo_asr", MODE_PRIVATE).getInt("relayMaxMinutes", 90), cancelled);
+            int maxMinutes = getSharedPreferences("cammicgo_asr", MODE_PRIVATE).getInt("relayMaxMinutes", 90);
+            fallbackResult = job.optBoolean("audioAuthorized", false) && !audioUrl.isEmpty()
+                ? AuthorizedAudioFallback.transcribe(this, audioUrl, videoId, maxMinutes, cancelled)
+                : YouTubeAudio.transcribe(this, videoId, maxMinutes, cancelled);
             if (fallbackResult.segments.isEmpty()) throw new IOException("Transcription audio locale vide.");
             // Continue with the same MCP result-upload path as native captions.
             msg = null;
@@ -262,7 +264,7 @@ public class RelayService extends Service {
           }
         }
       }
-      if ("qwen".equals(mode) && audioUrl.isEmpty()) msg = "Qwen nécessite une URL HTTPS directe de fichier audio/vidéo autorisé.";
+
       RelayClient.sendError(token, id, msg);
       history(videoId, null, "failed", 0, firstLine(msg), agentName);
       status(I18n.t(this, "fail_for", videoId, firstLine(msg)));
