@@ -796,6 +796,29 @@ public class MainActivity extends Activity {
       public void afterTextChanged(Editable e) { ui.removeCallbacks(loadLanguages); ui.postDelayed(loadLanguages, 600); }
     });
     runButton.setOnClickListener(v -> extract());
+    Button audioButton = secondary("Télécharger l'audio YouTube (test)");
+    c.addView(audioButton, gapTop(10));
+    TextView audioStatus = text(c, "Audio uniquement, sans transcription ni modèle IA.", 12, MUTED, false);
+    audioButton.setOnClickListener(v -> {
+      String videoId = TranscriptFetcher.videoId(urlInput.getText().toString());
+      if (videoId == null) {
+        audioStatus.setText("URL YouTube invalide.");
+        return;
+      }
+      audioButton.setEnabled(false);
+      audioStatus.setText("Téléchargement audio en cours…");
+      worker.execute(() -> {
+        try {
+          JSONObject result = YouTubeAudioOnly.probeAndDownload(this, videoId);
+          ui.post(() -> audioStatus.setText("Test réussi : " + result.optLong("audioBytes") + " octets téléchargés (cache effacé)."));
+        } catch (Exception error) {
+          ui.post(() -> audioStatus.setText("Échec audio : " + error.getMessage()));
+        } finally {
+          ui.post(() -> audioButton.setEnabled(true));
+        }
+      });
+    });
+
 
     resultCard = card(root);
     resultCard.setVisibility(View.GONE);
