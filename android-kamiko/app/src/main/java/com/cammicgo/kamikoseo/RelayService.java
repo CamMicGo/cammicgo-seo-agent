@@ -197,7 +197,9 @@ public class RelayService extends Service {
     status(I18n.t(this, "working", videoId));
     current(videoId);
     TranscriptFetcher.Result r;
+    String mode = job.optString("transcriptionMode", "auto");
     try {
+      if ("qwen".equals(mode)) throw new IOException("Transcription Qwen demandée");
       r = TranscriptFetcher.fetch(videoId, lang);
     } catch (IOException e) {
       String msg = e.getMessage() == null ? "" : e.getMessage();
@@ -232,7 +234,7 @@ public class RelayService extends Service {
       // Only use the audio fallback when a trusted relay job explicitly provides
       // a direct, authorized media URL. A YouTube watch URL is not downloadable audio.
       String audioUrl = job.optString("authorizedAudioUrl", "");
-      if (job.optBoolean("audioAuthorized", false) && !audioUrl.isEmpty()) {
+      if (!"youtube".equals(mode) && job.optBoolean("audioAuthorized", false) && !audioUrl.isEmpty()) {
         if (!LocalAsr.installed(this)) {
           msg += " ; transcription audio locale impossible : modèle Qwen3-ASR non installé.";
         } else {
@@ -260,6 +262,7 @@ public class RelayService extends Service {
           }
         }
       }
+      if ("qwen".equals(mode) && audioUrl.isEmpty()) msg = "Qwen nécessite une URL HTTPS directe de fichier audio/vidéo autorisé.";
       RelayClient.sendError(token, id, msg);
       history(videoId, null, "failed", 0, firstLine(msg), agentName);
       status(I18n.t(this, "fail_for", videoId, firstLine(msg)));
