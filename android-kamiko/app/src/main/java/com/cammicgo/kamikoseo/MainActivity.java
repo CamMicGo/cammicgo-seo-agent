@@ -72,8 +72,6 @@ public class MainActivity extends Activity {
       AMBER = Color.rgb(217, 119, 6), RED = Color.rgb(200, 50, 50), GREY = Color.rgb(170, 180, 200);
   static final int EXPORT_REQUEST = 41;
   static final int LINKEDIN_FILE_REQUEST = 42;
-  static final int ASR_PICK_REQUEST = 44;
-  private static final int[] ASR_MINUTES = {30, 60, 90, 180};
   static final String[] TABS = {"tab_assistant", "tab_extract", "NotebookLM", "LinkedIn", "tab_help"};
 
   private final ExecutorService worker = Executors.newSingleThreadExecutor();
@@ -182,16 +180,10 @@ public class MainActivity extends Activity {
   private String tracksFor;
   private final Runnable loadLanguages = this::loadLanguages;
   private TranscriptFetcher.Result last;
-  // Local speech recognition (Qwen3-ASR)
-  private TextView asrStatus, asrProgress;
-  private Button asrDownload, asrDelete, asrPick, asrCancel;
-  private Spinner asrLang, asrMax;
-  private android.widget.CheckBox asrOffer;
-  private long asrShownSerial;
   private String pendingExport;
 
   private final Runnable refresher = new Runnable() {
-    @Override public void run() { recoverRelayIfNeeded(); refreshRelay(); refreshAsr(); ui.postDelayed(this, 1500); }
+    @Override public void run() { recoverRelayIfNeeded(); refreshRelay(); ui.postDelayed(this, 1500); }
   };
 
   private String t(String key, Object... args) { return I18n.t(this, key, args); }
@@ -858,149 +850,10 @@ public class MainActivity extends Activity {
       if (last == null) return;
       Intent send = new Intent(Intent.ACTION_SEND);
       send.setType("text/plain");
-      send.putExtra(Intent.EXTRA_SUBJECT, last.videoId != null ? t("share_subject", last.videoId) : String.valueOf(last.title));
+      send.putExtra(Intent.EXTRA_SUBJECT, t("share_subject", last.videoId));
       send.putExtra(Intent.EXTRA_TEXT, TranscriptFetcher.toText(last));
       startActivity(Intent.createChooser(send, t("share_title")));
     });
-    buildAsrCard(root);
-  }
-
-  // ---------- local speech recognition (Qwen3-ASR, on the phone) ----------
-  private SharedPreferences asrPrefs() { return getSharedPreferences("cammicgo_asr", MODE_PRIVATE); }
-
-  private void buildAsrCard(LinearLayout root) {
-    section(root, t("asr_title"));
-    LinearLayout c = card(root);
-    TextView sub = text(c, t("asr_sub"), 13, MUTED, false);
-    sub.setPadding(0, dp(4), 0, dp(10));
-    asrStatus = text(c, "", 13, INK, true);
-    LinearLayout row = new LinearLayout(this);
-    asrDownload = secondary(t("asr_download", LocalAsr.size(LocalAsr.DOWNLOAD_BYTES)));
-    asrDelete = flat(t("asr_delete"), RED);
-    row.addView(asrDownload, new LinearLayout.LayoutParams(0, -2, 1));
-    LinearLayout.LayoutParams del = new LinearLayout.LayoutParams(-2, -2);
-    del.leftMargin = dp(8);
-    row.addView(asrDelete, del);
-    c.addView(row, gapTop(8));
-
-    TextView lt = text(c, t("asr_lang"), 13, INK, true);
-    lt.setPadding(dp(2), dp(12), 0, dp(6));
-    java.util.List<String> langs = new java.util.ArrayList<>();
-    langs.add(t("asr_lang_auto"));
-    java.util.Collections.addAll(langs, I18n.NAMES);
-    asrLang = spinner(c, langs, asrPrefs().getInt("lang", 0), v -> asrPrefs().edit().putInt("lang", v).apply());
-    TextView mt = text(c, t("asr_max"), 13, INK, true);
-    mt.setPadding(dp(2), dp(12), 0, dp(6));
-    java.util.List<String> mins = new java.util.ArrayList<>();
-    for (int m : ASR_MINUTES) mins.add(t("asr_minutes", m));
-    asrMax = spinner(c, mins, asrPrefs().getInt("max", 2), v -> asrPrefs().edit().putInt("max", v).apply());
-
-    asrOffer = new android.widget.CheckBox(this);
-    asrOffer.setText(t("asr_offer"));
-    asrOffer.setTextColor(INK);
-    asrOffer.setChecked(asrPrefs().getBoolean("offer", true));
-    asrOffer.setOnCheckedChangeListener((b, on) -> asrPrefs().edit().putBoolean("offer", on).apply());
-    c.addView(asrOffer, gapTop(8));
-
-    asrPick = primary(t("asr_pick"));
-    c.addView(asrPick, gapTop(12));
-    asrProgress = text(c, "", 13, MUTED, false);
-    asrProgress.setPadding(dp(2), dp(8), 0, 0);
-    asrCancel = flat(t("asr_cancel"), RED);
-    c.addView(asrCancel, gapTop(4));
-
-    asrDownload.setOnClickListener(v -> new AlertDialog.Builder(this)
-        .setTitle(t("asr_confirm_title"))
-        .setMessage(t("asr_confirm_body", LocalAsr.size(LocalAsr.DOWNLOAD_BYTES), LocalAsr.size(LocalAsr.INSTALLED_BYTES)))
-        .setPositiveButton(t("asr_download", LocalAsr.size(LocalAsr.DOWNLOAD_BYTES)), (d, w) -> {
-          if (TranscribeService.busy()) { Toast.makeText(this, t("asr_busy"), Toast.LENGTH_SHORT).show(); return; }
-          askNotifications();
-          TranscribeService.download(this);
-          ui.postDelayed(this::refreshAsr, 300);
-        })
-        .setNegativeButton(t("asr_cancel"), null).show());
-    asrDelete.setOnClickListener(v -> new AlertDialog.Builder(this)
-        .setMessage(t("asr_delete_confirm", LocalAsr.size(LocalAsr.INSTALLED_BYTES)))
-        .setPositiveButton(t("asr_delete"), (d, w) -> worker.execute(() -> { LocalAsr.delete(this); runOnUiThread(this::refreshAsr); }))
-        .setNegativeButton(t("asr_cancel"), null).show());
-    asrPick.setOnClickListener(v -> {
-      if (TranscribeService.busy()) { Toast.makeText(this, t("asr_busy"), Toast.LENGTH_SHORT).show(); return; }
-      if (!LocalAsr.installed(this)) { Toast.makeText(this, t("asr_need_model"), Toast.LENGTH_LONG).show(); return; }
-      Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-      i.addCategory(Intent.CATEGORY_OPENABLE);
-      i.setType("*/*");
-      i.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"audio/*", "video/*"});
-      try { startActivityForResult(i, ASR_PICK_REQUEST); } catch (Exception e) { Toast.makeText(this, t("no_file_mgr"), Toast.LENGTH_LONG).show(); }
-    });
-    asrCancel.setOnClickListener(v -> TranscribeService.cancel(this));
-    refreshAsr();
-  }
-
-  private Spinner spinner(LinearLayout parent, java.util.List<String> items, int selected, java.util.function.IntConsumer onPick) {
-    Spinner sp = new Spinner(this);
-    sp.setBackground(shape(FIELD, 14, LINE));
-    sp.setPadding(dp(6), dp(4), dp(6), dp(4));
-    ArrayAdapter<String> a = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, items);
-    a.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-    sp.setAdapter(a);
-    sp.setSelection(Math.max(0, Math.min(items.size() - 1, selected)));
-    sp.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
-      @Override public void onItemSelected(android.widget.AdapterView<?> p, View v, int pos, long id) { onPick.accept(pos); }
-      @Override public void onNothingSelected(android.widget.AdapterView<?> p) {}
-    });
-    parent.addView(sp, new LinearLayout.LayoutParams(-1, dp(48)));
-    return sp;
-  }
-
-  private void askNotifications() {
-    if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != android.content.pm.PackageManager.PERMISSION_GRANTED)
-      requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 45);
-  }
-
-  private void refreshAsr() {
-    if (asrStatus == null) return;
-    TranscribeService.State st = TranscribeService.state;
-    boolean busy = st.job != null, installed = LocalAsr.installed(this);
-    String pct = st.fraction >= 0 ? Math.round(st.fraction * 100) + " % · " : "";
-    if ("download".equals(st.job)) { asrStatus.setText(t("asr_state_downloading", pct + st.detail)); asrStatus.setTextColor(BLUE); }
-    else if (installed) { asrStatus.setText(t("asr_state_ready", LocalAsr.size(LocalAsr.INSTALLED_BYTES))); asrStatus.setTextColor(GREEN); }
-    else { asrStatus.setText(t("asr_state_none")); asrStatus.setTextColor(MUTED); }
-    asrDownload.setVisibility(installed || busy ? View.GONE : View.VISIBLE);
-    asrDelete.setVisibility(installed && !busy ? View.VISIBLE : View.GONE);
-    asrPick.setEnabled(installed && !busy);
-    asrPick.setAlpha(installed && !busy ? 1f : 0.5f);
-    asrCancel.setVisibility(busy ? View.VISIBLE : View.GONE);
-    if ("transcribe".equals(st.job)) asrProgress.setText(t("asr_running", pct + st.detail));
-    else if (st.errorKey != null) asrProgress.setText(t(st.errorKey, st.errorArgs));
-    else if (st.errorText != null) asrProgress.setText(t("asr_error", st.errorText));
-    else if (st.cancelled) asrProgress.setText(t("asr_cancelled"));
-    else if (!busy) asrProgress.setText("");
-    asrProgress.setTextColor(st.errorKey != null || st.errorText != null ? RED : MUTED);
-    if (st.result != null && st.resultSerial != asrShownSerial) { asrShownSerial = st.resultSerial; showLocalTranscript(st.result); }
-  }
-
-  private void showLocalTranscript(TranscriptFetcher.Result r) {
-    last = r;
-    resultCard.setVisibility(View.VISIBLE);
-    String lang = r.languageForced ? t("asr_lang_forced", r.languageName) : t("asr_lang_detected", r.languageName);
-    long secs = Math.max(1, Math.round(r.processingMs / 1000.0));
-    String took = secs >= 60 ? (secs / 60) + " min " + (secs % 60) + " s" : secs + " s";
-    resultMeta.setText((r.title == null ? "" : r.title + "\n") + t("asr_done_meta", lang, TranscriptFetcher.clock(r.durationSeconds), took)
-        + (r.truncated ? "\n" + t("asr_truncated") : "") + " · " + t("segments", r.segments.size()));
-    output.setText(styled(r));
-    resultCard.requestFocus();
-  }
-
-  private void startLocalTranscription(Uri uri) {
-    try { getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (SecurityException ignored) {}
-    String name = uri.getLastPathSegment();
-    try (android.database.Cursor cur = getContentResolver().query(uri, new String[]{android.provider.OpenableColumns.DISPLAY_NAME}, null, null, null)) {
-      if (cur != null && cur.moveToFirst()) name = cur.getString(0);
-    } catch (Exception ignored) {}
-    askNotifications();
-    int max = ASR_MINUTES[Math.max(0, Math.min(ASR_MINUTES.length - 1, asrPrefs().getInt("max", 2)))];
-    TranscribeService.transcribe(this, uri, name, asrPrefs().getInt("lang", 0) - 1, max);
-    ui.postDelayed(this::refreshAsr, 300);
   }
 
 
@@ -2966,7 +2819,7 @@ public class MainActivity extends Activity {
 
   private void export(int kind) {
     if (last == null) return;
-    String id = last.videoId != null ? last.videoId : (last.title == null ? "audio" : last.title.replaceAll("\\.[A-Za-z0-9]{2,5}$", "").replaceAll("[^\\p{L}\\p{N}._-]+", "_")), lang = last.language;
+    String id = last.videoId, lang = last.language;
     switch (kind) {
       case 0: save(TranscriptFetcher.toSrt(last), "application/x-subrip", id + "." + lang + ".srt"); break;
       case 1: save(TranscriptFetcher.toVtt(last), "text/vtt", id + "." + lang + ".vtt"); break;
@@ -2999,7 +2852,7 @@ public class MainActivity extends Activity {
         last = done;
         if (done == null) {
           resultMeta.setText(t("extract_failed"));
-          output.setText(err + "\n\n" + t("check_public") + (asrPrefs().getBoolean("offer", true) ? "\n\n" + t("asr_captions_missing") : ""));
+          output.setText(err + "\n\n" + t("check_public"));
           return;
         }
         resultMeta.setText((done.title != null ? done.title + "\n" : "") + done.languageName + (done.autoGenerated ? " · " + t("auto_generated") : "") + " · " + t("segments", done.segments.size()));
@@ -3077,10 +2930,6 @@ public class MainActivity extends Activity {
         linkedinFileCallback.onReceiveValue(selected);
         linkedinFileCallback = null;
       }
-      return;
-    }
-    if (requestCode == ASR_PICK_REQUEST) {
-      if (resultCode == RESULT_OK && data != null && data.getData() != null) startLocalTranscription(data.getData());
       return;
     }
     if (requestCode != EXPORT_REQUEST || resultCode != RESULT_OK || data == null || data.getData() == null || pendingExport == null) return;

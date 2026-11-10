@@ -17,9 +17,7 @@ export function transcriptText(segments:Array<{start:number;text:string}>){
 /** Shapes a stored transcript for the MCP: compact text by default, raw segments on request. */
 export function formatTranscript(result:unknown,format:'text'|'segments'){
  if(!result||typeof result!=='object')return result;
- // Provenance: devices that predate the field only ever sent YouTube caption tracks.
- const withSource={source:'youtube_captions',...(result as Record<string,unknown>)};
- const r=withSource as {segments?:Array<{start:number;duration:number;text:string}>}&Record<string,unknown>;
+ const r=result as {segments?:Array<{start:number;duration:number;text:string}>}&Record<string,unknown>;
  if(format==='segments'||!Array.isArray(r.segments))return r;
  const {segments,...rest}=r;
  return {...rest,segmentCount:segments.length,durationCovered:segments.length?transcriptText([segments[segments.length-1]]).slice(1,-1).split(']')[0]:null,transcript:transcriptText(segments)};
