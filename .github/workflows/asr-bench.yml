@@ -1,0 +1,60 @@
+name: Local ASR device test (Whisper small int8)
+on:
+  workflow_dispatch:
+  push:
+    branches-ignore: [main]
+    paths: [benchmarks/asr/**, .github/workflows/asr-bench.yml, android-kamiko/app/src/main/java/com/cammicgo/kamikoseo/LocalAsr.java, android-kamiko/app/src/main/java/com/cammicgo/kamikoseo/WhisperCleanup.java, android-kamiko/app/src/main/java/com/cammicgo/kamikoseo/AudioDecoder.java, android-kamiko/app/src/androidTest/**]
+permissions: {contents: read}
+jobs:
+  android-device:
+    # Emulator (x86_64, 4 GB), real model, real MediaCodec AAC decoding, no network while transcribing.
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Model (cached)
+        id: model
+        uses: actions/cache@v4
+        with: {path: model, key: whisper-small-int8-silero-v1}
+      - name: Download model
+        if: steps.model.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL -o m.tar.bz2 https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-small.tar.bz2
+          mkdir model && tar -xjf m.tar.bz2 -C model --strip-components=1 --wildcards '*int8.onnx' '*tokens.txt' && rm m.tar.bz2
+          curl -fsSL -o model/silero_vad.onnx https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx
+          ls -l model && sha256sum model/*
+      - name: Test recordings (TTS, ~5 min each, AAC like the YouTube audio)
+        run: |
+          sudo apt-get install -y -qq ffmpeg >/dev/null
+          pip install -q supertonic soundfile numpy
+          python benchmarks/asr/make_audio.py audio
+          for l in fr en; do ffmpeg -v error -y -i audio/$l.wav -c:a aac -b:a 64k audio/$l.m4a; done
+          ls -l audio
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - name: Install Android SDK packages
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.9'}
+      - name: Build app and device test
+        working-directory: android-kamiko
+        run: gradle :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 31
+          arch: x86_64
+          target: google_apis
+          ram-size: 4096M
+          disk-size: 6G
+          cores: 4
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          disable-animations: true
+          script: bash benchmarks/asr/emulator.sh

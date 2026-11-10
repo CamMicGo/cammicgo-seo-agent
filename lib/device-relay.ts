@@ -14,12 +14,24 @@ export const MAX_RESULT_SEGMENTS=20000;
 export function transcriptText(segments:Array<{start:number;text:string}>){
  return segments.map(s=>{const t=Math.floor(s.start),h=Math.floor(t/3600),m=Math.floor(t%3600/60),sec=t%60;const p=(n:number)=>String(n).padStart(2,'0');return '['+(h?h+':'+p(m):p(m))+':'+p(sec)+'] '+s.text}).join('\n');
 }
-/** Shapes a stored transcript for the MCP: compact text by default, raw segments on request. */
-export function formatTranscript(result:unknown,format:'text'|'segments'){
+/** Guidance for the assistant when the device transcribed the audio itself (no YouTube captions). */
+export const LOCAL_ASR_GUIDANCE='No YouTube captions exist for this video: this text comes from speech recognition on the user\'s phone (approximate, can mishear words, names and sung parts). Keep the [mm:ss] timestamps (start of each voice segment, up to 20 s). You may correct obvious recognition errors using context and the video metadata (title, channel, description), and say which passages you corrected or could not verify. Never present it as official captions. format=srt returns subtitle cues.';
+const srtTime=(s:number)=>{const ms=Math.max(0,Math.round(s*1000)),h=Math.floor(ms/3_600_000),m=Math.floor(ms%3_600_000/60_000),sec=Math.floor(ms%60_000/1000),r=ms%1000;const p=(n:number,w=2)=>String(n).padStart(w,'0');return p(h)+':'+p(m)+':'+p(sec)+','+p(r,3)};
+/** SubRip cues; a cue without duration ends at the next one (or 3 s later). */
+export function transcriptSrt(segments:Array<{start:number;duration?:number;text:string}>){
+ return segments.map((s,i)=>{const next=segments[i+1]?.start;const end=s.duration&&s.duration>0?s.start+s.duration:next&&next>s.start?next:s.start+3;
+  return (i+1)+'\n'+srtTime(s.start)+' --> '+srtTime(end)+'\n'+s.text.replace(/\s*\n\s*/g,' ').trim()+'\n'}).join('\n');
+}
+/** Shapes a stored transcript for the MCP: compact text by default, raw segments or SRT on request. */
+export function formatTranscript(result:unknown,format:'text'|'segments'|'srt'){
  if(!result||typeof result!=='object')return result;
- const r=result as {segments?:Array<{start:number;duration:number;text:string}>}&Record<string,unknown>;
+ // Provenance: devices that predate the field only ever sent YouTube caption tracks.
+ const withSource={source:'youtube_captions',...(result as Record<string,unknown>)};
+ if(withSource.source==='local_asr')Object.assign(withSource,{guidance:LOCAL_ASR_GUIDANCE});
+ const r=withSource as {segments?:Array<{start:number;duration:number;text:string}>}&Record<string,unknown>;
  if(format==='segments'||!Array.isArray(r.segments))return r;
  const {segments,...rest}=r;
+ if(format==='srt')return {...rest,segmentCount:segments.length,srt:transcriptSrt(segments)};
  return {...rest,segmentCount:segments.length,durationCovered:segments.length?transcriptText([segments[segments.length-1]]).slice(1,-1).split(']')[0]:null,transcript:transcriptText(segments)};
 }
 
@@ -134,6 +146,27 @@ export async function releaseJob(device:Device,jobId:string){
  const rows=await sb<Job[]>('/rest/v1/cmg_transcript_jobs?id=eq.'+jobId+'&device_id=eq.'+device.id+'&status=eq.claimed',{method:'PATCH',body:JSON.stringify({status:'pending',device_id:null,claimed_at:null}),prefer:'return=representation'});
  return rows.length>0;
 }
+/** Long work on a claimed job (speech recognition on the phone): renews the claim, keeps the job alive
+ * at least 10 more minutes and records progress, shown by youtube_transcript_status. */
+export async function progressJob(device:Device,jobId:string,progress:unknown){
+ if(!/^[0-9a-f-]{36}$/i.test(jobId))return false;
+ const p=progress&&typeof progress==='object'?progress as Record<string,unknown>:{};
+ const phase=p.phase==='audio'?'audio':'transcription';
+ const percent=Number.isFinite(Number(p.percent))?Math.max(-1,Math.min(100,Math.round(Number(p.percent)))):-1;
+ const rows=await sb<Job[]>('/rest/v1/cmg_transcript_jobs?id=eq.'+jobId+'&device_id=eq.'+device.id+'&status=eq.claimed&select=expires_at');
+ if(!rows.length)return false;
+ const expires=new Date(Math.max(Date.parse(rows[0].expires_at)||0,Date.now()+10*60_000)).toISOString();
+ const updated=await sb<Job[]>('/rest/v1/cmg_transcript_jobs?id=eq.'+jobId+'&device_id=eq.'+device.id+'&status=eq.claimed',{method:'PATCH',
+  body:JSON.stringify({claimed_at:nowIso(),expires_at:expires,result:{progress:{phase,percent,at:nowIso()}}}),prefer:'return=representation'});
+ return updated.length>0;
+}
+/** Progress recorded by progressJob, if any. */
+export function jobProgress(job:Pick<Job,'status'|'result'>){
+ if(job.status!=='claimed'||!job.result||typeof job.result!=='object')return null;
+ const p=(job.result as {progress?:{phase?:string;percent?:number;at?:string}}).progress;
+ return p&&typeof p==='object'?{phase:p.phase==='audio'?'audio':'transcription',percent:typeof p.percent==='number'?p.percent:-1,at:p.at??null}:null;
+}
+
 /** Stores a device answer for a job it claimed. */
 export async function completeJob(device:Device,jobId:string,outcome:{result?:unknown;error?:string}){
  if(!/^[0-9a-f-]{36}$/i.test(jobId))return false;
@@ -156,7 +189,13 @@ export function sanitizeDeviceResult(input:unknown,videoId:string){
  });
  if(!segments.length)return null;
  const str=(v:unknown,max=80)=>typeof v==='string'?v.slice(0,max):undefined;
- return {videoId,method:typeof r.method==='string'&&r.method.startsWith('desktop')?'desktop-device':'android-device',title:str(r.title,200),language:str(r.language,12),languageName:str(r.languageName),isAutoGenerated:r.isAutoGenerated===true,translatedFrom:str(r.translatedFrom,12),
+ const local=r.source==='local_asr';
+ const provenance=local?{source:'local_asr',model:str(r.model,40),status:r.status==='truncated'?'truncated':'complete',
+  processingSeconds:Number.isFinite(Number(r.processingSeconds))?Math.round(Number(r.processingSeconds)):undefined,
+  languagesDetected:Array.isArray(r.languagesDetected)?r.languagesDetected.filter(x=>typeof x==='string'&&/^[a-z]{2,3}$/.test(x)).slice(0,12):[],
+  languageHint:typeof r.languageHint==='string'&&/^[a-z]{2,3}$/.test(r.languageHint)?r.languageHint:undefined,
+  durationSeconds:Number.isFinite(Number(r.durationSeconds))&&Number(r.durationSeconds)>=0?Math.round(Number(r.durationSeconds)):undefined}:{source:'youtube_captions'};
+ return {videoId,...provenance,method:local?'android-device-local-asr':typeof r.method==='string'&&r.method.startsWith('desktop')?'desktop-device':'android-device',title:str(r.title,200),language:str(r.language,12),languageName:str(r.languageName),isAutoGenerated:r.isAutoGenerated===true,translatedFrom:str(r.translatedFrom,12),
   availableLanguages:Array.isArray(r.availableLanguages)?r.availableLanguages.filter(x=>typeof x==='string').slice(0,60).map(x=>(x as string).slice(0,12)):[],
   segments,truncated:r.segments.length>MAX_RESULT_SEGMENTS};
 }

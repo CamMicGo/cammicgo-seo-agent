@@ -76,6 +76,12 @@ public final class RelayClient {
 
 
   /** Puts a claimed job back in the queue so it is retried later. */
+  /** Long local work on a claimed job (speech recognition): keeps the claim and reports progress. */
+  public static void progress(String token, String jobId, String phase, int percent) throws IOException {
+    request("POST", "/api/devices/jobs/" + jobId, token, "{\"progress\":{\"phase\":\"" + ("audio".equals(phase) ? "audio" : "transcription")
+        + "\",\"percent\":" + Math.max(-1, Math.min(100, percent)) + "}}");
+  }
+
   public static void release(String token, String jobId) throws IOException {
     request("POST", "/api/devices/jobs/" + jobId, token, "{\"release\":true}");
   }

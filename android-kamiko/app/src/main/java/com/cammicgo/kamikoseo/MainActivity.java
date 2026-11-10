@@ -796,6 +796,92 @@ public class MainActivity extends Activity {
       public void afterTextChanged(Editable e) { ui.removeCallbacks(loadLanguages); ui.postDelayed(loadLanguages, 600); }
     });
     runButton.setOnClickListener(v -> extract());
+    Button audioButton = secondary("Télécharger l'audio YouTube (test)");
+    c.addView(audioButton, gapTop(10));
+    TextView audioStatus = text(c, "Audio uniquement, gardé temporairement dans l'app (24 h max).", 12, MUTED, false);
+    Button audioShare = secondary("Partager l'audio (test)");
+    audioShare.setVisibility(View.GONE);
+    c.addView(audioShare, gapTop(6));
+    final String[] lastAudio = {null};
+    audioShare.setOnClickListener(v -> {
+      if (lastAudio[0] == null) return;
+      java.io.File file = new java.io.File(lastAudio[0]);
+      if (!file.isFile()) { audioStatus.setText("L'audio temporaire a été supprimé, relance le téléchargement."); audioShare.setVisibility(View.GONE); return; }
+      try {
+        Uri uri = androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", file);
+        Intent send = new Intent(Intent.ACTION_SEND).setType(file.getName().endsWith(".m4a") ? "audio/mp4" : "audio/webm")
+            .putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        startActivity(Intent.createChooser(send, "Partager l'audio"));
+      } catch (Exception error) {
+        audioStatus.setText("Partage impossible : " + error.getMessage());
+      }
+    });
+    audioButton.setOnClickListener(v -> {
+      String videoId = TranscriptFetcher.videoId(urlInput.getText().toString());
+      if (videoId == null) {
+        audioStatus.setText("URL YouTube invalide.");
+        return;
+      }
+      audioButton.setEnabled(false);
+      audioStatus.setText("Téléchargement audio en cours…");
+      worker.execute(() -> {
+        try {
+          JSONObject result = YouTubeAudioOnly.probeAndDownload(this, videoId);
+          lastAudio[0] = result.optString("savedTo");
+          ui.post(() -> {
+            audioStatus.setText("Audio prêt (temporaire, " + (result.optLong("audioBytes") / 1024) + " Ko, " + result.optString("mime") + ").");
+            audioShare.setVisibility(View.VISIBLE);
+          });
+        } catch (Exception error) {
+          ui.post(() -> audioStatus.setText("Échec audio : " + error.getMessage()));
+        } finally {
+          ui.post(() -> audioButton.setEnabled(true));
+        }
+      });
+    });
+
+    // Local speech recognition for videos without captions (Whisper small, on this phone).
+    TextView asrTitle = text(c, "Transcription locale (vidéos sans sous-titres)", 14, INK, true);
+    asrTitle.setPadding(0, dp(16), 0, dp(4));
+    TextView asrStatus = text(c, "", 12, MUTED, false);
+    Button asrButton = secondary("");
+    c.addView(asrButton, gapTop(6));
+    android.widget.CheckBox asrToggle = new android.widget.CheckBox(this);
+    asrToggle.setText("Utiliser automatiquement quand une vidéo n'a pas de sous-titres (aussi pour ChatGPT / Claude)");
+    asrToggle.setTextSize(12);
+    asrToggle.setChecked(RelayClient.prefs(this).getBoolean(LocalAsr.PREF_FALLBACK, true));
+    asrToggle.setOnCheckedChangeListener((b, on) -> RelayClient.prefs(this).edit().putBoolean(LocalAsr.PREF_FALLBACK, on).apply());
+    c.addView(asrToggle, gapTop(4));
+    final java.util.concurrent.atomic.AtomicBoolean asrCancel = new java.util.concurrent.atomic.AtomicBoolean(false);
+    final boolean[] asrBusy = {false};
+    Runnable asrRefresh = () -> {
+      boolean ok = LocalAsr.installed(this);
+      asrToggle.setVisibility(ok ? View.VISIBLE : View.GONE);
+      if (asrBusy[0]) { asrButton.setText("Annuler le téléchargement"); return; }
+      asrButton.setText(ok ? "Supprimer le modèle" : "Télécharger le modèle (" + LocalAsr.size(LocalAsr.DOWNLOAD_BYTES) + ", Wi-Fi conseillé)");
+      asrStatus.setText(ok ? LocalAsr.MODEL_LABEL + " installé (" + LocalAsr.size(LocalAsr.INSTALLED_BYTES) + "). Les vidéos sans sous-titres sont transcrites sur ce téléphone, l'audio temporaire est supprimé ensuite."
+          : "Modèle " + LocalAsr.MODEL_LABEL + " : 99 langues, mélange de langues accepté. Le texte est approximatif et horodaté ; l'audio ne quitte pas le téléphone.");
+    };
+    asrRefresh.run();
+    asrButton.setOnClickListener(v -> {
+      if (asrBusy[0]) { asrCancel.set(true); return; }
+      if (LocalAsr.installed(this)) { LocalAsr.delete(this); asrRefresh.run(); return; }
+      asrBusy[0] = true; asrCancel.set(false); asrRefresh.run();
+      asrStatus.setText("Téléchargement du modèle…");
+      new Thread(() -> {
+        String done;
+        try {
+          LocalAsr.download(this, (got, total) -> ui.post(() -> asrStatus.setText("Téléchargement du modèle : "
+              + (total > 0 ? (got * 100 / total) + " %" : LocalAsr.size(got)))), asrCancel);
+          done = null;
+        } catch (Exception e) {
+          done = asrCancel.get() ? "Téléchargement annulé." : "Échec : " + e.getMessage();
+        }
+        final String msg = done;
+        ui.post(() -> { asrBusy[0] = false; asrRefresh.run(); if (msg != null) asrStatus.setText(msg); });
+      }, "asr-download").start();
+    });
+
 
     resultCard = card(root);
     resultCard.setVisibility(View.GONE);
@@ -2843,6 +2929,17 @@ public class MainActivity extends Activity {
     worker.execute(() -> {
       TranscriptFetcher.Result result = null; String error = null;
       try { result = TranscriptFetcher.fetch(id, lang); } catch (Exception e) { error = e.getMessage(); }
+      if (result == null && LocalAsr.noCaptions(error) && LocalAsr.fallbackEnabled(this)) {
+        // No captions: temporary audio + Whisper small on the phone.
+        try {
+          result = LocalAsr.transcribeVideo(this, id, "original".equals(lang) ? null : lang, new java.util.concurrent.atomic.AtomicBoolean(false),
+              (phase, percent) -> runOnUiThread(() -> runButton.setText("audio".equals(phase) ? "Pas de sous-titres : audio…"
+                  : "Transcription locale" + (percent >= 0 ? " " + percent + " %" : "…"))));
+          error = null;
+        } catch (Exception e) {
+          error = error + "\nTranscription locale impossible : " + e.getMessage();
+        }
+      }
       final TranscriptFetcher.Result done = result; final String err = error;
       runOnUiThread(() -> {
         if (isFinishing()) return;
@@ -2855,6 +2952,12 @@ public class MainActivity extends Activity {
           output.setText(err + "\n\n" + t("check_public"));
           return;
         }
+        if ("local_asr".equals(done.source)) {
+          resultMeta.setText((done.title != null ? done.title + "\n" : "") + "Pas de sous-titres YouTube : transcription locale " + LocalAsr.MODEL_LABEL
+              + " · langues : " + (done.languagesDetected.isEmpty() ? "?" : android.text.TextUtils.join(", ", done.languagesDetected))
+              + " · " + t("segments", done.segments.size()) + "\nCalcul : " + Math.round(done.processingMs / 1000.0) + " s pour "
+              + done.durationSeconds + " s d'audio. Texte approximatif.");
+        } else
         resultMeta.setText((done.title != null ? done.title + "\n" : "") + done.languageName + (done.autoGenerated ? " · " + t("auto_generated") : "") + " · " + t("segments", done.segments.size()));
         output.setText(styled(done));
       });

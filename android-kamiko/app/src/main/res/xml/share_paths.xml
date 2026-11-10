@@ -1,2 +1,2 @@
 <?xml version="1.0" encoding="utf-8"?>
-<paths xmlns:android="http://schemas.android.com/apk/res/android"><cache-path name="linkedin-images" path="linkedin-shared/"/></paths>
+<paths xmlns:android="http://schemas.android.com/apk/res/android"><cache-path name="linkedin-images" path="linkedin-shared/"/><cache-path name="audio-temp" path="audio-temp/"/></paths>
