@@ -139,6 +139,28 @@ final class LocalAsr {
     try (OutputStream os = new FileOutputStream(marker(c))) { os.write(MODEL_ID.getBytes()); }
   }
 
+  /**
+   * Installs model files that are already on the device (a folder inside the app's storage), with the
+   * same checks as a download. Used by the device test; could back a future "import model" option.
+   */
+  static void installFrom(Context c, File src) throws IOException {
+    byte[] buf = new byte[1 << 16];
+    for (String[] f : FILES) {
+      File x = new File(src, f[0]);
+      if (!x.isFile() || x.length() != Long.parseLong(f[1])) throw new UserError("asr_bad_file", f[0]);
+      MessageDigest sha = sha256();
+      try (InputStream in = new java.io.FileInputStream(x)) { int n; while ((n = in.read(buf)) > 0) sha.update(buf, 0, n); }
+      if (!hex(sha.digest()).equals(f[2])) throw new UserError("asr_bad_file", f[0]);
+    }
+    release();
+    File dest = dir(c);
+    deleteTree(dest);
+    File parent = dest.getParentFile();
+    if (parent != null && !parent.isDirectory()) parent.mkdirs();
+    if (!src.renameTo(dest)) throw new IOException("cannot move model into place");
+    try (OutputStream os = new FileOutputStream(marker(c))) { os.write(MODEL_ID.getBytes()); }
+  }
+
   /** Refuses phones that cannot hold the model, instead of letting Android kill the app. */
   static void checkMemory(Context c) throws UserError {
     ActivityManager am = (ActivityManager) c.getSystemService(Context.ACTIVITY_SERVICE);

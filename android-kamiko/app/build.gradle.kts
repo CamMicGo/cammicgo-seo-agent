@@ -12,9 +12,11 @@ android {
     applicationId = "com.cammicgo.kamikoseo"; minSdk = 26; targetSdk = 35; versionCode = 47; versionName = "0.7.0"
     // sherpa-onnx native libraries: phones (64 and 32 bit ARM) and the x86_64 emulator.
     ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
+    testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
   compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
-  packaging { jniLibs { useLegacyPackaging = false } }
+  // Compressed native libraries: a smaller APK to download (they are unpacked once at install).
+  packaging { jniLibs { useLegacyPackaging = true } }
   signingConfigs {
     create("cammicgo") {
       storeFile = keystoreFile
@@ -34,4 +36,6 @@ dependencies {
   // bzip2 + tar, to unpack the model archive while it downloads.
   implementation("org.apache.commons:commons-compress:1.24.0")
   testImplementation("junit:junit:4.13.2")
+  androidTestImplementation("androidx.test:runner:1.6.2")
+  androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }
