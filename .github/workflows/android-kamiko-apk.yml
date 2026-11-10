@@ -29,9 +29,15 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: Unit tests
+        working-directory: android-kamiko
+        run: gradle :app:testDebugUnitTest --no-daemon --stacktrace
       - name: Build debug APK
         working-directory: android-kamiko
-        run: gradle :app:assembleDebug --no-daemon --stacktrace
+        run: |
+          gradle :app:assembleDebug --no-daemon --stacktrace
+          ls -l app/build/outputs/apk/debug/app-debug.apk
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -E "lib/.*\.so" || true
       - uses: actions/upload-artifact@v4
         with:
           name: cammicgo-seo-android-debug-apk
