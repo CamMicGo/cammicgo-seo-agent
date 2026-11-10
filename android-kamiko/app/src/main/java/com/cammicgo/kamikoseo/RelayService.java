@@ -230,7 +230,8 @@ public class RelayService extends Service {
         throw e;
       }
       TranscriptFetcher.Result local = null;
-      if (LocalAsr.noCaptions(msg) && LocalAsr.fallbackEnabled(this)) {
+      // localAsr: the server labels phone transcripts as such and accepts progress pings (older servers do not).
+      if (LocalAsr.noCaptions(msg) && LocalAsr.fallbackEnabled(this) && job.optBoolean("localAsr", false)) {
         try { local = localTranscript(token, id, videoId, lang); }
         catch (Exception e2) { msg = msg + "\nTranscription locale (Whisper) impossible : " + e2.getMessage(); }
       } else if (LocalAsr.noCaptions(msg) && !LocalAsr.installed(this)) {
