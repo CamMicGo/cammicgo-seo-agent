@@ -32,6 +32,7 @@ final class YouTubeAudioOnly {
     JSONArray formats = streaming == null ? null : streaming.optJSONArray("adaptiveFormats");
     String stream = null;
     int lowest = Integer.MAX_VALUE;
+    String selectedMime = "audio/webm";
     if (formats != null) for (int i = 0; i < formats.length(); i++) {
       JSONObject format = formats.optJSONObject(i);
       if (format == null || !format.optString("mimeType").startsWith("audio/")) continue;
@@ -42,10 +43,10 @@ final class YouTubeAudioOnly {
       if (!"https".equals(u.getProtocol()) ||
           !(host.equals("googlevideo.com") || host.endsWith(".googlevideo.com"))) continue;
       int bitrate = format.optInt("bitrate", Integer.MAX_VALUE);
-      if (stream == null || bitrate < lowest) { stream = candidate; lowest = bitrate; }
+      if (stream == null || bitrate < lowest) { stream = candidate; lowest = bitrate; selectedMime = format.optString("mimeType"); }
     }
     if (stream == null) throw new IOException("Aucun flux audio direct accessible sur ce client YouTube.");
-    String extension = stream.contains("mime=audio%2Fmp4") ? ".m4a" : ".webm";
+    String extension = selectedMime.startsWith("audio/mp4") ? ".m4a" : ".webm";
     File temp = File.createTempFile("yt-audio-", extension, context.getCacheDir());
     long bytes = 0;
     HttpURLConnection conn = null;
