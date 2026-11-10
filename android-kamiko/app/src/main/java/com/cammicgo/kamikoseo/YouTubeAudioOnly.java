@@ -1,6 +1,11 @@
 package com.cammicgo.kamikoseo;
 
 import android.content.Context;
+import android.content.ContentValues;
+import android.os.Build;
+import android.os.Environment;
+import android.provider.MediaStore;
+import android.net.Uri;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.File;
@@ -40,7 +45,8 @@ final class YouTubeAudioOnly {
       if (stream == null || bitrate < lowest) { stream = candidate; lowest = bitrate; }
     }
     if (stream == null) throw new IOException("Aucun flux audio direct accessible sur ce client YouTube.");
-    File temp = File.createTempFile("yt-audio-", ".media", context.getCacheDir());
+    String extension = stream.contains("mime=audio%2Fmp4") ? ".m4a" : ".webm";
+    File temp = File.createTempFile("yt-audio-", extension, context.getCacheDir());
     long bytes = 0;
     HttpURLConnection conn = null;
     try {
@@ -61,7 +67,9 @@ final class YouTubeAudioOnly {
           out.write(buffer, 0, n);
         }
       }
+      String saved = saveToDownloads(context, temp, "YouTube-audio-" + videoId + extension);
       JSONObject result = new JSONObject();
+      result.put("savedTo", saved);
       result.put("videoId", videoId);
       result.put("source", "youtube_audio_probe");
       result.put("audioBytes", bytes);
@@ -76,4 +84,41 @@ final class YouTubeAudioOnly {
         android.util.Log.w("YouTubeAudioOnly", "Temporary audio file deletion failed");
     }
   }
+  private static String saveToDownloads(Context context, File file, String name) throws IOException {
+    if (Build.VERSION.SDK_INT < 29) {
+      File directory = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+      if (directory == null) throw new IOException("Dossier de téléchargement indisponible");
+      File destination = new File(directory, name);
+      try (InputStream in = new java.io.FileInputStream(file);
+           FileOutputStream out = new FileOutputStream(destination)) {
+        byte[] buffer = new byte[32768]; int n;
+        while ((n = in.read(buffer)) != -1) out.write(buffer, 0, n);
+      }
+      return destination.getAbsolutePath();
+    }
+    ContentValues values = new ContentValues();
+    values.put(MediaStore.Downloads.DISPLAY_NAME, name);
+    values.put(MediaStore.Downloads.MIME_TYPE, name.endsWith(".m4a") ? "audio/mp4" : "audio/webm");
+    values.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Kamiko");
+    values.put(MediaStore.Downloads.IS_PENDING, 1);
+    Uri uri = context.getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+    if (uri == null) throw new IOException("Impossible de créer le fichier audio dans Téléchargements");
+    boolean success = false;
+    try {
+      try (InputStream in = new java.io.FileInputStream(file);
+           java.io.OutputStream out = context.getContentResolver().openOutputStream(uri)) {
+        if (out == null) throw new IOException("Impossible d'ouvrir le fichier de destination");
+        byte[] buffer = new byte[32768]; int n;
+        while ((n = in.read(buffer)) != -1) out.write(buffer, 0, n);
+      }
+      values.clear();
+      values.put(MediaStore.Downloads.IS_PENDING, 0);
+      context.getContentResolver().update(uri, values, null, null);
+      success = true;
+      return "Téléchargements/Kamiko/" + name;
+    } finally {
+      if (!success) context.getContentResolver().delete(uri, null, null);
+    }
+  }
+
 }
