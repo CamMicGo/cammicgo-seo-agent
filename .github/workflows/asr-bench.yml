@@ -29,3 +29,5 @@ jobs:
         run: THREADS=2 python benchmarks/asr/bench.py model audio
       - name: Benchmark, 4 threads
         run: THREADS=4 python benchmarks/asr/bench.py model audio | grep -E "LOAD|RESULT"
+      - name: Benchmark, phone settings (15 s segments, shorter context)
+        run: THREADS=2 MAX_SEG=15 MAX_TOTAL_LEN=512 MAX_NEW_TOKENS=256 python benchmarks/asr/bench.py model audio | grep -E "LOAD|RESULT"

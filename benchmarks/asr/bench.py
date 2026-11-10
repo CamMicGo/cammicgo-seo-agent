@@ -4,6 +4,11 @@ segments of at most 20 s, split at the quietest 200 ms between 12 and 20 s. Repo
 import hashlib, json, os, re, resource, sys, time, numpy as np, soundfile as sf, sherpa_onnx
 MODEL, AUDIO = sys.argv[1], sys.argv[2]
 THREADS = int(os.environ.get('THREADS', '2'))
+MAX_SEG = float(os.environ.get('MAX_SEG', '20')); TOTAL = int(os.environ.get('MAX_TOTAL_LEN', '1024')); NEW = int(os.environ.get('MAX_NEW_TOKENS', '384'))
+def now_rss():
+    for l in open('/proc/self/status'):
+        if l.startswith('VmRSS'): return int(l.split()[1]) / 1024
+    return 0
 FILES = ['conv_frontend.onnx', 'encoder.int8.onnx', 'decoder.int8.onnx', 'tokenizer/vocab.json', 'tokenizer/merges.txt', 'tokenizer/tokenizer_config.json']
 rss = lambda: resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024  # MB (Linux reports KB)
 files = []
@@ -16,13 +21,14 @@ print('MODEL_FILES', json.dumps(files))
 print('MODEL_TOTAL_MB', round(sum(f['bytes'] for f in files) / 1e6, 1))
 t = time.time()
 rec = sherpa_onnx.OfflineRecognizer.from_qwen3_asr(conv_frontend=f'{MODEL}/conv_frontend.onnx', encoder=f'{MODEL}/encoder.int8.onnx',
-    decoder=f'{MODEL}/decoder.int8.onnx', tokenizer=f'{MODEL}/tokenizer', num_threads=THREADS, max_total_len=1024, max_new_tokens=384)
-print(f'LOAD threads={THREADS} {time.time()-t:.1f}s peakRSS={rss():.0f}MB')
+    decoder=f'{MODEL}/decoder.int8.onnx', tokenizer=f'{MODEL}/tokenizer', num_threads=THREADS, max_total_len=TOTAL, max_new_tokens=NEW)
+print(f'LOAD threads={THREADS} maxSeg={MAX_SEG} maxTotalLen={TOTAL} maxNew={NEW} {time.time()-t:.1f}s peakRSS={rss():.0f}MB')
 
-def segments(a, sr=16000, max_s=20, min_s=12, win=0.2):
+def segments(a, sr=16000, max_s=None, min_s=None, win=0.2):
+    max_s = max_s or MAX_SEG; min_s = min_s or max_s * 0.6
     i = 0
-    while len(a) - i > max_s * sr:
-        lo, hi, w = i + min_s * sr, i + max_s * sr, int(win * sr)
+    while len(a) - i > int(max_s * sr):
+        lo, hi, w = i + int(min_s * sr), i + int(max_s * sr), int(win * sr)
         e = [float(np.mean(a[s:s + w] ** 2)) for s in range(lo, hi - w, w // 2)]
         cut = lo + int(np.argmin(e)) * (w // 2) + w // 2
         yield a[i:cut]; i = cut
@@ -46,5 +52,5 @@ for lang in ('fr', 'en'):
         st = rec.create_stream(); st.accept_waveform(16000, s); rec.decode_stream(st); out.append(st.result.text.strip()); segs += 1
     dt = time.time() - t; dur = len(a) / 16000; text = ' '.join(out)
     ref = open(os.path.join(AUDIO, f'ref-{lang}.txt'), encoding='utf-8').read()
-    print(f'RESULT lang={lang} audio={dur:.0f}s segments={segs} time={dt:.0f}s rtf={dt/dur:.3f} peakRSS={rss():.0f}MB wer={wer(ref, text)*100:.1f}%')
+    print(f'RESULT lang={lang} audio={dur:.0f}s segments={segs} time={dt:.0f}s rtf={dt/dur:.3f} peakRSS={rss():.0f}MB rssNow={now_rss():.0f}MB wer={wer(ref, text)*100:.1f}%')
     print(f'TEXT_{lang}', text[:600])
