@@ -9,7 +9,7 @@ android {
   namespace = "com.cammicgo.kamikoseo"
   compileSdk = 35
   defaultConfig {
-    applicationId = "com.cammicgo.kamikoseo"; minSdk = 26; targetSdk = 35; versionCode = 56; versionName = "0.7.1-whisper-small"
+    applicationId = "com.cammicgo.kamikoseo"; minSdk = 26; targetSdk = 35; versionCode = 57; versionName = "0.7.2-models"
     // sherpa-onnx native libraries: phones (64 and 32 bit ARM) and the x86_64 emulator.
     ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
