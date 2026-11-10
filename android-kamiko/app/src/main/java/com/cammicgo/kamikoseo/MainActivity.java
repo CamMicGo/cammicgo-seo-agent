@@ -789,7 +789,7 @@ public class MainActivity extends Activity {
     c.addView(urlInput);
     text(c, "Moteur de transcription", 13, INK, true);
     transcriptionMode = spinner(c, java.util.Arrays.asList("Automatique : sous-titres puis Qwen", "YouTube natif uniquement", "Qwen3-ASR local"), asrPrefs().getInt("extractMode", 0), v -> asrPrefs().edit().putInt("extractMode", v).apply());
-    text(c, "Pour une URL de fichier vidéo/audio direct autorisé, Qwen extrait la piste audio. Les liens YouTube sans piste accessible ne peuvent pas être téléchargés automatiquement.", 12, MUTED, false);
+    text(c, "Qwen peut traiter les fichiers média HTTPS directs et les flux audio YouTube accessibles depuis cet appareil. Les flux protégés ou chiffrés ne sont pas pris en charge.", 12, MUTED, false);
     TextView langTitle = text(c, t("language"), 13, INK, true);
     langTitle.setPadding(dp(2), dp(12), 0, dp(6));
     langSpinner = new Spinner(this);
@@ -3004,12 +3004,12 @@ public class MainActivity extends Activity {
             if (mode == 1 || captionsError.getMessage() != null &&
                 (captionsError.getMessage().contains("HTTP 429") || TranscriptFetcher.isNetwork(captionsError)))
               throw captionsError;
-            // A YouTube watch URL is not an authorized downloadable audio file.
-            throw new java.io.IOException(captionsError.getMessage() +
-                " — Qwen nécessite une URL directe de média autorisé ou un fichier local.");
+            result = YouTubeAudio.transcribe(this, id, ASR_MINUTES[Math.max(0, Math.min(ASR_MINUTES.length - 1, asrPrefs().getInt("max", 2)))],
+                new java.util.concurrent.atomic.AtomicBoolean(false));
           }
         } else if (id != null) {
-          throw new java.io.IOException("Qwen ne peut pas traiter directement une URL de page YouTube. Fournissez une URL HTTPS directe de fichier vidéo/audio autorisé.");
+          result = YouTubeAudio.transcribe(this, id, ASR_MINUTES[Math.max(0, Math.min(ASR_MINUTES.length - 1, asrPrefs().getInt("max", 2)))],
+              new java.util.concurrent.atomic.AtomicBoolean(false));
         } else {
           result = AuthorizedAudioFallback.transcribe(this, input, "fichier", ASR_MINUTES[Math.max(0, Math.min(ASR_MINUTES.length - 1, asrPrefs().getInt("max", 2)))],
               new java.util.concurrent.atomic.AtomicBoolean(false));
