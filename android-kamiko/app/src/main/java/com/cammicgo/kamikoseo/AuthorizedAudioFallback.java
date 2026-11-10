@@ -24,11 +24,22 @@ final class AuthorizedAudioFallback {
   static TranscriptFetcher.Result transcribe(Context context, String url, String videoId,
       int maxMinutes, AtomicBoolean cancelled) throws Exception {
     if (!LocalAsr.installed(context)) throw new IOException("Modèle Qwen3-ASR non installé sur le téléphone.");
+    return transcribeInternal(context, url, videoId, maxMinutes, cancelled, false);
+  }
+
+  static TranscriptFetcher.Result transcribeYouTube(Context context, String url, String videoId,
+      int maxMinutes, AtomicBoolean cancelled) throws Exception {
+    return transcribeInternal(context, url, videoId, maxMinutes, cancelled, true);
+  }
+
+  private static TranscriptFetcher.Result transcribeInternal(Context context, String url, String videoId,
+      int maxMinutes, AtomicBoolean cancelled, boolean youtubeStream) throws Exception {
+    if (!LocalAsr.installed(context)) throw new IOException("Modèle Qwen3-ASR non installé sur le téléphone.");
     File dir = new File(context.getCacheDir(), "asr-relay");
     if (!dir.exists() && !dir.mkdirs()) throw new IOException("Impossible de créer le cache ASR.");
     File temp = File.createTempFile("audio-", ".media", dir);
     try {
-      download(url, temp, cancelled);
+      download(url, temp, cancelled, youtubeStream);
       if (cancelled.get()) throw new IOException("Transcription annulée.");
       TranscriptFetcher.Result result = LocalAsr.transcribe(context, Uri.fromFile(temp),
           "YouTube " + videoId, -1, Math.max(1, Math.min(maxMinutes, 180)), cancelled,
@@ -42,13 +53,15 @@ final class AuthorizedAudioFallback {
     }
   }
 
-  private static void download(String source, File destination, AtomicBoolean cancelled) throws IOException {
+  private static void download(String source, File destination, AtomicBoolean cancelled, boolean youtubeStream) throws IOException {
     URL url = new URL(source);
     if (!"https".equalsIgnoreCase(url.getProtocol())) throw new IOException("Audio HTTPS requis.");
     String host = url.getHost().toLowerCase(java.util.Locale.ROOT);
-    if (host.equals("youtube.com") || host.endsWith(".youtube.com") ||
+    if (youtubeStream && !(host.equals("googlevideo.com") || host.endsWith(".googlevideo.com")))
+      throw new IOException("Flux YouTube non reconnu.");
+    if (!youtubeStream && (host.equals("youtube.com") || host.endsWith(".youtube.com") ||
         host.equals("youtu.be") || host.endsWith(".googlevideo.com") ||
-        host.equals("localhost") || host.endsWith(".localhost"))
+        host.equals("localhost") || host.endsWith(".localhost")))
       throw new IOException("Une URL YouTube n'est pas une URL de fichier audio autorisé.");
     InetAddress[] addresses = InetAddress.getAllByName(host);
     for (InetAddress address : addresses) {
