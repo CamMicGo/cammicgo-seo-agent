@@ -789,7 +789,6 @@ public class MainActivity extends Activity {
     c.addView(urlInput);
     text(c, "Moteur de transcription", 13, INK, true);
     transcriptionMode = spinner(c, java.util.Arrays.asList("Automatique : sous-titres puis Qwen", "YouTube natif uniquement", "Qwen3-ASR local"), asrPrefs().getInt("extractMode", 0), v -> asrPrefs().edit().putInt("extractMode", v).apply());
-    c.addView(transcriptionMode, new LinearLayout.LayoutParams(-1, dp(48)));
     text(c, "Pour une URL de fichier vidéo/audio direct autorisé, Qwen extrait la piste audio. Les liens YouTube sans piste accessible ne peuvent pas être téléchargés automatiquement.", 12, MUTED, false);
     TextView langTitle = text(c, t("language"), 13, INK, true);
     langTitle.setPadding(dp(2), dp(12), 0, dp(6));
