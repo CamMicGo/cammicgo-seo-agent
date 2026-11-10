@@ -27,26 +27,26 @@ final class YouTubeAudioOnly {
     // First use the maintained Java NewPipe extractor (no Python on the device).
     IOException newPipeError = null;
     try {
-      java.util.List<String> streams = NewPipeAudioResolver.resolve(videoId);
-      for (String stream : streams) {
-        String extension = stream.contains("mime=audio%2Fmp4") ? ".m4a" : ".webm";
-        File temp = File.createTempFile("yt-newpipe-", extension, context.getCacheDir());
+      java.util.List<NewPipeAudioResolver.Candidate> streams = NewPipeAudioResolver.resolve(videoId);
+      for (NewPipeAudioResolver.Candidate stream : streams) {
+        File temp = File.createTempFile("yt-newpipe-", stream.extension, context.getCacheDir());
         try {
-          URL parsed = new URL(stream);
-          if (!isGoogleVideoHost(parsed.getHost())) continue;
-          long bytes = fetchAudio(stream, temp, "WEB");
-          String saved = saveToDownloads(context, temp, "YouTube-audio-" + videoId + extension);
+          if (!isGoogleVideoHost(new URL(stream.url).getHost())) continue;
+          long bytes = fetchRanged(stream.url, temp, stream.userAgent);
+          String saved = saveToDownloads(context, temp, "YouTube-audio-" + videoId + stream.extension);
           JSONObject result = new JSONObject();
           result.put("savedTo", saved);
           result.put("videoId", videoId);
           result.put("source", "newpipe_java");
+          result.put("mime", stream.mime);
+          result.put("bitrate", stream.bitrate);
           result.put("audioBytes", bytes);
           result.put("audioOnly", true);
           return result;
         } catch (org.json.JSONException error) {
           throw new IOException("Résultat NewPipe illisible", error);
         } catch (IOException error) {
-          newPipeError = error;
+          newPipeError = new IOException("NewPipe stream: " + error.getMessage(), error);
         } finally {
           if (temp.exists() && !temp.delete())
             android.util.Log.w("YouTubeAudioOnly", "Temporary NewPipe audio cleanup failed");
@@ -205,6 +205,53 @@ final class YouTubeAudioOnly {
       return total;
     } finally { if (conn != null) conn.disconnect(); }
   }
+  /**
+   * Downloads a googlevideo stream in 1 MiB ranges with the User-Agent of the client that produced
+   * the URL. Whole-file requests are often cut or refused (403) by YouTube; ranges are what the
+   * official players use.
+   */
+  static long fetchRanged(String stream, File temp, String userAgent) throws IOException {
+    final long chunk = 1L << 20;
+    long done = 0, total = -1;
+    try (FileOutputStream out = new FileOutputStream(temp)) {
+      while (total < 0 || done < total) {
+        HttpURLConnection conn = (HttpURLConnection) new URL(stream).openConnection();
+        try {
+          conn.setConnectTimeout(15000);
+          conn.setReadTimeout(30000);
+          conn.setInstanceFollowRedirects(true);
+          conn.setRequestProperty("User-Agent", userAgent);
+          conn.setRequestProperty("Accept", "*/*");
+          conn.setRequestProperty("Range", "bytes=" + done + "-" + (done + chunk - 1));
+          int status = conn.getResponseCode();
+          if (status == 416 && total < 0 && done > 0) break;
+          if (status != 206 && status != 200) throw new IOException("audio HTTP " + status + (done > 0 ? " at " + done + " bytes" : ""));
+          if (status == 206) {
+            String range = conn.getHeaderField("Content-Range"); // bytes a-b/total
+            if (range != null && range.contains("/")) {
+              String t = range.substring(range.lastIndexOf('/') + 1).trim();
+              if (!"*".equals(t)) total = Long.parseLong(t);
+            }
+          }
+          if (total > MAX_BYTES) throw new IOException("Audio > 100 MiB");
+          long got = 0;
+          try (InputStream in = conn.getInputStream()) {
+            byte[] buffer = new byte[32768]; int n;
+            while ((n = in.read(buffer)) != -1) {
+              out.write(buffer, 0, n); got += n; done += n;
+              if (done > MAX_BYTES) throw new IOException("Audio > 100 MiB");
+            }
+          }
+          if (status == 200) { total = done; break; } // the server sent the whole file at once
+          if (got == 0) break;
+        } finally { conn.disconnect(); }
+      }
+    }
+    if (done == 0) throw new IOException("Flux audio vide");
+    if (total > 0 && done < total) throw new IOException("audio incomplete: " + done + "/" + total + " bytes");
+    return done;
+  }
+
   private static boolean isGoogleVideoHost(String host) {
     if (host == null) return false;
     String normalized = host.toLowerCase(Locale.ROOT);

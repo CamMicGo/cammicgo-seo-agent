@@ -8,7 +8,7 @@ val keystoreFile = System.getenv("CMG_KEYSTORE_FILE")?.let { file(it) } ?: rootP
 android {
   namespace = "com.cammicgo.kamikoseo"
   compileSdk = 35
-  defaultConfig { applicationId = "com.cammicgo.kamikoseo"; minSdk = 26; targetSdk = 35; versionCode = 53; versionName = "0.6.38-newpipe" }
+  defaultConfig { applicationId = "com.cammicgo.kamikoseo"; minSdk = 26; targetSdk = 35; versionCode = 54; versionName = "0.6.39-newpipe" }
   compileOptions { isCoreLibraryDesugaringEnabled = true; sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
   signingConfigs {
     create("cammicgo") {
@@ -21,4 +21,4 @@ android {
   buildTypes { getByName("debug") { signingConfig = signingConfigs.getByName("cammicgo") } }
 }
 
-dependencies { implementation("androidx.core:core:1.13.1"); implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.26.5"); coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.5") }
+dependencies { implementation("androidx.core:core:1.13.1"); implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.27.1"); coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.5") }
