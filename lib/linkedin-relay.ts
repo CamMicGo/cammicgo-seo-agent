@@ -14,6 +14,29 @@ export async function purgeLinkedInResult(userId:string,id:string){
 export async function sweepLinkedInResults(userId:string){
  await sb('/rest/v1/cmg_linkedin_jobs?user_id=eq.'+userId+'&result=not.is.null&completed_at=lt.'+encodeURIComponent(new Date(Date.now()-RESULT_TTL_MS).toISOString()),{method:'PATCH',body:JSON.stringify({result:null})}).catch(()=>{});
 }
+export const THUMB_TTL_MS=24*60*60_000;
+const THUMB_PREFIX='data:image/jpeg;base64,';
+/**
+ * Chat apps (ChatGPT, Claude) display https images only. Each thumbnail the phone made (imageDataUrl) is
+ * stored for 24 hours under an unguessable id and replaced by a link to /api/linkedin/thumb/<id>.jpg;
+ * LinkedIn's own link stays as linkedinImageUrl. Older thumbnails are deleted at every call.
+ */
+export async function hostThumbnails(userId:string,data:unknown,base=process.env.APP_BASE_URL||'https://seo.cammicgo.com'){
+ await sb('/rest/v1/cmg_linkedin_thumbs?created_at=lt.'+encodeURIComponent(new Date(Date.now()-THUMB_TTL_MS).toISOString()),{method:'DELETE'}).catch(()=>{});
+ if(!data||typeof data!=='object')return data;
+ const root=data as Record<string,unknown>;
+ const cards:Array<Record<string,unknown>>=[];
+ for(const key of ['profiles','people','companies','jobs','posts'])if(Array.isArray(root[key]))for(const c of root[key] as unknown[])if(c&&typeof c==='object')cards.push(c as Record<string,unknown>);
+ cards.push(root);
+ const withThumb=cards.filter(c=>typeof c.imageDataUrl==='string'&&(c.imageDataUrl as string).startsWith(THUMB_PREFIX)&&(c.imageDataUrl as string).length<=16000+THUMB_PREFIX.length).slice(0,40);
+ if(!withThumb.length)return data;
+ try{
+  const rows=await sb<Array<{id:string}>>('/rest/v1/cmg_linkedin_thumbs',{method:'POST',body:JSON.stringify(withThumb.map(c=>({user_id:userId,jpeg_b64:(c.imageDataUrl as string).slice(THUMB_PREFIX.length)}))),prefer:'return=representation'});
+  withThumb.forEach((c,i)=>{if(!rows[i])return;if(typeof c.imageUrl==='string')c.linkedinImageUrl=c.imageUrl;c.imageUrl=base+'/api/linkedin/thumb/'+rows[i].id+'.jpg';delete c.imageDataUrl;});
+ }catch{/* keep the data: URLs if storage is unavailable */}
+ for(const c of cards)delete c.imageDataUrl;
+ return data;
+}
 /** Jobs the phone never picked up before their deadline become explicit errors (never run later). */
 export async function expireLinkedIn(userId:string){
  await sweepLinkedInResults(userId);

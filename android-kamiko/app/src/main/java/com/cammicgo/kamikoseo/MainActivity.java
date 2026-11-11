@@ -1355,10 +1355,10 @@ public class MainActivity extends Activity {
    * suggestions, called from the signed-in page. Result: {param: URL-encoded ["id",…] or "", places:[{name,geoId,label}], unresolved:[…]}.
    */
   private void resolveLinkedInGeo(JSONArray places, GeoCallback callback) {
-    String js = "(function(names){window.__cmgGeo=null;"
+    String js = "(function(names){window.__cmgGeo=null;const st={};window.__cmgGeoStatus=st;"
       + "const m=document.cookie.match(/JSESSIONID=\"?([^\";]+)/);const csrf=m?m[1]:'';"
       + "Promise.all(names.map(n=>fetch('/voyager/api/typeahead/hitsV2?keywords='+encodeURIComponent(n)+'&origin=OTHER&q=type&type=GEO',{credentials:'include',headers:{'csrf-token':csrf,'x-restli-protocol-version':'2.0.0','accept':'application/json'}})"
-      + ".then(r=>r.ok?r.json():null).then(j=>{const els=(j&&(j.elements||(j.data&&j.data.elements)))||[];"
+      + ".then(r=>{st[n]=r.status;return r.ok?r.json():null;}).then(j=>{const els=(j&&(j.elements||(j.data&&j.data.elements)))||[];"
       + "for(const e of els){const t=JSON.stringify(e);const id=(t.match(/urn:li:(?:fs_)?geo:(\\d+)/)||[])[1];const label=(e.text&&e.text.text)||e.displayName||'';if(id)return {name:n,geoId:id,label};}return {name:n,geoId:null};})"
       + ".catch(()=>({name:n,geoId:null}))))"
       + ".then(r=>{window.__cmgGeo=r;});return 'started';})(" + places.toString() + ")";
@@ -1378,11 +1378,49 @@ public class MainActivity extends Activity {
           if (p.optString("geoId").matches("\\d+")) { ok.put(p); ids.put(p.optString("geoId")); } else unresolved.put(p.optString("name"));
         }
         if (found == null) for (int i = 0; i < places.length(); i++) unresolved.put(places.optString(i));
-        geo.put("places", ok).put("unresolved", unresolved).put("applied", ids.length() > 0)
+        geo.put("places", ok).put("unresolved", unresolved);
+        if (unresolved.length() > 0) { geoFromJobsPage(unresolved, 0, ok, ids, new JSONArray(), callback); return; }
+        geo.put("applied", ids.length() > 0).put("method", "typeahead")
             .put("param", ids.length() > 0 ? java.net.URLEncoder.encode(ids.toString(), "UTF-8") : "");
       } catch (Exception ignored) { }
       callback.done(geo);
     }), 700);
+  }
+
+  /**
+   * Fallback when LinkedIn's suggestion request fails: LinkedIn's job search turns a typed place into its
+   * geo ID (geoId= in the page address and links), the same IDs as people and company searches.
+   */
+  private void geoFromJobsPage(JSONArray names, int index, JSONArray ok, JSONArray ids, JSONArray stillUnresolved, GeoCallback callback) {
+    if (index >= names.length() || index >= 6) {
+      JSONObject geo = new JSONObject();
+      try {
+        geo.put("places", ok).put("unresolved", stillUnresolved).put("applied", ids.length() > 0).put("method", "jobs-page")
+            .put("param", ids.length() > 0 ? java.net.URLEncoder.encode(ids.toString(), "UTF-8") : "");
+      } catch (Exception ignored) { }
+      callback.done(geo);
+      return;
+    }
+    String name = names.optString(index);
+    try { linkedinWeb.loadUrl("https://www.linkedin.com/jobs/search/?keywords=&location=" + java.net.URLEncoder.encode(name, "UTF-8")); }
+    catch (Exception e) { stillUnresolved.put(name); geoFromJobsPage(names, index + 1, ok, ids, stillUnresolved, callback); return; }
+    pollJobsPageGeo(names, index, ok, ids, stillUnresolved, callback, 0);
+  }
+
+  private void pollJobsPageGeo(JSONArray names, int index, JSONArray ok, JSONArray ids, JSONArray stillUnresolved, GeoCallback callback, int attempt) {
+    ui.postDelayed(() -> linkedinWeb.evaluateJavascript("(function(){const f=u=>{const m=(u||'').match(/[?&]geoId=(\\d+)/);return m?m[1]:'';};let id=f(location.href);"
+        + "if(!id){for(const a of document.querySelectorAll('a[href*=\"geoId=\"]')){id=f(a.href);if(id)break;}}"
+        + "const inp=document.querySelector('input[id*=jobs-search-box-location],input[aria-label*=ocation],input[aria-label*=ieu]');"
+        + "return JSON.stringify({id,label:inp?inp.value:''});})()", raw -> {
+      String id = "", label = "";
+      try { JSONObject r = new JSONObject(new JSONArray("[" + raw + "]").getString(0)); id = r.optString("id"); label = r.optString("label"); } catch (Exception ignored) { }
+      if (id.isEmpty() && attempt < 6) { pollJobsPageGeo(names, index, ok, ids, stillUnresolved, callback, attempt + 1); return; }
+      try {
+        if (!id.isEmpty()) { ok.put(new JSONObject().put("name", names.optString(index)).put("geoId", id).put("label", label)); ids.put(id); }
+        else stillUnresolved.put(names.optString(index));
+      } catch (Exception ignored) { }
+      geoFromJobsPage(names, index + 1, ok, ids, stillUnresolved, callback);
+    }), 1200);
   }
 
   /** Company results, 10 per page, until the requested count; each with its headquarters place when shown. */
