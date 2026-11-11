@@ -20,8 +20,14 @@ def tap_text(label):
     return False
 
 def shot(name):
-    png = adb("exec-out", "screencap", "-p", binary=True)
-    im = Image.open(io.BytesIO(png)).convert("RGB")
+    for _ in range(3):
+        png = adb("exec-out", "screencap", "-p", binary=True)
+        try:
+            im = Image.open(io.BytesIO(png)).convert("RGB"); break
+        except Exception:
+            time.sleep(3)
+    else:
+        print(f"SHOT-FAILED {name}"); return
     im = im.resize((im.width // 2, im.height // 2))
     buf = io.BytesIO(); im.save(buf, "JPEG", quality=72)
     print(f"SHOT-BEGIN {name}")
