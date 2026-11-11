@@ -1108,20 +1108,31 @@ public class MainActivity extends Activity {
       }
       try {
         String url = "https://www.linkedin.com/search/results/people/?keywords=" + java.net.URLEncoder.encode(keywords, "UTF-8");
-        java.util.LinkedHashMap<String, JSONObject> found = new java.util.LinkedHashMap<>();
-        collectLinkedInSearchPage(id, url, startPage, requested, found);
+        JSONArray places = new JSONArray(job.optString("locations", "[]"));
+        if (places.length() == 0) { collectLinkedInSearchPage(id, url, startPage, requested, new java.util.LinkedHashMap<>()); return; }
+        resolveLinkedInGeo(places, geo -> {
+          String ids = geo.optString("param");
+          if (!ids.isEmpty()) { liGeoInfo.put(id, geo); collectLinkedInSearchPage(id, url + "&geoUrn=" + ids, startPage, requested, new java.util.LinkedHashMap<>()); }
+          else {
+            // LinkedIn did not recognise the places: search them as keywords and say so.
+            liGeoInfo.put(id, geo);
+            try { collectLinkedInSearchPage(id, "https://www.linkedin.com/search/results/people/?keywords=" + java.net.URLEncoder.encode(keywords + " " + join(places), "UTF-8"), startPage, requested, new java.util.LinkedHashMap<>()); }
+            catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
+          }
+        });
       } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
     } else if ("company_search".equals(op)) {
       String keywords = job.optString("keywords", "").trim();
       int limit = Math.min(50, Math.max(1, job.optInt("limit", 25)));
       if (keywords.length() < 2 || keywords.length() > 250) { finishLinkedInJob(id, null, "Invalid company search"); return; }
       try {
-        String url = "https://www.linkedin.com/search/results/companies/?keywords=" + java.net.URLEncoder.encode(keywords, "UTF-8");
-        linkedinWeb.loadUrl(url);
-        ui.postDelayed(() -> {
-          String js = "(function(limit){const seen=new Set();const companies=[];for(const a of document.querySelectorAll('a[href*=\\\"/company/\\\"]')){const href=a.href.split('?')[0];if(!/^https:\\/\\/www\\.linkedin\\.com\\/company\\//.test(href)||seen.has(href))continue;const card=a.closest('li,article,[class*=result]')||a;const name=(a.innerText||card.querySelector('h3')?.innerText||'').trim().slice(0,160);if(!name)continue;seen.add(href);companies.push({name,companyUrl:href,description:(card.innerText||'').trim().slice(0,500),logoUrl:card.querySelector('img')?.currentSrc||card.querySelector('img')?.src||''});if(companies.length>=limit)break;}return JSON.stringify({companies,retrieved:companies.length,url:location.pathname,partial:true});})(" + limit + ")";
-          linkedinWeb.evaluateJavascript(js, raw -> { try { finishLinkedInCards(id, new JSONObject(new JSONArray("[" + raw + "]").getString(0))); } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); } });
-        }, 3200);
+        String base = "https://www.linkedin.com/search/results/companies/?keywords=" + java.net.URLEncoder.encode(keywords, "UTF-8");
+        JSONArray places = new JSONArray(job.optString("locations", "[]"));
+        if (places.length() == 0) { collectLinkedInCompanies(id, base, 1, limit, new java.util.LinkedHashMap<>(), null, places); return; }
+        resolveLinkedInGeo(places, geo -> {
+          String ids = geo.optString("param");
+          collectLinkedInCompanies(id, ids.isEmpty() ? base : base + "&companyHqGeo=" + ids, 1, limit, new java.util.LinkedHashMap<>(), geo, places);
+        });
       } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
     } else if ("network_suggestions".equals(op)) {
       int limit = Math.min(50, Math.max(1, job.optInt("limit", 25)));
@@ -1271,6 +1282,99 @@ public class MainActivity extends Activity {
     });
   }
 
+  /** Geographic filter used by a people search, added to its result. */
+  private final java.util.Map<String, JSONObject> liGeoInfo = new java.util.HashMap<>();
+
+  private static String join(JSONArray a) {
+    StringBuilder b = new StringBuilder();
+    for (int i = 0; i < a.length(); i++) { if (b.length() > 0) b.append(' '); b.append(a.optString(i)); }
+    return b.toString();
+  }
+
+  interface GeoCallback { void done(JSONObject geo); }
+
+  /**
+   * Turns place names ("Tours", "Centre-Val de Loire") into LinkedIn geo IDs with LinkedIn's own place
+   * suggestions, called from the signed-in page. Result: {param: URL-encoded ["id",…] or "", places:[{name,geoId,label}], unresolved:[…]}.
+   */
+  private void resolveLinkedInGeo(JSONArray places, GeoCallback callback) {
+    String js = "(function(names){window.__cmgGeo=null;"
+      + "const m=document.cookie.match(/JSESSIONID=\"?([^\";]+)/);const csrf=m?m[1]:'';"
+      + "Promise.all(names.map(n=>fetch('/voyager/api/typeahead/hitsV2?keywords='+encodeURIComponent(n)+'&origin=OTHER&q=type&type=GEO',{credentials:'include',headers:{'csrf-token':csrf,'x-restli-protocol-version':'2.0.0','accept':'application/json'}})"
+      + ".then(r=>r.ok?r.json():null).then(j=>{const els=(j&&(j.elements||(j.data&&j.data.elements)))||[];"
+      + "for(const e of els){const t=JSON.stringify(e);const id=(t.match(/urn:li:(?:fs_)?geo:(\\d+)/)||[])[1];const label=(e.text&&e.text.text)||e.displayName||'';if(id)return {name:n,geoId:id,label};}return {name:n,geoId:null};})"
+      + ".catch(()=>({name:n,geoId:null}))))"
+      + ".then(r=>{window.__cmgGeo=r;});return 'started';})(" + places.toString() + ")";
+    linkedinWeb.evaluateJavascript(js, v -> pollLinkedInGeo(places, callback, 0));
+  }
+
+  private void pollLinkedInGeo(JSONArray places, GeoCallback callback, int attempt) {
+    ui.postDelayed(() -> linkedinWeb.evaluateJavascript("JSON.stringify(window.__cmgGeo)", raw -> {
+      JSONArray found = null;
+      try { String v = new JSONArray("[" + raw + "]").optString(0, "null"); if (!"null".equals(v)) found = new JSONArray(v); } catch (Exception ignored) { }
+      if (found == null && attempt < 12) { pollLinkedInGeo(places, callback, attempt + 1); return; }
+      JSONObject geo = new JSONObject();
+      try {
+        JSONArray ok = new JSONArray(), unresolved = new JSONArray(), ids = new JSONArray();
+        for (int i = 0; found != null && i < found.length(); i++) {
+          JSONObject p = found.getJSONObject(i);
+          if (p.optString("geoId").matches("\\d+")) { ok.put(p); ids.put(p.optString("geoId")); } else unresolved.put(p.optString("name"));
+        }
+        if (found == null) for (int i = 0; i < places.length(); i++) unresolved.put(places.optString(i));
+        geo.put("places", ok).put("unresolved", unresolved).put("applied", ids.length() > 0)
+            .put("param", ids.length() > 0 ? java.net.URLEncoder.encode(ids.toString(), "UTF-8") : "");
+      } catch (Exception ignored) { }
+      callback.done(geo);
+    }), 700);
+  }
+
+  /** Company results, 10 per page, until the requested count; each with its headquarters place when shown. */
+  private void collectLinkedInCompanies(String id, String baseUrl, int page, int limit, java.util.LinkedHashMap<String, JSONObject> found, JSONObject geo, JSONArray places) {
+    if (!linkedinMcpEnabled) { finishLinkedInJob(id, null, "LinkedIn navigation disabled"); return; }
+    linkedinWeb.loadUrl(baseUrl + (page > 1 ? "&page=" + page : ""));
+    ui.postDelayed(() -> extractLinkedInCompanies(id, baseUrl, page, limit, found, geo, places, 0), 3200);
+  }
+
+  private void extractLinkedInCompanies(String id, String baseUrl, int page, int limit, java.util.LinkedHashMap<String, JSONObject> found, JSONObject geo, JSONArray places, int attempt) {
+    String js = "(function(){const seen=new Set();const out=[];for(const a of document.querySelectorAll('a[href*=\"/company/\"]')){const href=a.href.split('?')[0].replace(/\\/$/,'')+'/';if(!/^https:\\/\\/www\\.linkedin\\.com\\/company\\/[^/]+\\/$/.test(href)||seen.has(href)||a.closest('header,nav,footer'))continue;const card=a.closest('li,article,[class*=result],[data-view-name]')||a;const lines=(card.innerText||'').split('\\n').map(x=>x.trim()).filter(Boolean);const name=((a.innerText||'').trim().split('\\n')[0]||lines[0]||'').slice(0,160);if(!name||/^(voir|view|see)\\b/i.test(name))continue;seen.add(href);const meta=lines.find(l=>/[•·]/.test(l))||lines[1]||'';const parts=meta.split(/\\s*[•·]\\s*/);out.push({name,companyUrl:href,industry:(parts.length>1?parts[0]:'').slice(0,120),location:(parts.length>1?parts.slice(1).join(', '):'').slice(0,160),followers:(lines.find(l=>/abonn|follower/i.test(l))||'').slice(0,60),description:lines.slice(1).join(' · ').slice(0,500),logoUrl:card.querySelector('img')?.currentSrc||card.querySelector('img')?.src||''});}"
+      + "return JSON.stringify({companies:out,signedOut:" + LI_SIGNED_OUT_JS + ",noResults:!!document.querySelector('[class*=no-results],[class*=search-no-results]')});})()";
+    linkedinWeb.evaluateJavascript(js, raw -> {
+      try {
+        JSONObject r = new JSONObject(new JSONArray("[" + raw + "]").getString(0));
+        JSONArray list = r.optJSONArray("companies");
+        int before = found.size();
+        for (int i = 0; list != null && i < list.length() && found.size() < limit; i++) found.putIfAbsent(list.getJSONObject(i).optString("companyUrl"), list.getJSONObject(i));
+        int onPage = list == null ? 0 : list.length();
+        if (r.optBoolean("signedOut")) { finishLinkedInCompanies(id, found, limit, geo, places, page, "LinkedIn is not signed in inside the CamMicGo app: open the LinkedIn tab and sign in."); return; }
+        if (onPage == 0 && attempt < 2 && !r.optBoolean("noResults")) { ui.postDelayed(() -> extractLinkedInCompanies(id, baseUrl, page, limit, found, geo, places, attempt + 1), 2200); return; }
+        if (found.size() < limit && onPage > 0 && found.size() > before && page < 5) { collectLinkedInCompanies(id, baseUrl, page + 1, limit, found, geo, places); return; }
+        finishLinkedInCompanies(id, found, limit, geo, places, page, found.size() < limit ? "LinkedIn returned no more results for this search." : null);
+      } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
+    });
+  }
+
+  private void finishLinkedInCompanies(String id, java.util.LinkedHashMap<String, JSONObject> found, int limit, JSONObject geo, JSONArray places, int pages, String note) {
+    try {
+      JSONArray list = new JSONArray();
+      boolean applied = geo != null && geo.optBoolean("applied");
+      for (JSONObject c : found.values()) {
+        if (places.length() > 0 && !applied) {
+          // No LinkedIn place filter: say for each company whether its shown place matches the request.
+          String loc = c.optString("location").toLowerCase(java.util.Locale.ROOT);
+          boolean match = false;
+          for (int i = 0; i < places.length(); i++) if (!loc.isEmpty() && loc.contains(places.optString(i).toLowerCase(java.util.Locale.ROOT))) match = true;
+          c.put("inRequestedArea", loc.isEmpty() ? JSONObject.NULL : match);
+        }
+        list.put(c);
+      }
+      JSONObject out = new JSONObject().put("companies", list).put("retrieved", list.length()).put("requested", limit).put("pagesRead", pages);
+      if (places.length() > 0) out.put("geoFilter", geo == null ? new JSONObject().put("applied", false) : geo.put("param", JSONObject.NULL)
+          .put("how", applied ? "LinkedIn headquarters location filter" : "places not recognised by LinkedIn: keyword search only, see inRequestedArea"));
+      if (note != null) out.put("note", note);
+      finishLinkedInCards(id, out);
+    } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
+  }
+
   /** Page through user-requested LinkedIn people results, without inventing matches. */
   private void collectLinkedInSearchPage(String id, String baseUrl, int page, int requested,
                                          java.util.LinkedHashMap<String, JSONObject> found) {
@@ -1343,6 +1447,8 @@ public class MainActivity extends Activity {
       for (JSONObject profile : found.values()) profiles.put(profile);
       result.put("requested", requested);
       result.put("retrieved", profiles.length());
+      JSONObject geo = liGeoInfo.remove(id);
+      if (geo != null) result.put("geoFilter", geo.put("param", JSONObject.NULL).put("how", geo.optBoolean("applied") ? "LinkedIn location filter" : "places not recognised by LinkedIn: added to the keywords"));
       result.put("lastPage", pages);
       result.put("nextPage", "continue_with_next_page".equals(reason) ? pages + 1 : JSONObject.NULL);
       result.put("batchSize", profiles.length());

@@ -9,7 +9,7 @@ android {
   namespace = "com.cammicgo.kamikoseo"
   compileSdk = 35
   defaultConfig {
-    applicationId = "com.cammicgo.kamikoseo"; minSdk = 26; targetSdk = 35; versionCode = 60; versionName = "0.8.1"
+    applicationId = "com.cammicgo.kamikoseo"; minSdk = 26; targetSdk = 35; versionCode = 61; versionName = "0.8.2"
   }
   compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
   signingConfigs {
