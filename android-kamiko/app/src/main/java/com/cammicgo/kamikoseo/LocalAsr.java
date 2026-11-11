@@ -72,10 +72,10 @@ final class LocalAsr {
       {"small-encoder.int8.onnx", "112442483", "4cbe7b22fa9026b843b60a68640c747de05bafb1a11b57edc0e66c232d9f33a9"},
       {"small-decoder.int8.onnx", "262226114", "acad50b5c782696e91b55914cc5ab4f756f1532f76e22aa6fc615f39fb69a8ee"},
       {"small-tokens.txt", "816730", "b34b360dbb493e781e479794586d661700670d65564001f23024971d1f2fa126"}});
-  /** Large-v3-turbo: better on songs and accents, peak memory about 2.7 GB, about twice as slow. */
+  /** Large-v3-turbo: better on songs and accents; emulator: 2.3-2.6 % WER, peak 1.8 GB, about 3 times slower than small. */
   static final Model TURBO = new Model("whisper-turbo-int8", "Whisper turbo", "qualité, plus lent",
       "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-turbo.tar.bz2", 563_790_207L, 128,
-      5_500_000_000L, 2_300_000_000L, new String[][] {
+      5_500_000_000L, 2_000_000_000L, new String[][] {
       {"turbo-encoder.int8.onnx", "674716297", "b02dcdf54f348741e93fe732b67d933c8dcb6735655f710640143081db38878b"},
       {"turbo-decoder.int8.onnx", "361080764", "20accd02388482eb3a46bd615631adfdc85e1eb2c7db9ea3f02a40ffe6b81547"},
       {"turbo-tokens.txt", "816730", "b34b360dbb493e781e479794586d661700670d65564001f23024971d1f2fa126"}});
