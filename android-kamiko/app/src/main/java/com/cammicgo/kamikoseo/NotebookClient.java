@@ -775,8 +775,11 @@ final class NotebookClient {
     if(!(saved instanceof JSONArray))throw new IOException("Mind map save not confirmed");
     JSONArray item=((JSONArray)saved).optJSONArray(0);
     if(item==null||item.optString(0).isEmpty())throw new IOException("Mind map ID missing after save");
-    return new JSONObject().put("mindMapId",item.optString(0)).put("title",item.optString(4,title))
+    JSONObject out=new JSONObject().put("mindMapId",item.optString(0)).put("title",item.optString(4,title))
       .put("notebookId",id).put("saved",true);
+    // The mind map itself, so the assistant can show it in the chat (outline / Mermaid on the server).
+    if(json.length()<=250_000)out.put("mindMap",json);
+    return out;
   }
   JSONObject shareStatus(String notebookUrl) throws Exception {
     String id=ownedNotebookId(notebookUrl);

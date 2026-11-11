@@ -1078,10 +1078,27 @@ public class MainActivity extends Activity {
       } else openLinkedInParticipant(id, participant);
     } else if ("feed".equals(op)) {
       linkedinWeb.loadUrl("https://www.linkedin.com/feed/");
-      ui.postDelayed(() -> {
-        String js = "(function(){const posts=[...document.querySelectorAll('div[data-urn],article')].filter(e=>e.querySelector('a[href*=\\\"/in/\\\"],a[href*=\\\"/company/\\\"]')).slice(0,20).map(e=>({text:(e.innerText||'').trim().slice(0,2500),links:[...e.querySelectorAll('a[href]')].map(a=>a.href).filter(u=>u.startsWith('https://www.linkedin.com/')).slice(0,8)})).filter(p=>p.text);return JSON.stringify({url:location.pathname,posts});})()";
-        linkedinWeb.evaluateJavascript(js, raw -> finishLinkedInJs(id, raw));
-      }, 3200);
+      ui.postDelayed(() -> extractLinkedInFeed(id, Math.min(50, Math.max(1, job.optInt("limit", 20))), 0, null), 3500);
+    } else if ("job_search".equals(op)) {
+      try {
+        String keywords = job.optString("keywords", "").trim(), location = job.optString("location", "").trim();
+        int limit = Math.min(50, Math.max(1, job.optInt("limit", 25)));
+        if (keywords.length() < 2 || keywords.length() > 150 || location.length() > 120) { finishLinkedInJob(id, null, "Invalid job search"); return; }
+        StringBuilder url = new StringBuilder("https://www.linkedin.com/jobs/search/?keywords=").append(java.net.URLEncoder.encode(keywords, "UTF-8"));
+        if (!location.isEmpty()) url.append("&location=").append(java.net.URLEncoder.encode(location, "UTF-8"));
+        String distance = job.optString("distance", "");
+        if (distance.matches("0|5|10|25|50|100")) url.append("&distance=").append(distance);
+        String posted = job.optString("posted", "");
+        if ("day".equals(posted)) url.append("&f_TPR=r86400"); else if ("week".equals(posted)) url.append("&f_TPR=r604800"); else if ("month".equals(posted)) url.append("&f_TPR=r2592000");
+        String workplace = job.optString("workplace", "");
+        if ("onsite".equals(workplace)) url.append("&f_WT=1"); else if ("remote".equals(workplace)) url.append("&f_WT=2"); else if ("hybrid".equals(workplace)) url.append("&f_WT=3");
+        collectLinkedInJobs(id, url.toString(), 0, limit, new java.util.LinkedHashMap<>());
+      } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
+    } else if ("job_details".equals(op)) {
+      String jobId = job.optString("jobId", "").trim();
+      if (!jobId.matches("\\d{5,20}")) { finishLinkedInJob(id, null, "Invalid LinkedIn job ID"); return; }
+      linkedinWeb.loadUrl("https://www.linkedin.com/jobs/view/" + jobId + "/");
+      ui.postDelayed(() -> extractLinkedInJobDetails(id, jobId, 0), 3500);
     } else if ("search".equals(op)) {
       String keywords = job.optString("keywords", "").trim();
       int requested = job.optBoolean("all", false) ? Integer.MAX_VALUE : job.optInt("limit", 50);
@@ -1132,6 +1149,126 @@ public class MainActivity extends Activity {
       String js = "(function(){const n=[...document.querySelectorAll('li[class*=message],[class*=msg-s-event-listitem],[class*=message-event]')];const a=n.map((e,index)=>({index,text:(e.innerText||'').trim().slice(0,4000),timestamp:e.querySelector('time')?.getAttribute('datetime')||null,author:(e.querySelector('[class*=actor-name],[class*=sender-name]')?.innerText||'').trim(),media:[...e.querySelectorAll('img')].map(i=>i.currentSrc||i.src).filter(u=>u&&/messaging-image/.test(u)).slice(0,8)})).filter(x=>x.text||x.media.length);const avatars=[...document.querySelectorAll('[class*=conversation-header] img')].slice(0,6).map(i=>({url:i.currentSrc||i.src||'',alt:i.alt||'',role:'profile'})).filter(i=>i.url);return JSON.stringify({format:'cammicgo-linkedin-thread-mcp-v2',url:location.pathname,participant:(document.querySelector('[class*=conversation-header]')?.innerText||'').trim().slice(0,250),avatars,messages:a.slice(-60),partial:true});})()";
       linkedinWeb.evaluateJavascript(js, raw -> finishLinkedInThread(id, raw));
     } else finishLinkedInJob(id, null, "Operation inconnue");
+  }
+
+  /** Signed-out pages (login wall, checkpoint) are reported instead of an empty list. */
+  private static final String LI_SIGNED_OUT_JS = "(!!document.querySelector('input[name=session_key],form[action*=\\\"login\\\"]')||/\\/(login|authwall|checkpoint|uas)/.test(location.pathname))";
+
+  /**
+   * Reads feed posts. LinkedIn renders the feed late and in several layouts (desktop, mobile web), so
+   * this tries several post containers, scrolls to load more and looks again for about 15 s.
+   */
+  private void extractLinkedInFeed(String id, int limit, int attempt, JSONObject best) {
+    if (!linkedinMcpEnabled) { finishLinkedInJob(id, null, "LinkedIn navigation disabled"); return; }
+    String js = "(function(limit){"
+      + "const sel='[data-urn*=\"urn:li:activity\"],[data-id*=\"urn:li:activity\"],[data-urn*=\"urn:li:ugcPost\"],[data-urn*=\"urn:li:share\"],[data-id*=\"urn:li:share\"],div.feed-shared-update-v2,[data-view-name=\"feed-full-update\"],[data-view-name*=\"feed-update\"],article,[role=article]';"
+      + "let nodes=[...document.querySelectorAll(sel)].filter(n=>!n.closest('header,nav,aside'));"
+      + "nodes=nodes.filter(n=>!nodes.some(o=>o!==n&&o.contains(n)));"
+      + "const posts=[],seen=new Set();"
+      + "for(const n of nodes){const t=(n.innerText||'').trim();if(t.length<40)continue;"
+      + "const urn=n.getAttribute('data-urn')||n.getAttribute('data-id')||'';const key=urn||t.slice(0,160);if(seen.has(key))continue;seen.add(key);"
+      + "const a=n.querySelector('[class*=actor__title],[class*=actor-name],[class*=actor__name],a[href*=\"/in/\"] span[aria-hidden=true],a[href*=\"/company/\"] span[aria-hidden=true]');"
+      + "const tm=n.querySelector('[class*=actor__sub-description],[class*=sub-description],time');"
+      + "const links=[...new Set([...n.querySelectorAll('a[href]')].map(x=>x.href.split('?')[0]).filter(u=>/^https:\\/\\/([a-z]+\\.)?linkedin\\.com\\//.test(u)))];"
+      + "const postUrl=links.find(u=>/\\/feed\\/update\\/|\\/posts\\//.test(u))||(urn.startsWith('urn:li:')?'https://www.linkedin.com/feed/update/'+urn+'/':'');"
+      + "posts.push({author:(a?a.innerText:'').trim().split('\\n')[0].slice(0,150),time:(tm?tm.innerText:'').trim().split('\\n')[0].slice(0,80),text:t.slice(0,2500),postUrl,links:links.slice(0,8)});"
+      + "if(posts.length>=limit)break;}"
+      + "return JSON.stringify({url:location.pathname,posts,signedOut:" + LI_SIGNED_OUT_JS + ",diagnostics:{candidates:nodes.length,title:document.title.slice(0,80)}});})(" + limit + ")";
+    linkedinWeb.evaluateJavascript(js, raw -> {
+      JSONObject r;
+      try { r = new JSONObject(new JSONArray("[" + raw + "]").getString(0)); } catch (Exception e) { r = null; }
+      JSONObject keep = best;
+      if (r != null && (keep == null || r.optJSONArray("posts").length() >= keep.optJSONArray("posts").length())) keep = r;
+      int got = keep == null ? 0 : keep.optJSONArray("posts").length();
+      boolean signedOut = keep != null && keep.optBoolean("signedOut");
+      if (got >= limit || signedOut || attempt >= 6) {
+        if (keep == null) { finishLinkedInJob(id, null, "Feed page could not be read"); return; }
+        try {
+          keep.put("retrieved", got);
+          if (signedOut) keep.put("note", "LinkedIn is not signed in inside the CamMicGo app: open the LinkedIn tab and sign in.");
+          else if (got == 0) keep.put("note", "No post container found on the feed page after 15 s; LinkedIn may have changed its layout. Diagnostics included.");
+        } catch (Exception ignored) { }
+        finishLinkedInJob(id, keep, signedOut ? "LinkedIn not signed in" : null);
+        return;
+      }
+      final JSONObject next = keep;
+      linkedinWeb.evaluateJavascript("window.scrollBy(0,Math.round(window.innerHeight*1.6));", v -> { });
+      ui.postDelayed(() -> extractLinkedInFeed(id, limit, attempt + 1, next), 2000);
+    });
+  }
+
+  /** Job offers from LinkedIn job search, 25 per page; looks again while the list renders. */
+  private void collectLinkedInJobs(String id, String baseUrl, int start, int limit, java.util.LinkedHashMap<String, JSONObject> found) {
+    if (!linkedinMcpEnabled) { finishLinkedInJob(id, null, "LinkedIn navigation disabled"); return; }
+    linkedinWeb.loadUrl(baseUrl + (start > 0 ? "&start=" + start : ""));
+    ui.postDelayed(() -> extractLinkedInJobs(id, baseUrl, start, limit, found, 0, -1), 3500);
+  }
+
+  private void extractLinkedInJobs(String id, String baseUrl, int start, int limit, java.util.LinkedHashMap<String, JSONObject> found, int attempt, int lastCount) {
+    String js = "(function(){const out=[],seen=new Set();"
+      + "const ids=new Map();for(const e of document.querySelectorAll('[data-job-id],[data-occludable-job-id]')){const v=e.getAttribute('data-job-id')||e.getAttribute('data-occludable-job-id');if(/^\\d{5,20}$/.test(v||''))ids.set(e,v);}"
+      + "for(const a of document.querySelectorAll('a[href*=\"/jobs/view/\"]')){const m=a.href.match(/\\/jobs\\/view\\/(?:[^/?]*-)?(\\d{5,20})/);if(m)ids.set(a.closest('li,[data-job-id],[class*=job-card],[class*=base-card],article')||a,m[1]);}"
+      + "for(const [card,jid] of ids){if(seen.has(jid))continue;seen.add(jid);"
+      + "const lines=(card.innerText||'').split('\\n').map(x=>x.trim()).filter(Boolean);if(!lines.length)continue;"
+      + "const q=s=>{const e=card.querySelector(s);return e?(e.innerText||'').trim().split('\\n')[0]:'';};"
+      + "const title=q('[class*=job-card-list__title],[class*=job-card-container__link],[class*=base-search-card__title],h3,strong')||lines[0];"
+      + "const company=q('[class*=subtitle],[class*=company-name],[class*=base-search-card__subtitle],h4');"
+      + "const place=q('[class*=metadata-item],[class*=job-search-card__location],[class*=location]');"
+      + "const t=card.querySelector('time');"
+      + "out.push({jobId:jid,title:title.slice(0,200),company:company.slice(0,150),location:place.slice(0,150),posted:t?(t.getAttribute('datetime')||t.innerText.trim()):'',jobUrl:'https://www.linkedin.com/jobs/view/'+jid+'/',cardText:lines.join(' · ').slice(0,500)});}"
+      + "const list=document.querySelector('[class*=jobs-search-results-list],[class*=scaffold-layout__list]');if(list)list.scrollTop=list.scrollHeight;window.scrollBy(0,window.innerHeight);"
+      + "return JSON.stringify({jobs:out,signedOut:" + LI_SIGNED_OUT_JS + ",title:document.title.slice(0,80)});})()";
+    linkedinWeb.evaluateJavascript(js, raw -> {
+      try {
+        JSONObject r = new JSONObject(new JSONArray("[" + raw + "]").getString(0));
+        JSONArray jobs = r.optJSONArray("jobs");
+        for (int i = 0; jobs != null && i < jobs.length() && found.size() < limit; i++) {
+          JSONObject j = jobs.getJSONObject(i);
+          found.putIfAbsent(j.optString("jobId"), j);
+        }
+        int pageCount = jobs == null ? 0 : jobs.length();
+        if (r.optBoolean("signedOut")) { finishLinkedInJobsList(id, found, limit, start, "LinkedIn is not signed in inside the CamMicGo app: open the LinkedIn tab and sign in."); return; }
+        if (found.size() >= limit) { finishLinkedInJobsList(id, found, limit, start, null); return; }
+        if (attempt < 4 && pageCount > lastCount) { ui.postDelayed(() -> extractLinkedInJobs(id, baseUrl, start, limit, found, attempt + 1, pageCount), 1800); return; }
+        if (attempt < 2 && pageCount == 0) { ui.postDelayed(() -> extractLinkedInJobs(id, baseUrl, start, limit, found, attempt + 1, pageCount), 2500); return; }
+        if (pageCount > 0 && start < 50) { collectLinkedInJobs(id, baseUrl, start + 25, limit, found); return; }
+        finishLinkedInJobsList(id, found, limit, start, found.isEmpty() ? "No job card found: no result for this search, or LinkedIn changed its layout." : null);
+      } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
+    });
+  }
+
+  private void finishLinkedInJobsList(String id, java.util.LinkedHashMap<String, JSONObject> found, int limit, int start, String note) {
+    try {
+      JSONArray list = new JSONArray();
+      for (JSONObject j : found.values()) list.put(j);
+      JSONObject out = new JSONObject().put("jobs", list).put("retrieved", list.length()).put("requested", limit).put("source", "linkedin_jobs_search");
+      if (note != null) out.put("note", note);
+      finishLinkedInJob(id, out, null);
+    } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
+  }
+
+  /** One job offer: title, company, place and the full description text. */
+  private void extractLinkedInJobDetails(String id, String jobId, int attempt) {
+    String js = "(function(){const q=s=>{const e=document.querySelector(s);return e?(e.innerText||'').trim():'';};"
+      + "const desc=q('[class*=jobs-description__content],[class*=jobs-box__html-content],[class*=description__text],#job-details,[class*=show-more-less-html]');"
+      + "const title=q('[class*=job-details-jobs-unified-top-card__job-title],[class*=top-card-layout__title],h1');"
+      + "const company=q('[class*=job-details-jobs-unified-top-card__company-name],[class*=topcard__org-name-link],[class*=top-card-layout__second-subline] a');"
+      + "const meta=q('[class*=job-details-jobs-unified-top-card__primary-description],[class*=tertiary-description],[class*=topcard__flavor--bullet],[class*=top-card-layout__second-subline]');"
+      + "const insights=[...document.querySelectorAll('[class*=job-insight],[class*=job-criteria__item],[class*=description__job-criteria-item]')].map(e=>(e.innerText||'').trim().replace(/\\s+/g,' ')).filter(Boolean).slice(0,12);"
+      + "return JSON.stringify({jobId:" + JSONObject.quote(jobId) + ",title:title.split('\\n')[0].slice(0,200),company:company.split('\\n')[0].slice(0,150),meta:meta.replace(/\\s+/g,' ').slice(0,400),insights,description:desc.slice(0,12000),jobUrl:location.href.split('?')[0],signedOut:" + LI_SIGNED_OUT_JS + "});})()";
+    linkedinWeb.evaluateJavascript(js, raw -> {
+      try {
+        JSONObject r = new JSONObject(new JSONArray("[" + raw + "]").getString(0));
+        if (r.optString("description").isEmpty() && !r.optBoolean("signedOut") && attempt < 4) {
+          linkedinWeb.evaluateJavascript("(function(){const b=[...document.querySelectorAll('button')].find(x=>/voir plus|see more|show more|afficher plus/i.test((x.innerText||'')+' '+(x.getAttribute('aria-label')||'')));if(b)b.click();})()", v -> { });
+          ui.postDelayed(() -> extractLinkedInJobDetails(id, jobId, attempt + 1), 2000);
+          return;
+        }
+        if (r.optBoolean("signedOut")) r.put("note", "LinkedIn is not signed in inside the CamMicGo app: open the LinkedIn tab and sign in.");
+        else if (r.optString("description").isEmpty()) r.put("note", "Description not found on the job page; LinkedIn may have changed its layout.");
+        finishLinkedInJob(id, r, null);
+      } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
+    });
   }
 
   /** Page through user-requested LinkedIn people results, without inventing matches. */
