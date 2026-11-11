@@ -4,8 +4,19 @@ export async function enqueueLinkedIn(userId:string,operation:LinkedInOperation,
  const rows=await sb<Array<{id:string}>>('/rest/v1/cmg_linkedin_jobs',{method:'POST',body:JSON.stringify({user_id:userId,operation,payload}),prefer:'return=representation'});
  return rows[0];
 }
+/** Results hold other people's names, headlines and image links: they are kept only until delivered to the
+ * assistant, and never more than 15 minutes (conversation threads included). */
+export const RESULT_TTL_MS=15*60_000;
+export async function purgeLinkedInResult(userId:string,id:string){
+ if(!/^[0-9a-f-]{36}$/i.test(id))return;
+ await sb('/rest/v1/cmg_linkedin_jobs?id=eq.'+id+'&user_id=eq.'+userId+'&status=in.(done,error)',{method:'PATCH',body:JSON.stringify({result:null})}).catch(()=>{});
+}
+export async function sweepLinkedInResults(userId:string){
+ await sb('/rest/v1/cmg_linkedin_jobs?user_id=eq.'+userId+'&result=not.is.null&completed_at=lt.'+encodeURIComponent(new Date(Date.now()-RESULT_TTL_MS).toISOString()),{method:'PATCH',body:JSON.stringify({result:null})}).catch(()=>{});
+}
 /** Jobs the phone never picked up before their deadline become explicit errors (never run later). */
 export async function expireLinkedIn(userId:string){
+ await sweepLinkedInResults(userId);
  await sb('/rest/v1/cmg_linkedin_jobs?user_id=eq.'+userId+'&status=eq.pending&expires_at=lt.'+encodeURIComponent(new Date().toISOString()),{method:'PATCH',
   body:JSON.stringify({status:'error',error:'expired: the phone never picked up this command (CamMicGo app not open with LinkedIn control enabled). Nothing was done.',payload:{},completed_at:new Date().toISOString()})}).catch(()=>{});
 }
