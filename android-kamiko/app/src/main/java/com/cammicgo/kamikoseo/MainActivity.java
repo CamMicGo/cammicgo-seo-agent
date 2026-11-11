@@ -840,50 +840,68 @@ public class MainActivity extends Activity {
       });
     });
 
-    // Local speech recognition for videos without captions (Whisper small, on this phone).
+    // Local speech recognition for videos without captions (Whisper small or turbo, on this phone).
     TextView asrTitle = text(c, "Transcription locale (vidéos sans sous-titres)", 14, INK, true);
     asrTitle.setPadding(0, dp(16), 0, dp(4));
     TextView asrStatus = text(c, "", 12, MUTED, false);
-    Button asrButton = secondary("");
-    c.addView(asrButton, gapTop(6));
+    final LocalAsr.Model[] models = LocalAsr.MODELS;
+    final TextView[] modelInfo = new TextView[models.length];
+    final Button[] modelButton = new Button[models.length];
+    final java.util.concurrent.atomic.AtomicBoolean asrCancel = new java.util.concurrent.atomic.AtomicBoolean(false);
+    final int[] downloading = {-1};
+    for (int i = 0; i < models.length; i++) {
+      modelInfo[i] = text(c, "", 12, INK, false);
+      modelInfo[i].setPadding(0, dp(8), 0, 0);
+      modelButton[i] = secondary("");
+      c.addView(modelButton[i], gapTop(4));
+    }
     android.widget.CheckBox asrToggle = new android.widget.CheckBox(this);
     asrToggle.setText("Utiliser automatiquement quand une vidéo n'a pas de sous-titres (aussi pour ChatGPT / Claude)");
     asrToggle.setTextSize(12);
     asrToggle.setChecked(RelayClient.prefs(this).getBoolean(LocalAsr.PREF_FALLBACK, true));
     asrToggle.setOnCheckedChangeListener((b, on) -> RelayClient.prefs(this).edit().putBoolean(LocalAsr.PREF_FALLBACK, on).apply());
-    c.addView(asrToggle, gapTop(4));
-    final java.util.concurrent.atomic.AtomicBoolean asrCancel = new java.util.concurrent.atomic.AtomicBoolean(false);
-    final boolean[] asrBusy = {false};
+    c.addView(asrToggle, gapTop(6));
     Runnable asrRefresh = () -> {
-      boolean ok = LocalAsr.installed(this);
-      asrToggle.setVisibility(ok ? View.VISIBLE : View.GONE);
-      if (asrBusy[0]) { asrButton.setText("Annuler le téléchargement"); return; }
-      asrButton.setText(ok ? "Supprimer le modèle" : "Télécharger le modèle (" + LocalAsr.size(LocalAsr.DOWNLOAD_BYTES) + ", Wi-Fi conseillé)");
-      asrStatus.setText(ok ? LocalAsr.MODEL_LABEL + " installé (" + LocalAsr.size(LocalAsr.INSTALLED_BYTES) + "). Les vidéos sans sous-titres sont transcrites sur ce téléphone, l'audio temporaire est supprimé ensuite."
-          : "Modèle " + LocalAsr.MODEL_LABEL + " : 99 langues, mélange de langues accepté. Le texte est approximatif et horodaté ; l'audio ne quitte pas le téléphone.");
+      LocalAsr.Model active = LocalAsr.active(this);
+      asrToggle.setVisibility(active != null ? View.VISIBLE : View.GONE);
+      if (downloading[0] < 0) asrStatus.setText(active != null
+          ? "Modèle utilisé : " + active.label + ". Les vidéos sans sous-titres sont transcrites sur ce téléphone ; l'audio temporaire est supprimé ensuite."
+          : "99 langues, mélange de langues accepté. Texte approximatif et horodaté ; l'audio ne quitte pas le téléphone. Télécharge un modèle (une seule fois, il reste ensuite).");
+      for (int i = 0; i < models.length; i++) {
+        LocalAsr.Model m = models[i];
+        boolean ok = LocalAsr.installed(this, m);
+        modelInfo[i].setText(m.label + " (" + m.blurb + ") · " + LocalAsr.size(m.installedBytes()) + (ok ? " · installé" : ""));
+        modelButton[i].setEnabled(downloading[0] < 0 || downloading[0] == i);
+        modelButton[i].setText(downloading[0] == i ? "Annuler le téléchargement"
+            : !ok ? "Télécharger " + m.label + " (" + LocalAsr.size(m.downloadBytes) + ", Wi-Fi conseillé)"
+            : m == active ? "✓ " + m.label + " est utilisé" : "Utiliser " + m.label);
+      }
     };
     asrRefresh.run();
-    asrButton.setOnClickListener(v -> {
-      if (asrBusy[0]) { asrCancel.set(true); return; }
-      if (LocalAsr.installed(this)) {
-        confirmDeleteModel(LocalAsr.MODEL_LABEL, LocalAsr.dir(this), () -> { LocalAsr.release(); asrRefresh.run(); refreshModels(); });
-        return;
-      }
-      asrBusy[0] = true; asrCancel.set(false); asrRefresh.run();
-      asrStatus.setText("Téléchargement du modèle…");
-      new Thread(() -> {
-        String done;
-        try {
-          LocalAsr.download(this, (got, total) -> ui.post(() -> asrStatus.setText("Téléchargement du modèle : "
-              + (total > 0 ? (got * 100 / total) + " %" : LocalAsr.size(got)))), asrCancel);
-          done = null;
-        } catch (Exception e) {
-          done = asrCancel.get() ? "Téléchargement annulé." : "Échec : " + e.getMessage();
-        }
-        final String msg = done;
-        ui.post(() -> { asrBusy[0] = false; asrRefresh.run(); refreshModels(); if (msg != null) asrStatus.setText(msg); });
-      }, "asr-download").start();
-    });
+    for (int i = 0; i < models.length; i++) {
+      final int idx = i;
+      final LocalAsr.Model m = models[i];
+      modelButton[i].setOnClickListener(v -> {
+        if (downloading[0] == idx) { asrCancel.set(true); return; }
+        if (LocalAsr.installed(this, m)) { LocalAsr.choose(this, m); asrRefresh.run(); return; }
+        downloading[0] = idx; asrCancel.set(false); asrRefresh.run();
+        asrStatus.setText("Téléchargement de " + m.label + "…");
+        new Thread(() -> {
+          String done;
+          try {
+            LocalAsr.download(this, m, (got, total) -> ui.post(() -> asrStatus.setText("Téléchargement de " + m.label + " : "
+                + (total > 0 ? (got * 100 / total) + " %" : LocalAsr.size(got)))), asrCancel);
+            LocalAsr.choose(this, m);
+            done = null;
+          } catch (Exception e) {
+            done = asrCancel.get() ? "Téléchargement annulé." : "Échec : " + e.getMessage();
+          }
+          final String msg = done;
+          ui.post(() -> { downloading[0] = -1; asrRefresh.run(); refreshModels(); if (msg != null) asrStatus.setText(msg); });
+        }, "asr-download").start();
+      });
+    }
+    modelsChanged = asrRefresh;
 
     TextView modelsTitle = text(c, "Modèles installés sur ce téléphone", 14, INK, true);
     modelsTitle.setPadding(0, dp(16), 0, dp(4));
@@ -2929,6 +2947,7 @@ public class MainActivity extends Activity {
   }
 
   private LinearLayout modelsBox;
+  private Runnable modelsChanged;
 
   /** Lists every speech model folder in the app's private storage (current, older, interrupted downloads). */
   private void refreshModels() {
@@ -2941,7 +2960,9 @@ public class MainActivity extends Activity {
       long size = treeSize(d);
       total += size;
       String name = d.getName();
-      String label = LocalAsr.MODEL_ID.equals(name) ? LocalAsr.MODEL_LABEL + " — utilisé pour les vidéos sans sous-titres"
+      LocalAsr.Model known = LocalAsr.byId(name);
+      LocalAsr.Model activeModel = LocalAsr.active(this);
+      String label = known != null ? known.label + (known == activeModel ? " — utilisé pour les vidéos sans sous-titres" : " — installé, pas utilisé")
           : name.startsWith("qwen3-asr") ? "Qwen3-ASR 0.6B — ancien modèle, plus utilisé par l'app"
           : "download.tmp".equals(name) ? "Téléchargement interrompu (fichiers incomplets)"
           : name + " — non utilisé";
@@ -2954,8 +2975,9 @@ public class MainActivity extends Activity {
       row.addView(info, new LinearLayout.LayoutParams(0, -2, 1));
       Button del = secondary("Supprimer");
       del.setOnClickListener(v -> confirmDeleteModel(label.split(" — ")[0], d, () -> {
-        if (LocalAsr.MODEL_ID.equals(name)) LocalAsr.release();
+        if (known != null) LocalAsr.release();
         refreshModels();
+        if (modelsChanged != null) modelsChanged.run();
       }));
       row.addView(del, new LinearLayout.LayoutParams(-2, -2));
       modelsBox.addView(row, gapTop(6));
@@ -3025,7 +3047,7 @@ public class MainActivity extends Activity {
           return;
         }
         if ("local_asr".equals(done.source)) {
-          resultMeta.setText((done.title != null ? done.title + "\n" : "") + "Pas de sous-titres YouTube : transcription locale " + LocalAsr.MODEL_LABEL
+          resultMeta.setText((done.title != null ? done.title + "\n" : "") + "Pas de sous-titres YouTube : transcription locale " + (LocalAsr.byId(done.model) != null ? LocalAsr.byId(done.model).label : done.model)
               + " · langues : " + (done.languagesDetected.isEmpty() ? "?" : android.text.TextUtils.join(", ", done.languagesDetected))
               + " · " + t("segments", done.segments.size()) + "\nCalcul : " + Math.round(done.processingMs / 1000.0) + " s pour "
               + done.durationSeconds + " s d'audio. Texte approximatif.");

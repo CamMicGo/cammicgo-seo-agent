@@ -43,34 +43,52 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * each is decoded with automatic language detection so songs mixing languages stay readable, then
  * cleaned of Whisper's repetition loops and stock phrases (WhisperCleanup). A segment that loops is
  * decoded again in two halves. Chosen in benchmarks/asr after a comparison of 8 light models on a
- * Japanese/English song. The model (about 375 MB) is downloaded only when the user asks for it,
+ * Japanese/English song: Whisper small (fast) or Whisper turbo (better on songs, slower). Models
+ * are downloaded only when the user asks for it,
  * verified file by file (size + SHA-256) and kept in the app's private storage. Audio never leaves
  * the phone.
  */
 final class LocalAsr {
   static final int RATE = 16000;
-  static final String MODEL_ID = "whisper-small-int8";
-  static final String MODEL_LABEL = "Whisper small (int8)";
-  /** Official sherpa-onnx release (MIT, like Whisper). Holds fp32 and int8 files: only int8 is kept. */
-  static final String URL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-small.tar.bz2";
-  static final long DOWNLOAD_BYTES = 639_387_718L;
-  static final String VAD_URL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx";
-  /** path, bytes, SHA-256, measured from the release files. */
-  static final String[][] FILES = {
+
+  /** A downloadable Whisper model: official sherpa-onnx release archive, int8 files kept, each verified. */
+  static final class Model {
+    final String id, label, blurb, url;
+    final long downloadBytes, minDeviceRam, minFreeRam;
+    final int featureDim;
+    /** encoder, decoder, tokens: path in the archive, bytes, SHA-256 (measured from the release files). */
+    final String[][] files;
+    Model(String id, String label, String blurb, String url, long downloadBytes, int featureDim, long minDeviceRam, long minFreeRam, String[][] files) {
+      this.id = id; this.label = label; this.blurb = blurb; this.url = url; this.downloadBytes = downloadBytes;
+      this.featureDim = featureDim; this.minDeviceRam = minDeviceRam; this.minFreeRam = minFreeRam; this.files = files;
+    }
+    long installedBytes() { long s = Long.parseLong(VAD_FILE[1]); for (String[] f : files) s += Long.parseLong(f[1]); return s; }
+  }
+
+  /** Fast default: peak memory about 1.4 GB, 2.7-3.5 % WER on speech (emulator test). */
+  static final Model SMALL = new Model("whisper-small-int8", "Whisper small", "rapide",
+      "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-small.tar.bz2", 639_387_718L, 80,
+      3_500_000_000L, 1_200_000_000L, new String[][] {
       {"small-encoder.int8.onnx", "112442483", "4cbe7b22fa9026b843b60a68640c747de05bafb1a11b57edc0e66c232d9f33a9"},
       {"small-decoder.int8.onnx", "262226114", "acad50b5c782696e91b55914cc5ab4f756f1532f76e22aa6fc615f39fb69a8ee"},
-      {"small-tokens.txt", "816730", "b34b360dbb493e781e479794586d661700670d65564001f23024971d1f2fa126"},
-  };
+      {"small-tokens.txt", "816730", "b34b360dbb493e781e479794586d661700670d65564001f23024971d1f2fa126"}});
+  /** Large-v3-turbo: better on songs and accents; emulator: 2.3-2.6 % WER, peak 1.8 GB, about 3 times slower than small. */
+  static final Model TURBO = new Model("whisper-turbo-int8", "Whisper turbo", "qualité, plus lent",
+      "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-turbo.tar.bz2", 563_790_207L, 128,
+      5_500_000_000L, 2_000_000_000L, new String[][] {
+      {"turbo-encoder.int8.onnx", "674716297", "b02dcdf54f348741e93fe732b67d933c8dcb6735655f710640143081db38878b"},
+      {"turbo-decoder.int8.onnx", "361080764", "20accd02388482eb3a46bd615631adfdc85e1eb2c7db9ea3f02a40ffe6b81547"},
+      {"turbo-tokens.txt", "816730", "b34b360dbb493e781e479794586d661700670d65564001f23024971d1f2fa126"}});
+  static final Model[] MODELS = {SMALL, TURBO};
+
+  static final String VAD_URL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx";
   static final String[] VAD_FILE = {"silero_vad.onnx", "643854", "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6"};
-  static final long INSTALLED_BYTES;
-  static { long s = Long.parseLong(VAD_FILE[1]); for (String[] f : FILES) s += Long.parseLong(f[1]); INSTALLED_BYTES = s; }
 
   /** Longest voice segment given to Whisper (its window is 30 s; 20 s gave fewer loops on songs). */
   static final float MAX_SEGMENT_SECONDS = 20f;
   /** Longest audio transcribed for one request, so a relay job finishes in reasonable time. */
   static final int MAX_AUDIO_MINUTES = 30;
-  /** Peak memory measured at about 1.4 GB. */
-  static final long MIN_DEVICE_RAM = 3_500_000_000L, MIN_FREE_RAM = 1_200_000_000L;
+  static final String PREF_MODEL = "localAsrModel";
 
   static final class UserError extends IOException { UserError(String m) { super(m); } }
   interface Progress { void update(long done, long total); }
@@ -78,21 +96,33 @@ final class LocalAsr {
 
   private LocalAsr() {}
 
-  static File dir(Context c) { return new File(c.getFilesDir(), "asr/" + MODEL_ID); }
-  private static File marker(Context c) { return new File(dir(c), ".verified"); }
+  static Model byId(String id) { for (Model m : MODELS) if (m.id.equals(id)) return m; return null; }
+  static File dir(Context c, Model m) { return new File(c.getFilesDir(), "asr/" + m.id); }
+  private static File marker(Context c, Model m) { return new File(dir(c, m), ".verified"); }
 
   /** Installed and verified (sizes are rechecked; hashes were checked once, at download). */
-  static boolean installed(Context c) {
-    if (!marker(c).isFile()) return false;
-    for (String[] f : FILES) if (!sized(new File(dir(c), f[0]), f[1])) return false;
-    return sized(new File(dir(c), VAD_FILE[0]), VAD_FILE[1]);
+  static boolean installed(Context c, Model m) {
+    if (!marker(c, m).isFile()) return false;
+    for (String[] f : m.files) if (!sized(new File(dir(c, m), f[0]), f[1])) return false;
+    return sized(new File(dir(c, m), VAD_FILE[0]), VAD_FILE[1]);
   }
+  /** At least one model is ready. */
+  static boolean installed(Context c) { return active(c) != null; }
   private static boolean sized(File f, String bytes) { return f.isFile() && f.length() == Long.parseLong(bytes); }
 
-  static void delete(Context c) {
-    release();
-    deleteTree(dir(c));
-    deleteTree(new File(c.getFilesDir(), "asr/download.tmp"));
+  /** The model chosen by the user if installed, otherwise the first installed one, otherwise null. */
+  static Model active(Context c) {
+    Model chosen = byId(RelayClient.prefs(c).getString(PREF_MODEL, SMALL.id));
+    if (chosen != null && installed(c, chosen)) return chosen;
+    for (Model m : MODELS) if (installed(c, m)) return m;
+    return null;
+  }
+  static void choose(Context c, Model m) { RelayClient.prefs(c).edit().putString(PREF_MODEL, m.id).apply(); }
+  static String activeLabel(Context c) { Model m = active(c); return m == null ? "Whisper" : m.label; }
+
+  static void delete(Context c, Model m) {
+    if (rec != null && m.id.equals(recModel)) release();
+    deleteTree(dir(c, m));
   }
 
   static String size(long bytes) {
@@ -101,16 +131,16 @@ final class LocalAsr {
   }
 
   /** Downloads the archive once, keeping only the int8 model files, then the VAD; each file is verified. */
-  static void download(Context c, Progress progress, AtomicBoolean cancel) throws IOException {
-    long need = INSTALLED_BYTES + 150_000_000L;
+  static void download(Context c, Model model, Progress progress, AtomicBoolean cancel) throws IOException {
+    long need = model.installedBytes() + 150_000_000L;
     if (c.getFilesDir().getUsableSpace() < need) throw new UserError("Espace insuffisant : il faut " + size(need) + " libres.");
     File tmp = new File(c.getFilesDir(), "asr/download.tmp");
     deleteTree(tmp);
     if (!tmp.mkdirs()) throw new IOException("cannot create " + tmp);
     Map<String, String[]> wanted = new HashMap<>();
-    for (String[] f : FILES) wanted.put(f[0], f);
-    HttpURLConnection con = open(URL);
-    long total = con.getContentLengthLong() > 0 ? con.getContentLengthLong() : DOWNLOAD_BYTES;
+    for (String[] f : model.files) wanted.put(f[0], f);
+    HttpURLConnection con = open(model.url);
+    long total = con.getContentLengthLong() > 0 ? con.getContentLengthLong() : model.downloadBytes;
     int found = 0;
     try (InputStream raw = con.getInputStream();
          CountingStream counted = new CountingStream(raw, total, progress, cancel);
@@ -127,16 +157,21 @@ final class LocalAsr {
         found++;
       }
     } finally { con.disconnect(); }
-    if (found != FILES.length) throw new UserError("Archive du modèle incomplète, réessaie.");
+    if (found != model.files.length) throw new UserError("Archive du modèle incomplète, réessaie.");
     HttpURLConnection vad = open(VAD_URL);
     try (InputStream in = vad.getInputStream()) { writeVerified(in, new File(tmp, VAD_FILE[0]), VAD_FILE, new byte[1 << 16]); }
     finally { vad.disconnect(); }
-    File dest = dir(c);
+    moveIntoPlace(c, model, tmp);
+  }
+
+  private static void moveIntoPlace(Context c, Model model, File src) throws IOException {
+    if (rec != null && model.id.equals(recModel)) release();
+    File dest = dir(c, model);
     deleteTree(dest);
     File parent = dest.getParentFile();
     if (parent != null && !parent.isDirectory()) parent.mkdirs();
-    if (!tmp.renameTo(dest)) throw new IOException("cannot move model into place");
-    try (OutputStream os = new FileOutputStream(marker(c))) { os.write(MODEL_ID.getBytes()); }
+    if (!src.renameTo(dest)) throw new IOException("cannot move model into place");
+    try (OutputStream os = new FileOutputStream(marker(c, model))) { os.write(model.id.getBytes()); }
   }
 
   private static void writeVerified(InputStream in, File out, String[] spec, byte[] buf) throws IOException {
@@ -154,10 +189,10 @@ final class LocalAsr {
    * Installs model files already on the device (a folder in the app's storage) with the same checks
    * as a download. Used by the emulator test (LocalAsrDeviceTest).
    */
-  static void installFrom(Context c, File src) throws IOException {
+  static void installFrom(Context c, Model model, File src) throws IOException {
     byte[] buf = new byte[1 << 16];
-    String[][] all = Arrays.copyOf(FILES, FILES.length + 1);
-    all[FILES.length] = VAD_FILE;
+    String[][] all = Arrays.copyOf(model.files, model.files.length + 1);
+    all[model.files.length] = VAD_FILE;
     for (String[] f : all) {
       File x = new File(src, f[0]);
       if (!sized(x, f[1])) throw new UserError("Fichier du modèle absent ou incomplet : " + f[0]);
@@ -165,59 +200,59 @@ final class LocalAsr {
       try (InputStream in = new java.io.FileInputStream(x)) { int n; while ((n = in.read(buf)) > 0) sha.update(buf, 0, n); }
       if (!hex(sha.digest()).equals(f[2])) throw new UserError("Fichier du modèle corrompu : " + f[0]);
     }
-    release();
-    File dest = dir(c);
-    deleteTree(dest);
-    File parent = dest.getParentFile();
-    if (parent != null && !parent.isDirectory()) parent.mkdirs();
-    if (!src.renameTo(dest)) throw new IOException("cannot move model into place");
-    try (OutputStream os = new FileOutputStream(marker(c))) { os.write(MODEL_ID.getBytes()); }
+    moveIntoPlace(c, model, src);
   }
 
   /** Refuses phones that cannot hold the model, instead of letting Android kill the app. */
-  static void checkMemory(Context c) throws UserError {
+  static void checkMemory(Context c, Model m) throws UserError {
     ActivityManager am = (ActivityManager) c.getSystemService(Context.ACTIVITY_SERVICE);
     ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
     am.getMemoryInfo(mi);
-    if (mi.totalMem < MIN_DEVICE_RAM) throw new UserError("Ce téléphone a trop peu de mémoire (" + size(mi.totalMem) + ") pour la transcription locale.");
-    if (rec == null && mi.availMem < MIN_FREE_RAM) throw new UserError("Mémoire libre insuffisante (" + size(mi.availMem) + ") : ferme d'autres applications et réessaie.");
+    if (mi.totalMem < m.minDeviceRam) throw new UserError("Ce téléphone a trop peu de mémoire (" + size(mi.totalMem) + ") pour " + m.label
+        + (m == TURBO ? " : utilise Whisper small." : "."));
+    if (mi.availMem < m.minFreeRam) throw new UserError("Mémoire libre insuffisante pour " + m.label + " (" + size(mi.availMem)
+        + ", il faut " + size(m.minFreeRam) + ") : ferme d'autres applications et réessaie.");
   }
 
   private static OfflineRecognizer rec;
+  private static String recModel;
 
+  /** Loads the active model (and keeps it loaded until another one is chosen). */
   static synchronized OfflineRecognizer recognizer(Context c) throws IOException {
-    if (rec != null) return rec;
-    if (!installed(c)) throw new UserError("Modèle Whisper small non installé : télécharge-le dans l'onglet Transcription.");
-    checkMemory(c);
-    File d = dir(c);
+    Model model = active(c);
+    if (model == null) throw new UserError("Aucun modèle Whisper installé : télécharge-en un dans l'application.");
+    if (rec != null && model.id.equals(recModel)) return rec;
+    release();
+    checkMemory(c, model);
+    File d = dir(c, model);
     OfflineWhisperModelConfig w = new OfflineWhisperModelConfig();
-    w.setEncoder(new File(d, FILES[0][0]).getPath());
-    w.setDecoder(new File(d, FILES[1][0]).getPath());
+    w.setEncoder(new File(d, model.files[0][0]).getPath());
+    w.setDecoder(new File(d, model.files[1][0]).getPath());
     w.setLanguage("");  // automatic, per segment
     w.setTask("transcribe");
     OfflineModelConfig m = new OfflineModelConfig();
     m.setWhisper(w);
-    m.setTokens(new File(d, FILES[2][0]).getPath());
+    m.setTokens(new File(d, model.files[2][0]).getPath());
     m.setModelType("whisper");
     m.setNumThreads(threads());
     FeatureConfig feat = new FeatureConfig();
     feat.setSampleRate(RATE);
-    feat.setFeatureDim(80);
+    feat.setFeatureDim(model.featureDim);
     OfflineRecognizerConfig cfg = new OfflineRecognizerConfig();
     cfg.setFeatConfig(feat);
     cfg.setModelConfig(m);
-    try { rec = new OfflineRecognizer(null, cfg); }
+    try { rec = new OfflineRecognizer(null, cfg); recModel = model.id; }
     catch (IllegalArgumentException e) { throw new UserError("Le modèle n'a pas pu être chargé : supprime-le et télécharge-le à nouveau."); }
     return rec;
   }
 
   static int threads() { return Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors() / 2)); }
 
-  static synchronized void release() { if (rec != null) { rec.release(); rec = null; } }
+  static synchronized void release() { if (rec != null) { rec.release(); rec = null; recModel = null; } }
 
-  private static Vad vad(Context c) {
+  private static Vad vad(Context c, Model model) {
     SileroVadModelConfig s = new SileroVadModelConfig();
-    s.setModel(new File(dir(c), VAD_FILE[0]).getPath());
+    s.setModel(new File(dir(c, model), VAD_FILE[0]).getPath());
     s.setThreshold(0.3f);            // singing over music scores lower than speech
     s.setMinSilenceDuration(0.4f);
     s.setMinSpeechDuration(0.3f);
@@ -269,11 +304,12 @@ final class LocalAsr {
   static TranscriptFetcher.Result transcribe(Context c, File audio, AtomicBoolean cancel, Listener listener) throws Exception {
     long t0 = System.currentTimeMillis();
     OfflineRecognizer r = recognizer(c);
+    Model model = byId(recModel);
     TranscriptFetcher.Result res = new TranscriptFetcher.Result();
-    res.source = "local_asr"; res.model = MODEL_ID; res.method = "local-asr-whisper";
+    res.source = "local_asr"; res.model = model.id; res.method = "local-asr-" + model.id.replace("-int8", "");
     final double[] total = {0};
     final Map<String, Integer> langs = new LinkedHashMap<>();
-    Vad v = vad(c);
+    Vad v = vad(c, model);
     try {
       final int window = 512;
       final float[] pending = new float[window];
