@@ -235,7 +235,7 @@ public class RelayService extends Service {
         try { local = localTranscript(token, id, videoId, lang); }
         catch (Exception e2) { msg = msg + "\nTranscription locale (Whisper) impossible : " + e2.getMessage(); }
       } else if (LocalAsr.noCaptions(msg) && !LocalAsr.installed(this)) {
-        msg = msg + "\nAstuce : installe le modèle Whisper small dans l'application CamMicGo pour transcrire sur le téléphone les vidéos sans sous-titres.";
+        msg = msg + "\nAstuce : installe un modèle Whisper (small ou turbo) dans l'application CamMicGo pour transcrire sur le téléphone les vidéos sans sous-titres.";
       }
       if (local == null) {
         RelayClient.sendError(token, id, msg);
@@ -289,7 +289,7 @@ public class RelayService extends Service {
     return LocalAsr.transcribeVideo(this, videoId, "original".equals(lang) ? null : lang, cancel, (phase, percent) -> {
       if (!running) cancel.set(true);
       status("audio".equals(phase) ? "Pas de sous-titres : téléchargement temporaire de l'audio…"
-          : "Transcription locale (" + LocalAsr.MODEL_LABEL + ")" + (percent >= 0 ? " : " + percent + " %" : "…"));
+          : "Transcription locale (" + LocalAsr.activeLabel(this) + ")" + (percent >= 0 ? " : " + percent + " %" : "…"));
       long now = System.currentTimeMillis();
       if (now - lastPing[0] > 30_000L) {
         lastPing[0] = now;

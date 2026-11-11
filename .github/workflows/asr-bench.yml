@@ -1,4 +1,4 @@
-name: Local ASR device test (Whisper small int8)
+name: Local ASR device test (Whisper small / turbo int8)
 on:
   workflow_dispatch:
   push:
@@ -9,7 +9,13 @@ jobs:
   android-device:
     # Emulator (x86_64, 4 GB), real model, real MediaCodec AAC decoding, no network while transcribing.
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {model: small, ram: 4096M}
+          - {model: turbo, ram: 6144M}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -17,11 +23,13 @@ jobs:
       - name: Model (cached)
         id: model
         uses: actions/cache@v4
-        with: {path: model, key: whisper-small-int8-silero-v1}
+        with:
+          path: model
+          key: whisper-${{ matrix.model }}-int8-silero-v1
       - name: Download model
         if: steps.model.outputs.cache-hit != 'true'
         run: |
-          curl -fsSL -o m.tar.bz2 https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-small.tar.bz2
+          curl -fsSL -o m.tar.bz2 https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-${{ matrix.model }}.tar.bz2
           mkdir model && tar -xjf m.tar.bz2 -C model --strip-components=1 --wildcards '*int8.onnx' '*tokens.txt' && rm m.tar.bz2
           curl -fsSL -o model/silero_vad.onnx https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx
           ls -l model && sha256sum model/*
@@ -52,9 +60,9 @@ jobs:
           api-level: 31
           arch: x86_64
           target: google_apis
-          ram-size: 4096M
-          disk-size: 6G
+          ram-size: ${{ matrix.ram }}
+          disk-size: 8G
           cores: 4
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
           disable-animations: true
-          script: bash benchmarks/asr/emulator.sh
+          script: MODEL=${{ matrix.model }} bash benchmarks/asr/emulator.sh

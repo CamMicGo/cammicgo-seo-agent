@@ -12,7 +12,8 @@ copy() { # local file, path under files/bench
   adb shell "run-as $PKG mkdir -p files/bench/$(dirname "$2") && cat /data/local/tmp/cmg.tmp | run-as $PKG sh -c 'cat > files/bench/$2'"
   adb shell rm -f /data/local/tmp/cmg.tmp
 }
-for f in small-encoder.int8.onnx small-decoder.int8.onnx small-tokens.txt silero_vad.onnx; do copy "model/$f" "asr-model/$f"; done
+M=${MODEL:-small}
+for f in $M-encoder.int8.onnx $M-decoder.int8.onnx $M-tokens.txt silero_vad.onnx; do copy "model/$f" "asr-model/$f"; done
 for f in fr.m4a en.m4a ref-fr.txt ref-en.txt; do copy "audio/$f" "asr-audio/$f"; done
 adb shell "run-as $PKG ls -lR files/bench" | head -30
 # Offline proof: no network at all while transcribing.
@@ -21,6 +22,6 @@ adb shell svc data disable || true
 adb shell cmd connectivity airplane-mode enable || true
 sleep 3
 adb shell "ping -c 1 -W 2 8.8.8.8" && echo "NETWORK STILL UP" || echo "NETWORK OFF"
-adb shell am instrument -w -r -e class $PKG.LocalAsrDeviceTest $PKG.test/androidx.test.runner.AndroidJUnitRunner | tee instrument.txt
+adb shell am instrument -w -r -e model "$M" -e class $PKG.LocalAsrDeviceTest $PKG.test/androidx.test.runner.AndroidJUnitRunner | tee instrument.txt
 grep -E "ASR_[a-z_]+=" instrument.txt | sed 's/INSTRUMENTATION_STATUS: //' || true
 grep -q "^OK (" instrument.txt

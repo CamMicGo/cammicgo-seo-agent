@@ -36,9 +36,12 @@ public class LocalAsrDeviceTest {
     c = InstrumentationRegistry.getInstrumentation().getTargetContext();
     bench = new File(c.getFilesDir(), "bench");
     File model = new File(bench, "asr-model");
-    if (!LocalAsr.installed(c) && model.isDirectory()) {
+    LocalAsr.Model which = "turbo".equals(InstrumentationRegistry.getArguments().getString("model")) ? LocalAsr.TURBO : LocalAsr.SMALL;
+    report("model", which.id);
+    LocalAsr.choose(c, which);
+    if (!LocalAsr.installed(c, which) && model.isDirectory()) {
       long t = System.currentTimeMillis();
-      LocalAsr.installFrom(c, model);
+      LocalAsr.installFrom(c, which, model);
       report("install", String.format(Locale.ROOT, "verified+installed in %.1fs", (System.currentTimeMillis() - t) / 1000.0));
     }
   }
@@ -75,7 +78,7 @@ public class LocalAsrDeviceTest {
     for (TranscriptFetcher.Segment s : r.segments) text.append(s.text).append(' ');
     String ref = new String(Files.readAllBytes(new File(bench, "asr-audio/ref-" + lang + ".txt").toPath()), StandardCharsets.UTF_8);
     double w = wer(ref, text.toString());
-    report(lang, String.format(Locale.ROOT, "audio=%ds segments=%d time=%.0fs rtf=%.2f wer=%.1f%% lang=%s detected=%s peakPss=%dMB threads=%d",
+    report(lang, String.format(Locale.ROOT, r.model + " audio=%ds segments=%d time=%.0fs rtf=%.2f wer=%.1f%% lang=%s detected=%s peakPss=%dMB threads=%d",
         r.durationSeconds, r.segments.size(), secs, secs / Math.max(1, r.durationSeconds), w * 100, r.language, r.languagesDetected,
         peakPss.get() / 1024, LocalAsr.threads()));
     report(lang + "_json", TranscriptFetcher.toJson(r, false).substring(0, 300));
