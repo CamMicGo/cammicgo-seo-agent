@@ -449,7 +449,9 @@ public class MainActivity extends Activity {
     titles.setPadding(dp(10), 0, dp(8), 0);
     TextView name = text(titles, "CamMicGo", 18, INK, true);
     name.setLetterSpacing(-0.01f);
-    text(titles, t("app_sub"), 12, MUTED, false);
+    TextView subtitle = text(titles, t("app_sub"), 11, MUTED, false);
+    subtitle.setSingleLine(true);
+    subtitle.setEllipsize(TextUtils.TruncateAt.END);
     bar.addView(titles, new LinearLayout.LayoutParams(0, -2, 1));
 
     TextView lang = withIcon(text(null, I18n.code(this).toUpperCase(), 12, INK, true), UiIcons.Kind.BROWSER, MUTED);
