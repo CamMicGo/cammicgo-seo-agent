@@ -1090,10 +1090,31 @@ public class MainActivity extends Activity {
         if (distance.matches("0|5|10|25|50|100")) url.append("&distance=").append(distance);
         String posted = job.optString("posted", "");
         if ("day".equals(posted)) url.append("&f_TPR=r86400"); else if ("week".equals(posted)) url.append("&f_TPR=r604800"); else if ("month".equals(posted)) url.append("&f_TPR=r2592000");
+        String level = job.optString("experience", "");
+        if (level.matches("[1-6](,[1-6])*")) url.append("&f_E=").append(java.net.URLEncoder.encode(level, "UTF-8"));
+        String type = job.optString("jobType", "");
+        if (type.matches("[FPCTIVO](,[FPCTIVO])*")) url.append("&f_JT=").append(java.net.URLEncoder.encode(type, "UTF-8"));
+        if (job.optBoolean("easyApply", false)) url.append("&f_AL=true");
+        if ("recent".equals(job.optString("sort", ""))) url.append("&sortBy=DD");
         String workplace = job.optString("workplace", "");
         if ("onsite".equals(workplace)) url.append("&f_WT=1"); else if ("remote".equals(workplace)) url.append("&f_WT=2"); else if ("hybrid".equals(workplace)) url.append("&f_WT=3");
         collectLinkedInJobs(id, url.toString(), 0, limit, new java.util.LinkedHashMap<>());
       } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
+    } else if ("recommended_jobs".equals(op)) {
+      int limit = Math.min(50, Math.max(1, job.optInt("limit", 25)));
+      collectLinkedInJobs(id, "https://www.linkedin.com/jobs/collections/recommended/?discover=recommended", 0, limit, new java.util.LinkedHashMap<>());
+    } else if ("company_profile".equals(op) || "company_posts".equals(op)) {
+      String slug = job.optString("company", "").trim();
+      if (!slug.matches("[A-Za-z0-9%._-]{1,150}")) { finishLinkedInJob(id, null, "Invalid company page"); return; }
+      boolean posts = "company_posts".equals(op);
+      linkedinWeb.loadUrl("https://www.linkedin.com/company/" + slug + (posts ? "/posts/" : "/about/"));
+      if (posts) ui.postDelayed(() -> extractLinkedInFeed(id, Math.min(30, Math.max(1, job.optInt("limit", 10))), 0, null), 3500);
+      else ui.postDelayed(() -> extractLinkedInCompanyProfile(id, slug, 0), 3500);
+    } else if ("person_profile".equals(op)) {
+      String slug = job.optString("profile", "").trim();
+      if (!slug.matches("[A-Za-z0-9%._-]{1,150}")) { finishLinkedInJob(id, null, "Invalid profile"); return; }
+      linkedinWeb.loadUrl("https://www.linkedin.com/in/" + slug + "/");
+      ui.postDelayed(() -> extractLinkedInPersonProfile(id, slug, 0), 3800);
     } else if ("job_details".equals(op)) {
       String jobId = job.optString("jobId", "").trim();
       if (!jobId.matches("\\d{5,20}")) { finishLinkedInJob(id, null, "Invalid LinkedIn job ID"); return; }
@@ -1225,8 +1246,8 @@ public class MainActivity extends Activity {
       + "const title=q('[class*=job-card-list__title],[class*=job-card-container__link],[class*=base-search-card__title],h3,strong')||lines[0];"
       + "const company=q('[class*=subtitle],[class*=company-name],[class*=base-search-card__subtitle],h4');"
       + "const place=q('[class*=metadata-item],[class*=job-search-card__location],[class*=location]');"
-      + "const t=card.querySelector('time');const im=card.querySelector('img');const logo=im?(im.currentSrc||im.src||''):'';"
-      + "out.push({jobId:jid,title:title.slice(0,200),company:company.slice(0,150),location:place.slice(0,150),posted:t?(t.getAttribute('datetime')||t.innerText.trim()):'',companyLogoUrl:/^https:\\/\\/[^/]*licdn\\.com\\//.test(logo)?logo:'',jobUrl:'https://www.linkedin.com/jobs/view/'+jid+'/',cardText:lines.join(' · ').slice(0,500)});}"
+      + "const t=card.querySelector('time');const logo=[...card.querySelectorAll('img')].map(i=>i.getAttribute('data-delayed-url')||i.getAttribute('data-ghost-url')||i.getAttribute('data-src')||i.currentSrc||i.src||'').find(u=>/^https:\\/\\/[^/]*licdn\\.com\\//.test(u)&&!/ghost|spacer|data:/.test(u))||'';"
+      + "out.push({jobId:jid,title:title.slice(0,200),company:company.slice(0,150),location:place.slice(0,150),posted:t?(t.getAttribute('datetime')||t.innerText.trim()):'',companyLogoUrl:logo,jobUrl:'https://www.linkedin.com/jobs/view/'+jid+'/',cardText:lines.join(' · ').slice(0,500)});}"
       + "const list=document.querySelector('[class*=jobs-search-results-list],[class*=scaffold-layout__list]');if(list)list.scrollTop=list.scrollHeight;window.scrollBy(0,window.innerHeight);"
       + "return JSON.stringify({jobs:out,signedOut:" + LI_SIGNED_OUT_JS + ",title:document.title.slice(0,80)});})()";
     linkedinWeb.evaluateJavascript(js, raw -> {
@@ -1254,8 +1275,44 @@ public class MainActivity extends Activity {
       for (JSONObject j : found.values()) list.put(j);
       JSONObject out = new JSONObject().put("jobs", list).put("retrieved", list.length()).put("requested", limit).put("source", "linkedin_jobs_search");
       if (note != null) out.put("note", note);
-      finishLinkedInJob(id, out, null);
+      finishLinkedInCards(id, out);
     } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
+  }
+
+  /** Text of each titled section of a profile page (About, Experience, Education…), keyed by heading. */
+  private static final String LI_SECTIONS_JS = "const sections={};for(const h of document.querySelectorAll('main h2,section h2')){const k=(h.innerText||'').trim().split('\\n')[0];if(!k||sections[k])continue;const sec=h.closest('section')||h.parentElement;const t=(sec?sec.innerText:'').trim();if(t)sections[k.slice(0,60)]=t.replace(k,'').trim().slice(0,4000);}";
+  private static final String LI_IMG_JS = "const pick=sel=>{for(const i of document.querySelectorAll(sel)){const u=i.getAttribute('data-delayed-url')||i.currentSrc||i.src||'';if(/^https:\\/\\/[^/]*licdn\\.com\\//.test(u)&&!/ghost|spacer/.test(u))return u;}return '';};";
+
+  private void extractLinkedInCompanyProfile(String id, String slug, int attempt) {
+    String js = "(function(){" + LI_SECTIONS_JS + LI_IMG_JS
+      + "const q=s=>{const e=document.querySelector(s);return e?(e.innerText||'').trim().split('\\n')[0]:'';};"
+      + "const facts={};for(const dt of document.querySelectorAll('dl dt')){const dd=dt.nextElementSibling;if(dd&&dd.tagName==='DD')facts[(dt.innerText||'').trim().slice(0,60)]=(dd.innerText||'').trim().replace(/\\s+/g,' ').slice(0,400);}"
+      + "const site=[...document.querySelectorAll('dl a[href^=\"http\"]')].map(a=>a.href).find(u=>!/linkedin\\.com/.test(u))||'';"
+      + "return JSON.stringify({company:" + JSONObject.quote(slug) + ",name:q('h1'),tagline:q('[class*=org-top-card-summary__tagline],[class*=top-card-layout__headline]'),summary:q('[class*=org-top-card-summary-info-list],[class*=top-card-layout__first-subline]'),website:site,facts,sections,logoUrl:pick('img[class*=org-top-card-primary-content__logo],img[class*=logo],img[alt*=logo i]'),companyUrl:'https://www.linkedin.com/company/'+" + JSONObject.quote(slug) + "+'/',signedOut:" + LI_SIGNED_OUT_JS + "});})()";
+    linkedinWeb.evaluateJavascript(js, raw -> {
+      try {
+        JSONObject r = new JSONObject(new JSONArray("[" + raw + "]").getString(0));
+        if (r.optString("name").isEmpty() && !r.optBoolean("signedOut") && attempt < 3) { ui.postDelayed(() -> extractLinkedInCompanyProfile(id, slug, attempt + 1), 2000); return; }
+        if (r.optBoolean("signedOut")) r.put("note", "LinkedIn is not signed in inside the CamMicGo app: open the LinkedIn tab and sign in.");
+        finishLinkedInCards(id, r);
+      } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
+    });
+  }
+
+  private void extractLinkedInPersonProfile(String id, String slug, int attempt) {
+    String js = "(function(){" + LI_SECTIONS_JS + LI_IMG_JS
+      + "const q=s=>{const e=document.querySelector(s);return e?(e.innerText||'').trim().split('\\n')[0]:'';};"
+      + "window.scrollBy(0,document.body.scrollHeight);"
+      + "return JSON.stringify({profile:" + JSONObject.quote(slug) + ",name:q('h1'),headline:q('[class*=text-body-medium],[class*=top-card-layout__headline]'),location:q('[class*=text-body-small][class*=inline],[class*=top-card__subline-item],[class*=top-card-layout__first-subline]'),sections,photoUrl:pick('img[class*=pv-top-card-profile-picture__image],img[class*=profile-photo],img[class*=top-card__profile-image],main img[alt]'),profileUrl:'https://www.linkedin.com/in/'+" + JSONObject.quote(slug) + "+'/',signedOut:" + LI_SIGNED_OUT_JS + "});})()";
+    linkedinWeb.evaluateJavascript(js, raw -> {
+      try {
+        JSONObject r = new JSONObject(new JSONArray("[" + raw + "]").getString(0));
+        boolean thin = r.optJSONObject("sections") == null || r.optJSONObject("sections").length() < 2;
+        if ((r.optString("name").isEmpty() || thin) && !r.optBoolean("signedOut") && attempt < 3) { ui.postDelayed(() -> extractLinkedInPersonProfile(id, slug, attempt + 1), 2200); return; }
+        if (r.optBoolean("signedOut")) r.put("note", "LinkedIn is not signed in inside the CamMicGo app: open the LinkedIn tab and sign in.");
+        finishLinkedInCards(id, r);
+      } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
+    });
   }
 
   /** One job offer: title, company, place and the full description text. */
@@ -1917,21 +1974,72 @@ public class MainActivity extends Activity {
    * People and company results: only LinkedIn's own image links are returned (imageUrl), never image
    * bytes, so no picture is copied into CamMicGo's database.
    */
+  /**
+   * Cards (people, companies, job offers, profile pages): LinkedIn images only load with the signed-in
+   * session, so the phone adds a small JPEG thumbnail (64 px, a few KB) as imageDataUrl, plus LinkedIn's
+   * own link as imageUrl. The server deletes results as soon as the assistant has read them.
+   */
   private void finishLinkedInCards(String id, JSONObject data) {
-    try {
-      for (String key : new String[]{"profiles", "people", "companies"}) {
-        JSONArray items = data.optJSONArray(key);
-        for (int i = 0; items != null && i < items.length(); i++) {
-          JSONObject card = items.optJSONObject(i);
-          if (card == null) continue;
-          String url = card.optString("avatarUrl", card.optString("logoUrl", ""));
-          if (url.startsWith("https://") && (url.contains(".licdn.com/") || url.contains("linkedin.com/"))) card.put("imageUrl", url);
+    worker.execute(() -> {
+      try {
+        String cookie = CookieManager.getInstance().getCookie("https://www.linkedin.com/");
+        String agent = linkedinWeb == null ? "" : linkedinWeb.getSettings().getUserAgentString();
+        int budget = 30;
+        java.util.List<JSONObject> cards = new java.util.ArrayList<>();
+        for (String key : new String[]{"profiles", "people", "companies", "jobs", "posts"}) {
+          JSONArray items = data.optJSONArray(key);
+          for (int i = 0; items != null && i < items.length(); i++) if (items.optJSONObject(i) != null) cards.add(items.optJSONObject(i));
         }
-      }
-    } catch (Exception ignored) { }
-    finishLinkedInJob(id, data, null);
+        if (data.has("logoUrl") || data.has("photoUrl")) cards.add(data);
+        java.util.Map<String, String> cache = new java.util.HashMap<>();
+        for (JSONObject card : cards) {
+          String url = card.optString("avatarUrl", card.optString("logoUrl", card.optString("companyLogoUrl", card.optString("photoUrl", ""))));
+          if (!url.startsWith("https://") || !(url.contains(".licdn.com/") || url.contains(".linkedin.com/"))) continue;
+          card.put("imageUrl", url);
+          if (budget <= 0) continue;
+          String b64 = cache.containsKey(url) ? cache.get(url) : linkedInThumbnail(url, cookie, agent);
+          cache.put(url, b64);
+          if (b64 != null) { card.put("imageDataUrl", "data:image/jpeg;base64," + b64); budget--; }
+        }
+      } catch (Exception e) { android.util.Log.w("CamMicGoLinkedIn", "Card thumbnails", e); }
+      ui.post(() -> finishLinkedInJob(id, data, null));
+    });
   }
 
+  /** 64 px JPEG of a LinkedIn image (licdn.com only), base64, or null. */
+  private static String linkedInThumbnail(String url, String cookie, String agent) {
+    java.net.HttpURLConnection conn = null;
+    try {
+      android.net.Uri uri = android.net.Uri.parse(url);
+      String host = uri.getHost();
+      if (!"https".equalsIgnoreCase(uri.getScheme()) || host == null || !(host.endsWith(".licdn.com") || host.endsWith(".linkedin.com"))) return null;
+      conn = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+      conn.setConnectTimeout(5000); conn.setReadTimeout(8000);
+      conn.setRequestProperty("User-Agent", agent);
+      if (cookie != null) conn.setRequestProperty("Cookie", cookie);
+      if (conn.getResponseCode() != 200) return null;
+      java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+      try (java.io.InputStream in = conn.getInputStream()) {
+        byte[] buffer = new byte[8192]; int n;
+        while ((n = in.read(buffer)) != -1) { bytes.write(buffer, 0, n); if (bytes.size() > 600_000) return null; }
+      }
+      android.graphics.Bitmap original = android.graphics.BitmapFactory.decodeByteArray(bytes.toByteArray(), 0, bytes.size());
+      if (original == null) return null;
+      android.graphics.Bitmap square = android.graphics.Bitmap.createBitmap(64, 64, android.graphics.Bitmap.Config.ARGB_8888);
+      android.graphics.Canvas canvas = new android.graphics.Canvas(square);
+      canvas.drawColor(Color.WHITE);  // transparent logos stay readable
+      float scale = Math.min(64f / original.getWidth(), 64f / original.getHeight());
+      int w = Math.round(original.getWidth() * scale), h = Math.round(original.getHeight() * scale);
+      canvas.drawBitmap(original, null, new android.graphics.Rect((64 - w) / 2, (64 - h) / 2, (64 - w) / 2 + w, (64 - h) / 2 + h), new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG));
+      original.recycle();
+      java.io.ByteArrayOutputStream jpeg = new java.io.ByteArrayOutputStream();
+      square.compress(android.graphics.Bitmap.CompressFormat.JPEG, 70, jpeg);
+      square.recycle();
+      return jpeg.size() <= 10_000 ? android.util.Base64.encodeToString(jpeg.toByteArray(), android.util.Base64.NO_WRAP) : null;
+    } catch (Exception e) {
+      return null;
+    } finally { if (conn != null) conn.disconnect(); }
+  }
 
   private void finishLinkedInJs(String id, String raw) {
     try {
