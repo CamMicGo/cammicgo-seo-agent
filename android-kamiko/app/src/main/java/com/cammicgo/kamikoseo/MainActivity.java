@@ -171,6 +171,7 @@ public class MainActivity extends Activity {
   private String historyShown;
   private long lastMcpDebugFetch = 0L;
   private Button clearHistory;
+  private View requestsTitle, requestsCard;
   // extract tab
   private EditText urlInput;
   private Spinner langSpinner;
@@ -209,8 +210,7 @@ public class MainActivity extends Activity {
     LinearLayout c = new LinearLayout(this);
     c.setOrientation(LinearLayout.VERTICAL);
     c.setPadding(dp(18), dp(16), dp(18), dp(18));
-    c.setBackground(shape(Color.WHITE, 18, LINE));
-    c.setElevation(dp(1));
+    c.setBackground(shape(Color.WHITE, 16, LINE));
     LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
     lp.setMargins(0, 0, 0, dp(14));
     parent.addView(c, lp);
@@ -218,10 +218,18 @@ public class MainActivity extends Activity {
   }
 
   /** Small upper-case section label above cards. */
-  private void section(LinearLayout parent, String s) {
-    TextView t = text(parent, s.toUpperCase(), 11, BLUE, true);
-    t.setLetterSpacing(0.12f);
-    t.setPadding(dp(4), dp(6), 0, dp(8));
+  private TextView section(LinearLayout parent, String s) {
+    TextView t = text(parent, s.toUpperCase(), 11, MUTED, true);
+    t.setLetterSpacing(0.1f);
+    t.setPadding(dp(4), dp(10), 0, dp(8));
+    return t;
+  }
+
+  /** Vector icon at the start of a button or label (no emoji: same look on every phone). */
+  private <T extends TextView> T withIcon(T v, UiIcons.Kind icon, int color) {
+    v.setCompoundDrawablesRelative(UiIcons.make(icon, color, dp(18)), null, null, null);
+    v.setCompoundDrawablePadding(dp(8));
+    return v;
   }
 
   private TextView text(LinearLayout parent, String s, int sizeSp, int color, boolean bold) {
@@ -398,7 +406,8 @@ public class MainActivity extends Activity {
   @Override public void onCreate(Bundle state) {
     super.onCreate(state);
     getWindow().setStatusBarColor(Color.WHITE);
-    getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+    getWindow().setNavigationBarColor(Color.WHITE);
+    getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
 
     LinearLayout shell = new LinearLayout(this);
     shell.setOrientation(LinearLayout.VERTICAL);
@@ -409,10 +418,6 @@ public class MainActivity extends Activity {
     int beforeHeader = shell.getChildCount();
     buildAppBar(shell);
     appHeader = shell.getChildCount() > beforeHeader ? shell.getChildAt(beforeHeader) : null;
-    int beforeTabs = shell.getChildCount();
-    buildTabs(shell);
-    appTabs = shell.getChildCount() > beforeTabs ? shell.getChildAt(beforeTabs) : null;
-
     FrameLayout host = new FrameLayout(this);
     shell.addView(host, new LinearLayout.LayoutParams(-1, 0, 1));
     buildAssistantPage(page(host, 0));
@@ -420,6 +425,9 @@ public class MainActivity extends Activity {
     buildNotebookTab(host);
     buildLinkedInTab(host);
     buildHelpPage(page(host, 4));
+    int beforeTabs = shell.getChildCount();
+    buildTabs(shell);
+    appTabs = shell.getChildCount() > beforeTabs ? shell.getChildAt(beforeTabs) : null;
 
     setContentView(shell);
     selectTab(state != null ? state.getInt("tab", 0) : 0);
@@ -432,21 +440,23 @@ public class MainActivity extends Activity {
     LinearLayout bar = new LinearLayout(this);
     bar.setGravity(Gravity.CENTER_VERTICAL);
     bar.setBackgroundColor(Color.WHITE);
-    bar.setPadding(dp(16), dp(12), dp(16), dp(12));
-    bar.setElevation(dp(2));
+    bar.setPadding(dp(16), dp(10), dp(12), dp(10));
     ImageView logo = new ImageView(this);
     logo.setImageResource(R.mipmap.ic_launcher);
-    bar.addView(logo, new LinearLayout.LayoutParams(dp(40), dp(40)));
+    bar.addView(logo, new LinearLayout.LayoutParams(dp(36), dp(36)));
     LinearLayout titles = new LinearLayout(this);
     titles.setOrientation(LinearLayout.VERTICAL);
     titles.setPadding(dp(10), 0, dp(8), 0);
-    text(titles, "CamMicGo SEO MCP", 17, INK, true);
+    TextView name = text(titles, "CamMicGo", 18, INK, true);
+    name.setLetterSpacing(-0.01f);
     text(titles, t("app_sub"), 12, MUTED, false);
     bar.addView(titles, new LinearLayout.LayoutParams(0, -2, 1));
 
-    TextView lang = text(null, "🌐 " + I18n.code(this).toUpperCase(), 12, BLUE, true);
-    lang.setPadding(dp(10), dp(6), dp(10), dp(6));
-    lang.setBackground(shape(FIELD, 20, LINE));
+    TextView lang = withIcon(text(null, I18n.code(this).toUpperCase(), 12, INK, true), UiIcons.Kind.BROWSER, MUTED);
+    lang.setCompoundDrawablePadding(dp(4));
+    lang.setGravity(Gravity.CENTER_VERTICAL);
+    lang.setPadding(dp(10), dp(7), dp(10), dp(7));
+    lang.setBackground(shape(Color.WHITE, 20, LINE));
     lang.setContentDescription(t("language_title"));
     lang.setOnClickListener(v -> pickLanguage());
     LinearLayout.LayoutParams langLp = new LinearLayout.LayoutParams(-2, -2);
@@ -455,8 +465,8 @@ public class MainActivity extends Activity {
 
     LinearLayout chip = new LinearLayout(this);
     chip.setGravity(Gravity.CENTER_VERTICAL);
-    chip.setPadding(dp(10), dp(6), dp(12), dp(6));
-    chip.setBackground(shape(FIELD, 20, LINE));
+    chip.setPadding(dp(10), dp(7), dp(12), dp(7));
+    chip.setBackground(shape(Color.WHITE, 20, LINE));
     chipDot = new View(this);
     chip.addView(chipDot, new LinearLayout.LayoutParams(dp(8), dp(8)));
     chipText = text(null, "", 12, INK, true);
@@ -464,7 +474,14 @@ public class MainActivity extends Activity {
     chip.addView(chipText);
     chip.setOnClickListener(v -> selectTab(0));
     bar.addView(chip);
-    shell.addView(bar, new LinearLayout.LayoutParams(-1, -2));
+
+    LinearLayout header = new LinearLayout(this);
+    header.setOrientation(LinearLayout.VERTICAL);
+    header.addView(bar, new LinearLayout.LayoutParams(-1, -2));
+    View rule = new View(this);
+    rule.setBackgroundColor(LINE);
+    header.addView(rule, new LinearLayout.LayoutParams(-1, Math.max(1, dp(1) / 2 + 1)));
+    shell.addView(header, new LinearLayout.LayoutParams(-1, -2));
   }
 
   /** Lets the user choose one of the 11 languages; the screen is rebuilt in that language. */
@@ -481,28 +498,44 @@ public class MainActivity extends Activity {
         .show();
   }
 
+  private static final UiIcons.Kind[] TAB_ICONS = {UiIcons.Kind.SPARK, UiIcons.Kind.DOC, UiIcons.Kind.BOOK, UiIcons.Kind.LINKEDIN, UiIcons.Kind.HELP};
+  private final android.widget.ImageView[] tabIcons = new android.widget.ImageView[5];
+
+  /** Bottom navigation (Material style): icon in a pill that fills when active, short label under it. */
   private void buildTabs(LinearLayout shell) {
-    LinearLayout wrap = new LinearLayout(this);
-    wrap.setPadding(dp(16), dp(12), dp(16), dp(2));
-    LinearLayout seg = new LinearLayout(this);
-    seg.setPadding(dp(4), dp(4), dp(4), dp(4));
-    seg.setBackground(shape(Color.rgb(230, 237, 250), 14, 0));
+    LinearLayout nav = new LinearLayout(this);
+    nav.setOrientation(LinearLayout.VERTICAL);
+    nav.setBackgroundColor(Color.WHITE);
+    View rule = new View(this);
+    rule.setBackgroundColor(LINE);
+    nav.addView(rule, new LinearLayout.LayoutParams(-1, Math.max(1, dp(1) / 2 + 1)));
+    LinearLayout row = new LinearLayout(this);
+    row.setPadding(dp(4), dp(8), dp(4), dp(10));
     for (int i = 0; i < TABS.length; i++) {
       final int index = i;
-      TextView t = text(null, (i == 2 || i == 3) ? TABS[i] : t(TABS[i]), 12, MUTED, true);
-      t.setGravity(Gravity.CENTER);
-      t.setSingleLine(true);
-      t.setPadding(dp(12), dp(10), dp(12), dp(10));
-      t.setOnClickListener(v -> selectTab(index));
-      seg.addView(t, new LinearLayout.LayoutParams(-2, -2));
-      tabViews[i] = t;
+      LinearLayout item = new LinearLayout(this);
+      item.setOrientation(LinearLayout.VERTICAL);
+      item.setGravity(Gravity.CENTER_HORIZONTAL);
+      item.setClickable(true);
+      item.setBackground(null);
+      android.widget.ImageView icon = new android.widget.ImageView(this);
+      icon.setImageDrawable(UiIcons.make(TAB_ICONS[i], MUTED, dp(22)));
+      icon.setScaleType(android.widget.ImageView.ScaleType.CENTER);
+      item.addView(icon, new LinearLayout.LayoutParams(dp(56), dp(30)));
+      TextView label = text(null, (i == 2 || i == 3) ? TABS[i] : t(TABS[i]), 11, MUTED, true);
+      label.setGravity(Gravity.CENTER);
+      label.setSingleLine(true);
+      label.setEllipsize(TextUtils.TruncateAt.END);
+      label.setPadding(0, dp(4), 0, 0);
+      item.addView(label, new LinearLayout.LayoutParams(-1, -2));
+      item.setContentDescription(label.getText());
+      item.setOnClickListener(v -> selectTab(index));
+      row.addView(item, new LinearLayout.LayoutParams(0, -2, 1));
+      tabViews[i] = label;
+      tabIcons[i] = icon;
     }
-    android.widget.HorizontalScrollView scroller = new android.widget.HorizontalScrollView(this);
-    scroller.setHorizontalScrollBarEnabled(false);
-    scroller.setFillViewport(false);
-    scroller.addView(seg, new android.widget.HorizontalScrollView.LayoutParams(-2, -2));
-    wrap.addView(scroller, new LinearLayout.LayoutParams(-1, -2));
-    shell.addView(wrap);
+    nav.addView(row, new LinearLayout.LayoutParams(-1, -2));
+    shell.addView(nav, new LinearLayout.LayoutParams(-1, -2));
   }
 
   private void selectTab(int index) {
@@ -510,11 +543,11 @@ public class MainActivity extends Activity {
     if (linkedinExpanded && index != 3) setLinkedInExpanded(false);
     currentTab = index;
     for (int i = 0; i < pages.length; i++) {
-      pages[i].setVisibility(i == index ? View.VISIBLE : View.GONE);
       boolean on = i == index;
-      tabViews[i].setTextColor(on ? Color.WHITE : MUTED);
-      tabViews[i].setBackground(on ? shape(BLUE, 11, 0) : null);
-      tabViews[i].setElevation(on ? dp(1) : 0);
+      pages[i].setVisibility(on ? View.VISIBLE : View.GONE);
+      tabViews[i].setTextColor(on ? BLUE : MUTED);
+      tabIcons[i].setImageDrawable(UiIcons.make(TAB_ICONS[i], on ? BLUE : MUTED, dp(22)));
+      tabIcons[i].setBackground(on ? shape(Color.rgb(226, 235, 253), 15, 0) : null);
     }
   }
 
@@ -529,7 +562,7 @@ public class MainActivity extends Activity {
     TextView sub = text(unpairedBox, t("pair_sub"), 13, MUTED, false);
     sub.setPadding(0, dp(4), 0, dp(8));
     step(unpairedBox, "1", t("step1"));
-    Button copyAsk = secondary(t("copy_ask"));
+    Button copyAsk = withIcon(secondary(t("copy_ask")), UiIcons.Kind.COPY, BLUE);
     copyAsk.setOnClickListener(v -> copy(t("ask_text"), t("ask_copied")));
     LinearLayout.LayoutParams askLp = gapTop(2);
     askLp.leftMargin = dp(38);
@@ -609,8 +642,9 @@ public class MainActivity extends Activity {
       Toast.makeText(this, t("unpaired_toast"), Toast.LENGTH_SHORT).show();
     });
 
-    section(root, t("sec_requests"));
+    requestsTitle = section(root, t("sec_requests"));
     LinearLayout p = card(root);
+    requestsCard = p;
     LinearLayout head = new LinearLayout(this);
     head.setGravity(Gravity.BOTTOM);
     progressCount = text(null, "—", 30, INK, true);
@@ -688,7 +722,11 @@ public class MainActivity extends Activity {
     h.setPadding(dp(6), dp(6), dp(6), dp(6));
     historyList = new LinearLayout(this);
     historyList.setOrientation(LinearLayout.VERTICAL);
-    android.widget.ScrollView activityScroll = new android.widget.ScrollView(this);
+    android.widget.ScrollView activityScroll = new android.widget.ScrollView(this) {
+      @Override protected void onMeasure(int w, int h) {
+        super.onMeasure(w, View.MeasureSpec.makeMeasureSpec(dp(360), View.MeasureSpec.AT_MOST));
+      }
+    };
     activityScroll.setFillViewport(false);
     // The feed sits inside the page's own scroll view: keep its scroll bar visible and let it take the
     // finger while it is touched, otherwise the outer page swallows the gesture and the list never scrolls.
@@ -701,7 +739,7 @@ public class MainActivity extends Activity {
       return false;
     });
     activityScroll.addView(historyList);
-    h.addView(activityScroll, new LinearLayout.LayoutParams(-1, dp(360)));
+    h.addView(activityScroll, new LinearLayout.LayoutParams(-1, -2));
     Button diagnostics = secondary(localizedMcpDiagnosticTitle());
     diagnostics.setOnClickListener(v -> {
       SharedPreferences prefs = RelayClient.prefs(this);
@@ -720,7 +758,7 @@ public class MainActivity extends Activity {
       showDiagnostic(localizedMcpDiagnosticTitle(), report);
     });
     h.addView(diagnostics, new LinearLayout.LayoutParams(-1, -2));
-    clearHistory = flat(t("clear_list"), RED);
+    clearHistory = withIcon(flat(t("clear_list"), RED), UiIcons.Kind.TRASH, RED);
     clearHistory.setOnClickListener(v -> new AlertDialog.Builder(this)
         .setTitle(t("clear_title"))
         .setMessage(t("clear_msg"))
@@ -777,7 +815,7 @@ public class MainActivity extends Activity {
     text(c, t("extract_title"), 17, INK, true);
     TextView sub = text(c, t("extract_sub"), 13, MUTED, false);
     sub.setPadding(0, dp(4), 0, dp(10));
-    urlInput = field(t("url_hint"));
+    urlInput = withIcon(field(t("url_hint")), UiIcons.Kind.LINK, MUTED);
     urlInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
     c.addView(urlInput);
     TextView langTitle = text(c, t("language"), 13, INK, true);
@@ -804,7 +842,7 @@ public class MainActivity extends Activity {
     resultMeta = text(resultCard, "", 13, MUTED, false);
     resultMeta.setPadding(0, dp(4), 0, dp(10));
     LinearLayout actions = new LinearLayout(this);
-    Button copy = secondary(t("copy_btn")), share = secondary(t("share_btn"));
+    Button copy = withIcon(secondary(t("copy_btn")), UiIcons.Kind.COPY, BLUE), share = withIcon(secondary(t("share_btn")), UiIcons.Kind.SHARE, BLUE);
     actions.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
     LinearLayout.LayoutParams right = new LinearLayout.LayoutParams(0, -2, 1);
     right.leftMargin = dp(8);
@@ -2112,22 +2150,22 @@ public class MainActivity extends Activity {
 
     section(root, t("language_title"));
     LinearLayout lc = card(root);
-    Button langBtn = secondary("🌐  " + I18n.NAMES[I18n.index(this)]);
+    Button langBtn = withIcon(secondary(I18n.NAMES[I18n.index(this)]), UiIcons.Kind.BROWSER, BLUE);
     langBtn.setOnClickListener(v -> pickLanguage());
     lc.addView(langBtn);
 
     section(root, t("sec_tips"));
     LinearLayout tips = card(root);
-    tip(tips, "🔋", t("tip_batt_t"), t("tip_batt"));
+    tip(tips, UiIcons.Kind.BATTERY, t("tip_batt_t"), t("tip_batt"));
     Button battery = secondary(t("battery_btn"));
     battery.setOnClickListener(v -> {
       try { startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))); }
       catch (Exception e) { startActivity(new Intent(Settings.ACTION_SETTINGS)); }
     });
     tips.addView(battery, gapTop(4));
-    tip(tips, "📱", t("tip_awake_t"), t("tip_awake"));
-    tip(tips, "🔄", t("tip_resume_t"), t("tip_resume"));
-    tip(tips, "⏱️", t("tip_a15_t"), t("tip_a15"));
+    tip(tips, UiIcons.Kind.PHONE, t("tip_awake_t"), t("tip_awake"));
+    tip(tips, UiIcons.Kind.REFRESH, t("tip_resume_t"), t("tip_resume"));
+    tip(tips, UiIcons.Kind.SHIELD, t("tip_a15_t"), t("tip_a15"));
 
     TextView versionBanner = text(root, "CamMicGo SEO MCP — VERSION INSTALLÉE : " + version(), 17, BLUE, true);
     versionBanner.setPadding(dp(12), dp(14), dp(12), dp(14));
@@ -2137,11 +2175,16 @@ public class MainActivity extends Activity {
     v.setPadding(0, dp(6), 0, 0);
   }
 
-  private void tip(LinearLayout parent, String icon, String title, String body) {
+  private void tip(LinearLayout parent, UiIcons.Kind icon, String title, String body) {
     LinearLayout row = new LinearLayout(this);
     row.setPadding(0, dp(8), 0, dp(8));
-    TextView i = text(null, icon, 20, INK, false);
-    row.addView(i, new LinearLayout.LayoutParams(dp(34), -2));
+    android.widget.ImageView i = new android.widget.ImageView(this);
+    i.setImageDrawable(UiIcons.make(icon, BLUE, dp(20)));
+    i.setScaleType(android.widget.ImageView.ScaleType.CENTER);
+    i.setBackground(shape(Color.rgb(236, 242, 254), 10, 0));
+    LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(dp(34), dp(34));
+    ilp.setMarginEnd(dp(12));
+    row.addView(i, ilp);
     LinearLayout texts = new LinearLayout(this);
     texts.setOrientation(LinearLayout.VERTICAL);
     text(texts, title, 14, INK, true);
@@ -2242,6 +2285,7 @@ public class MainActivity extends Activity {
     boolean connected = serviceRunning && syncAge >= 0 && syncAge < 30000L;
     boolean starting = paired && !connected && startAge >= 0 && startAge < 30000L;
     unpairedBox.setVisibility(paired ? View.GONE : View.VISIBLE);
+    if (requestsTitle != null) { requestsTitle.setVisibility(paired ? View.VISIBLE : View.GONE); requestsCard.setVisibility(paired ? View.VISIBLE : View.GONE); }
     pairedBox.setVisibility(paired ? View.VISIBLE : View.GONE);
 
     int chipColor = !paired ? GREY : connected ? GREEN : starting ? AMBER : AMBER;

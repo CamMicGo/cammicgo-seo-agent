@@ -14,7 +14,8 @@ import android.graphics.drawable.Drawable;
  * Colour follows setTint(), so a button can switch its icon colour with its state.
  */
 final class UiIcons {
-  enum Kind { EXPAND, COLLAPSE, REFRESH, IMAGE, CLIP, DOWNLOAD, SHIELD, SHIELD_OK, BROWSER, BOOK, PLUS, CHAT, PEOPLE, SEARCH }
+  enum Kind { EXPAND, COLLAPSE, REFRESH, IMAGE, CLIP, DOWNLOAD, SHIELD, SHIELD_OK, BROWSER, BOOK, PLUS, CHAT, PEOPLE, SEARCH,
+    SPARK, DOC, HELP, LINK, COPY, TRASH, SHARE, BATTERY, PHONE, LINKEDIN }
 
   private UiIcons() {}
 
@@ -129,6 +130,54 @@ final class UiIcons {
         case SEARCH:
           p.addCircle(10.5f, 10.5f, 6.5f, Path.Direction.CW);
           p.moveTo(15.3f, 15.3f); p.lineTo(20.5f, 20.5f);
+          break;
+        case SPARK: // assistant: a four-point star and a small one
+          p.moveTo(10, 3); p.cubicTo(10.6f, 7.6f, 12.4f, 9.4f, 17, 10); p.cubicTo(12.4f, 10.6f, 10.6f, 12.4f, 10, 17);
+          p.cubicTo(9.4f, 12.4f, 7.6f, 10.6f, 3, 10); p.cubicTo(7.6f, 9.4f, 9.4f, 7.6f, 10, 3); p.close();
+          p.moveTo(18, 14.5f); p.lineTo(18, 20.5f); p.moveTo(15, 17.5f); p.lineTo(21, 17.5f);
+          break;
+        case DOC:
+          p.moveTo(14, 3); p.lineTo(6, 3); p.lineTo(6, 21); p.lineTo(18, 21); p.lineTo(18, 7); p.close();
+          p.moveTo(14, 3); p.lineTo(14, 7); p.lineTo(18, 7);
+          p.moveTo(9, 12); p.lineTo(15, 12); p.moveTo(9, 16); p.lineTo(15, 16);
+          break;
+        case HELP:
+          p.addCircle(12, 12, 9, Path.Direction.CW);
+          p.moveTo(9.3f, 9.5f); p.cubicTo(9.3f, 7.9f, 10.5f, 7, 12, 7); p.cubicTo(13.6f, 7, 14.7f, 8, 14.7f, 9.4f);
+          p.cubicTo(14.7f, 11.4f, 12, 11.6f, 12, 13.6f); p.moveTo(12, 16.6f); p.lineTo(12, 16.8f);
+          break;
+        case LINK:
+          p.moveTo(10, 14); p.lineTo(14, 10);
+          p.moveTo(11, 6.5f); p.lineTo(12.5f, 5); p.cubicTo(14.4f, 3.1f, 17.4f, 3.1f, 19.2f, 5); p.cubicTo(21, 6.8f, 21, 9.8f, 19.2f, 11.6f); p.lineTo(17.5f, 13.2f);
+          p.moveTo(13, 17.5f); p.lineTo(11.5f, 19); p.cubicTo(9.6f, 20.9f, 6.6f, 20.9f, 4.8f, 19); p.cubicTo(3, 17.2f, 3, 14.2f, 4.8f, 12.4f); p.lineTo(6.5f, 10.8f);
+          break;
+        case COPY:
+          p.addRoundRect(new RectF(8.5f, 8.5f, 20, 20), 2.5f, 2.5f, Path.Direction.CW);
+          p.moveTo(15.5f, 8.5f); p.lineTo(15.5f, 5.5f); p.cubicTo(15.5f, 4.4f, 14.6f, 4, 13.5f, 4); p.lineTo(6, 4);
+          p.cubicTo(4.9f, 4, 4, 4.9f, 4, 6); p.lineTo(4, 13.5f); p.cubicTo(4, 14.6f, 4.9f, 15.5f, 6, 15.5f); p.lineTo(8.5f, 15.5f);
+          break;
+        case TRASH:
+          p.moveTo(4, 6.5f); p.lineTo(20, 6.5f); p.moveTo(9.5f, 6.5f); p.lineTo(9.5f, 4); p.lineTo(14.5f, 4); p.lineTo(14.5f, 6.5f);
+          p.moveTo(6, 6.5f); p.lineTo(7, 20); p.lineTo(17, 20); p.lineTo(18, 6.5f);
+          p.moveTo(10, 10.5f); p.lineTo(10, 16); p.moveTo(14, 10.5f); p.lineTo(14, 16);
+          break;
+        case SHARE:
+          p.addCircle(17.5f, 5.5f, 2.5f, Path.Direction.CW); p.addCircle(6.5f, 12, 2.5f, Path.Direction.CW); p.addCircle(17.5f, 18.5f, 2.5f, Path.Direction.CW);
+          p.moveTo(8.7f, 10.7f); p.lineTo(15.3f, 6.8f); p.moveTo(8.7f, 13.3f); p.lineTo(15.3f, 17.2f);
+          break;
+        case BATTERY:
+          p.addRoundRect(new RectF(3, 7.5f, 19, 16.5f), 2, 2, Path.Direction.CW);
+          p.moveTo(21, 10.5f); p.lineTo(21, 13.5f); p.moveTo(6, 10.5f); p.lineTo(6, 13.5f); p.moveTo(9, 10.5f); p.lineTo(9, 13.5f);
+          break;
+        case PHONE:
+          p.addRoundRect(new RectF(6.5f, 2.5f, 17.5f, 21.5f), 2.5f, 2.5f, Path.Direction.CW);
+          p.moveTo(10.5f, 18.5f); p.lineTo(13.5f, 18.5f);
+          break;
+        case LINKEDIN:
+          p.addRoundRect(new RectF(3.5f, 3.5f, 20.5f, 20.5f), 3.5f, 3.5f, Path.Direction.CW);
+          p.moveTo(8, 10.5f); p.lineTo(8, 16.5f); p.moveTo(8, 7.6f); p.lineTo(8, 7.8f);
+          p.moveTo(11.5f, 16.5f); p.lineTo(11.5f, 10.5f); p.moveTo(11.5f, 13); p.cubicTo(11.5f, 11.3f, 12.6f, 10.4f, 14, 10.4f);
+          p.cubicTo(15.4f, 10.4f, 16.3f, 11.3f, 16.3f, 13); p.lineTo(16.3f, 16.5f);
           break;
       }
       c.drawPath(p, paint);
