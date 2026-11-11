@@ -771,6 +771,7 @@ public class MainActivity extends Activity {
   // ---------- tab 2: extract ----------
 
   private void buildExtractPage(LinearLayout root) {
+    offerOldModelCleanup(root);
     section(root, t("sec_transcribe"));
     LinearLayout c = card(root);
     text(c, t("extract_title"), 17, INK, true);
@@ -796,120 +797,6 @@ public class MainActivity extends Activity {
       public void afterTextChanged(Editable e) { ui.removeCallbacks(loadLanguages); ui.postDelayed(loadLanguages, 600); }
     });
     runButton.setOnClickListener(v -> extract());
-    Button audioButton = secondary("Télécharger l'audio YouTube (test)");
-    c.addView(audioButton, gapTop(10));
-    TextView audioStatus = text(c, "Audio uniquement, gardé temporairement dans l'app (24 h max).", 12, MUTED, false);
-    Button audioShare = secondary("Partager l'audio (test)");
-    audioShare.setVisibility(View.GONE);
-    c.addView(audioShare, gapTop(6));
-    final String[] lastAudio = {null};
-    audioShare.setOnClickListener(v -> {
-      if (lastAudio[0] == null) return;
-      java.io.File file = new java.io.File(lastAudio[0]);
-      if (!file.isFile()) { audioStatus.setText("L'audio temporaire a été supprimé, relance le téléchargement."); audioShare.setVisibility(View.GONE); return; }
-      try {
-        Uri uri = androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", file);
-        Intent send = new Intent(Intent.ACTION_SEND).setType(file.getName().endsWith(".m4a") ? "audio/mp4" : "audio/webm")
-            .putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        startActivity(Intent.createChooser(send, "Partager l'audio"));
-      } catch (Exception error) {
-        audioStatus.setText("Partage impossible : " + error.getMessage());
-      }
-    });
-    audioButton.setOnClickListener(v -> {
-      String videoId = TranscriptFetcher.videoId(urlInput.getText().toString());
-      if (videoId == null) {
-        audioStatus.setText("URL YouTube invalide.");
-        return;
-      }
-      audioButton.setEnabled(false);
-      audioStatus.setText("Téléchargement audio en cours…");
-      worker.execute(() -> {
-        try {
-          JSONObject result = YouTubeAudioOnly.probeAndDownload(this, videoId);
-          lastAudio[0] = result.optString("savedTo");
-          ui.post(() -> {
-            audioStatus.setText("Audio prêt (temporaire, " + (result.optLong("audioBytes") / 1024) + " Ko, " + result.optString("mime") + ").");
-            audioShare.setVisibility(View.VISIBLE);
-          });
-        } catch (Exception error) {
-          ui.post(() -> audioStatus.setText("Échec audio : " + error.getMessage()));
-        } finally {
-          ui.post(() -> audioButton.setEnabled(true));
-        }
-      });
-    });
-
-    // Local speech recognition for videos without captions (Whisper small or turbo, on this phone).
-    TextView asrTitle = text(c, "Transcription locale (vidéos sans sous-titres)", 14, INK, true);
-    asrTitle.setPadding(0, dp(16), 0, dp(4));
-    TextView asrStatus = text(c, "", 12, MUTED, false);
-    final LocalAsr.Model[] models = LocalAsr.MODELS;
-    final TextView[] modelInfo = new TextView[models.length];
-    final Button[] modelButton = new Button[models.length];
-    final java.util.concurrent.atomic.AtomicBoolean asrCancel = new java.util.concurrent.atomic.AtomicBoolean(false);
-    final int[] downloading = {-1};
-    for (int i = 0; i < models.length; i++) {
-      modelInfo[i] = text(c, "", 12, INK, false);
-      modelInfo[i].setPadding(0, dp(8), 0, 0);
-      modelButton[i] = secondary("");
-      c.addView(modelButton[i], gapTop(4));
-    }
-    android.widget.CheckBox asrToggle = new android.widget.CheckBox(this);
-    asrToggle.setText("Utiliser automatiquement quand une vidéo n'a pas de sous-titres (aussi pour ChatGPT / Claude)");
-    asrToggle.setTextSize(12);
-    asrToggle.setChecked(RelayClient.prefs(this).getBoolean(LocalAsr.PREF_FALLBACK, true));
-    asrToggle.setOnCheckedChangeListener((b, on) -> RelayClient.prefs(this).edit().putBoolean(LocalAsr.PREF_FALLBACK, on).apply());
-    c.addView(asrToggle, gapTop(6));
-    Runnable asrRefresh = () -> {
-      LocalAsr.Model active = LocalAsr.active(this);
-      asrToggle.setVisibility(active != null ? View.VISIBLE : View.GONE);
-      if (downloading[0] < 0) asrStatus.setText(active != null
-          ? "Modèle utilisé : " + active.label + ". Les vidéos sans sous-titres sont transcrites sur ce téléphone ; l'audio temporaire est supprimé ensuite."
-          : "99 langues, mélange de langues accepté. Texte approximatif et horodaté ; l'audio ne quitte pas le téléphone. Télécharge un modèle (une seule fois, il reste ensuite).");
-      for (int i = 0; i < models.length; i++) {
-        LocalAsr.Model m = models[i];
-        boolean ok = LocalAsr.installed(this, m);
-        modelInfo[i].setText(m.label + " (" + m.blurb + ") · " + LocalAsr.size(m.installedBytes()) + (ok ? " · installé" : ""));
-        modelButton[i].setEnabled(downloading[0] < 0 || downloading[0] == i);
-        modelButton[i].setText(downloading[0] == i ? "Annuler le téléchargement"
-            : !ok ? "Télécharger " + m.label + " (" + LocalAsr.size(m.downloadBytes) + ", Wi-Fi conseillé)"
-            : m == active ? "✓ " + m.label + " est utilisé" : "Utiliser " + m.label);
-      }
-    };
-    asrRefresh.run();
-    for (int i = 0; i < models.length; i++) {
-      final int idx = i;
-      final LocalAsr.Model m = models[i];
-      modelButton[i].setOnClickListener(v -> {
-        if (downloading[0] == idx) { asrCancel.set(true); return; }
-        if (LocalAsr.installed(this, m)) { LocalAsr.choose(this, m); asrRefresh.run(); return; }
-        downloading[0] = idx; asrCancel.set(false); asrRefresh.run();
-        asrStatus.setText("Téléchargement de " + m.label + "…");
-        new Thread(() -> {
-          String done;
-          try {
-            LocalAsr.download(this, m, (got, total) -> ui.post(() -> asrStatus.setText("Téléchargement de " + m.label + " : "
-                + (total > 0 ? (got * 100 / total) + " %" : LocalAsr.size(got)))), asrCancel);
-            LocalAsr.choose(this, m);
-            done = null;
-          } catch (Exception e) {
-            done = asrCancel.get() ? "Téléchargement annulé." : "Échec : " + e.getMessage();
-          }
-          final String msg = done;
-          ui.post(() -> { downloading[0] = -1; asrRefresh.run(); refreshModels(); if (msg != null) asrStatus.setText(msg); });
-        }, "asr-download").start();
-      });
-    }
-    modelsChanged = asrRefresh;
-
-    TextView modelsTitle = text(c, "Modèles installés sur ce téléphone", 14, INK, true);
-    modelsTitle.setPadding(0, dp(16), 0, dp(4));
-    modelsBox = new LinearLayout(this);
-    modelsBox.setOrientation(LinearLayout.VERTICAL);
-    c.addView(modelsBox);
-    refreshModels();
-
 
     resultCard = card(root);
     resultCard.setVisibility(View.GONE);
@@ -2946,51 +2833,35 @@ public class MainActivity extends Activity {
     }
   }
 
-  private LinearLayout modelsBox;
-  private Runnable modelsChanged;
-
-  /** Lists every speech model folder in the app's private storage (current, older, interrupted downloads). */
-  private void refreshModels() {
-    if (modelsBox == null) return;
-    modelsBox.removeAllViews();
-    java.io.File root = new java.io.File(getFilesDir(), "asr");
-    java.io.File[] dirs = root.listFiles(java.io.File::isDirectory);
-    long total = 0;
-    if (dirs != null) for (java.io.File d : dirs) {
-      long size = treeSize(d);
-      total += size;
-      String name = d.getName();
-      LocalAsr.Model known = LocalAsr.byId(name);
-      LocalAsr.Model activeModel = LocalAsr.active(this);
-      String label = known != null ? known.label + (known == activeModel ? " — utilisé pour les vidéos sans sous-titres" : " — installé, pas utilisé")
-          : name.startsWith("qwen3-asr") ? "Qwen3-ASR 0.6B — ancien modèle, plus utilisé par l'app"
-          : "download.tmp".equals(name) ? "Téléchargement interrompu (fichiers incomplets)"
-          : name + " — non utilisé";
-      LinearLayout row = new LinearLayout(this);
-      row.setGravity(Gravity.CENTER_VERTICAL);
-      TextView info = new TextView(this);
-      info.setText(label + "\n" + LocalAsr.size(size));
-      info.setTextSize(12);
-      info.setTextColor(INK);
-      row.addView(info, new LinearLayout.LayoutParams(0, -2, 1));
-      Button del = secondary("Supprimer");
-      del.setOnClickListener(v -> confirmDeleteModel(label.split(" — ")[0], d, () -> {
-        if (known != null) LocalAsr.release();
-        refreshModels();
-        if (modelsChanged != null) modelsChanged.run();
-      }));
-      row.addView(del, new LinearLayout.LayoutParams(-2, -2));
-      modelsBox.addView(row, gapTop(6));
-    }
-    TextView summary = new TextView(this);
-    summary.setTextSize(12);
-    summary.setTextColor(MUTED);
-    summary.setText((dirs == null || dirs.length == 0 ? "Aucun modèle installé. " : "Total des modèles : " + LocalAsr.size(total) + ". ")
-        + "Espace libre sur le téléphone : " + LocalAsr.size(getFilesDir().getUsableSpace()) + ".");
-    modelsBox.addView(summary, gapTop(6));
+  /**
+   * Local speech recognition was removed in 0.8.0. Its temporary audio is cleared automatically; the
+   * downloaded models (up to about 2 GB) are only deleted after the user confirms.
+   */
+  private void offerOldModelCleanup(LinearLayout root) {
+    deleteTree(new java.io.File(getCacheDir(), "audio-temp"));
+    java.io.File models = new java.io.File(getFilesDir(), "asr");
+    long size = treeSize(models);
+    if (size <= 0) { deleteTree(models); return; }
+    LinearLayout c = card(root);
+    text(c, "Espace à libérer", 15, INK, true);
+    TextView info = text(c, "Les modèles de transcription locale (Whisper, Qwen3) ne sont plus utilisés par l'application. Ils occupent "
+        + humanSize(size) + " sur ce téléphone.", 13, MUTED, false);
+    info.setPadding(0, dp(4), 0, dp(10));
+    Button free = secondary("Supprimer ces fichiers (" + humanSize(size) + ")");
+    c.addView(free);
+    free.setOnClickListener(v -> new AlertDialog.Builder(this)
+        .setTitle("Supprimer les anciens modèles ?")
+        .setMessage(humanSize(size) + " seront libérés. Rien d'autre n'est effacé : appairage, historique et réglages sont conservés.")
+        .setNegativeButton(t("cancel"), null)
+        .setPositiveButton("Supprimer", (d, w) -> worker.execute(() -> {
+          deleteTree(models);
+          ui.post(() -> c.setVisibility(View.GONE));
+        }))
+        .show());
   }
 
   private static long treeSize(java.io.File f) {
+    if (f == null || !f.exists()) return 0;
     if (f.isFile()) return f.length();
     long s = 0;
     java.io.File[] kids = f.listFiles();
@@ -2998,18 +2869,17 @@ public class MainActivity extends Activity {
     return s;
   }
 
-  /** Deleting a model always asks first: it has to be downloaded again to be used. */
-  private void confirmDeleteModel(String label, java.io.File dir, Runnable after) {
-    long size = treeSize(dir);
-    new AlertDialog.Builder(this)
-        .setTitle("Supprimer ce modèle ?")
-        .setMessage(label + " (" + LocalAsr.size(size) + ") sera effacé de ce téléphone. Il faudra le retélécharger pour s'en resservir.")
-        .setNegativeButton("Annuler", null)
-        .setPositiveButton("Supprimer", (dlg, w) -> worker.execute(() -> {
-          LocalAsr.deleteTree(dir);
-          runOnUiThread(after);
-        }))
-        .show();
+  private static void deleteTree(java.io.File f) {
+    if (f == null || !f.exists()) return;
+    java.io.File[] kids = f.listFiles();
+    if (kids != null) for (java.io.File k : kids) deleteTree(k);
+    //noinspection ResultOfMethodCallIgnored
+    f.delete();
+  }
+
+  private static String humanSize(long bytes) {
+    return bytes >= 1_000_000_000L ? String.format(java.util.Locale.FRANCE, "%.2f Go", bytes / 1e9)
+        : String.format(java.util.Locale.FRANCE, "%d Mo", Math.round(bytes / 1e6));
   }
 
   private void extract() {
@@ -3023,17 +2893,6 @@ public class MainActivity extends Activity {
     worker.execute(() -> {
       TranscriptFetcher.Result result = null; String error = null;
       try { result = TranscriptFetcher.fetch(id, lang); } catch (Exception e) { error = e.getMessage(); }
-      if (result == null && LocalAsr.noCaptions(error) && LocalAsr.fallbackEnabled(this)) {
-        // No captions: temporary audio + Whisper small on the phone.
-        try {
-          result = LocalAsr.transcribeVideo(this, id, "original".equals(lang) ? null : lang, new java.util.concurrent.atomic.AtomicBoolean(false),
-              (phase, percent) -> runOnUiThread(() -> runButton.setText("audio".equals(phase) ? "Pas de sous-titres : audio…"
-                  : "Transcription locale" + (percent >= 0 ? " " + percent + " %" : "…"))));
-          error = null;
-        } catch (Exception e) {
-          error = error + "\nTranscription locale impossible : " + e.getMessage();
-        }
-      }
       final TranscriptFetcher.Result done = result; final String err = error;
       runOnUiThread(() -> {
         if (isFinishing()) return;
@@ -3042,16 +2901,15 @@ public class MainActivity extends Activity {
         resultCard.setVisibility(View.VISIBLE);
         last = done;
         if (done == null) {
+          if (TranscriptFetcher.noCaptions(err)) {
+            resultMeta.setText("Transcription indisponible");
+            output.setText(TranscriptFetcher.NO_CAPTIONS_MESSAGE);
+            return;
+          }
           resultMeta.setText(t("extract_failed"));
           output.setText(err + "\n\n" + t("check_public"));
           return;
         }
-        if ("local_asr".equals(done.source)) {
-          resultMeta.setText((done.title != null ? done.title + "\n" : "") + "Pas de sous-titres YouTube : transcription locale " + (LocalAsr.byId(done.model) != null ? LocalAsr.byId(done.model).label : done.model)
-              + " · langues : " + (done.languagesDetected.isEmpty() ? "?" : android.text.TextUtils.join(", ", done.languagesDetected))
-              + " · " + t("segments", done.segments.size()) + "\nCalcul : " + Math.round(done.processingMs / 1000.0) + " s pour "
-              + done.durationSeconds + " s d'audio. Texte approximatif.");
-        } else
         resultMeta.setText((done.title != null ? done.title + "\n" : "") + done.languageName + (done.autoGenerated ? " · " + t("auto_generated") : "") + " · " + t("segments", done.segments.size()));
         output.setText(styled(done));
       });

@@ -1,8 +1,8 @@
 import {NextRequest,NextResponse} from 'next/server';
-import {completeJob,completeNotebookJob,deviceFromAuthorization,progressJob,releaseJob,sanitizeDeviceResult} from '@/lib/device-relay';
+import {completeJob,completeNotebookJob,deviceFromAuthorization,releaseJob,sanitizeDeviceResult} from '@/lib/device-relay';
 export const runtime='nodejs';
 const noStore={'Cache-Control':'no-store'};
-/** Device posts {result} (transcript JSON), {error}, {release} or {progress} (long local transcription) for a job it claimed. */
+/** Device posts {result} (transcript JSON) or {error} for a job it claimed. */
 export async function POST(req:NextRequest,{params}:{params:Promise<{id:string}>}){
  const {id}=await params;
  const length=Number(req.headers.get('content-length')||0);
@@ -20,8 +20,7 @@ export async function POST(req:NextRequest,{params}:{params:Promise<{id:string}>
    return ok?NextResponse.json({ok:true},{headers:noStore}):NextResponse.json({error:'Notebook job unavailable'},{status:409,headers:noStore});
   }
   let ok:boolean;
-  if((body as {progress?:unknown}).progress!==undefined)ok=await progressJob(device,id,(body as {progress?:unknown}).progress);
-  else if((body as {release?:unknown}).release===true)ok=await releaseJob(device,id);
+  if((body as {release?:unknown}).release===true)ok=await releaseJob(device,id);
   else if(typeof body.error==='string')ok=await completeJob(device,id,{error:body.error});
   else{
    const videoId=typeof body.result==='object'&&body.result&&typeof (body.result as {videoId?:unknown}).videoId==='string'?(body.result as {videoId:string}).videoId:'';
