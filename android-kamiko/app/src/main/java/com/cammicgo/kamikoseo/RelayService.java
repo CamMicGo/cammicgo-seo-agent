@@ -229,22 +229,13 @@ public class RelayService extends Service {
         current(null);
         throw e;
       }
-      TranscriptFetcher.Result local = null;
-      // localAsr: the server labels phone transcripts as such and accepts progress pings (older servers do not).
-      if (LocalAsr.noCaptions(msg) && LocalAsr.fallbackEnabled(this) && job.optBoolean("localAsr", false)) {
-        try { local = localTranscript(token, id, videoId, lang); }
-        catch (Exception e2) { msg = msg + "\nTranscription locale (Whisper) impossible : " + e2.getMessage(); }
-      } else if (LocalAsr.noCaptions(msg) && !LocalAsr.installed(this)) {
-        msg = msg + "\nAstuce : installe un modèle Whisper (small ou turbo) dans l'application CamMicGo pour transcrire sur le téléphone les vidéos sans sous-titres.";
-      }
-      if (local == null) {
-        RelayClient.sendError(token, id, msg);
-        history(videoId, null, "failed", 0, firstLine(msg), agentName);
-        status(I18n.t(this, "fail_for", videoId, firstLine(msg)));
-        current(null);
-        return;
-      }
-      r = local;
+      // No caption track at all: say so plainly; the assistant tells the user no transcript exists.
+      if (TranscriptFetcher.noCaptions(msg)) msg = TranscriptFetcher.NO_CAPTIONS_MESSAGE;
+      RelayClient.sendError(token, id, msg);
+      history(videoId, null, "failed", 0, firstLine(msg), agentName);
+      status(I18n.t(this, "fail_for", videoId, firstLine(msg)));
+      current(null);
+      return;
     }
     // Upload with retries so a short network drop does not lose a finished transcript.
     String payload = TranscriptFetcher.toJson(r, false);
@@ -279,25 +270,6 @@ public class RelayService extends Service {
     // Do not erase the rate-limit history immediately after one successful fetch.
   }
 
-  /**
-   * No captions: temporary audio download + Whisper small on this phone. The claim is renewed every
-   * 30 s so the server does not hand the job to another device while it runs.
-   */
-  private TranscriptFetcher.Result localTranscript(String token, String id, String videoId, String lang) throws Exception {
-    java.util.concurrent.atomic.AtomicBoolean cancel = new java.util.concurrent.atomic.AtomicBoolean(false);
-    long[] lastPing = {0};
-    return LocalAsr.transcribeVideo(this, videoId, "original".equals(lang) ? null : lang, cancel, (phase, percent) -> {
-      if (!running) cancel.set(true);
-      status("audio".equals(phase) ? "Pas de sous-titres : téléchargement temporaire de l'audio…"
-          : "Transcription locale (" + LocalAsr.activeLabel(this) + ")" + (percent >= 0 ? " : " + percent + " %" : "…"));
-      long now = System.currentTimeMillis();
-      if (now - lastPing[0] > 30_000L) {
-        lastPing[0] = now;
-        try { RelayClient.progress(token, id, phase, percent); } catch (IOException ignored) { /* next ping retries */ }
-      }
-    });
-  }
-
   /** Notebook tasks are tracked separately; never pass them to the YouTube transcript parser. */
   private void handleNotebook(String token, JSONObject job) throws IOException {
     String id=job.optString("id");
@@ -323,7 +295,7 @@ public class RelayService extends Service {
       else if ("source_rename".equals(operation)) result=client.sourceRename(job.optString("notebookUrl"),job.optString("sourceId"),job.optString("title"));
       else if ("source_sync_drive".equals(operation)) result=client.sourceSyncDrive(job.optString("notebookUrl"),job.optString("sourceId"));
       else if ("source_delete".equals(operation)) result=client.sourceDelete(job.optString("notebookUrl"),job.optString("sourceId"),job.optString("expectedTitle"),job.optBoolean("confirm",false));
-      else if ("query".equals(operation)) result=client.queryNotebook(job.optString("notebookUrl"),job.optString("question"));
+      else if ("query".equals(operation)) result=client.queryNotebook(job.optString("notebookUrl"),job.optString("question"),job.has("sourceIds")?new JSONArray(job.optString("sourceIds","[]")):null);
       else if ("studio_create".equals(operation)) result=client.studioCreateAdvanced(job.optString("notebookUrl"),job.optString("kind"),job.optString("language","fr"),job.optString("focus",""),job.optString("format",""),job.optInt("optionA",1),job.optInt("optionB",2),job.optString("stylePrompt",""),job.has("sourceIds")?new JSONArray(job.optString("sourceIds","[]")):null);
       else if ("studio_revise".equals(operation)) result=client.studioRevise(job.optString("notebookUrl"),job.optString("artifactId"),new JSONArray(job.optString("instructions","[]")));
       else if ("export_artifact".equals(operation)) result=client.exportArtifact(job.optString("notebookUrl"),job.optString("artifactId"),job.optString("title","NotebookLM Export"),job.optString("exportType","docs"));
@@ -356,7 +328,8 @@ public class RelayService extends Service {
       else if ("add_text_source".equals(operation)) result=client.addText(job.optString("notebookUrl"),job.optString("title"),job.optString("text"));
       else if ("add_drive_source".equals(operation)) result=client.addDrive(job.optString("notebookUrl"),job.optString("documentId"),job.optString("title"),job.optString("mimeType"));
       else if ("add_url_source".equals(operation))
-        result=client.addUrl(job.optString("notebookUrl"),job.optString("sourceUrl"));
+        result=job.has("sourceUrls")?client.addUrls(job.optString("notebookUrl"),new JSONArray(job.optString("sourceUrls","[]")))
+            :client.addUrl(job.optString("notebookUrl"),job.optString("sourceUrl"));
       else throw new IOException("Opération NotebookLM non prise en charge : "+operation);
       JSONObject body=new JSONObject().put("type","notebooklm").put("result",result);
       RelayClient.request("POST","/api/devices/jobs/"+id,token,body.toString());

@@ -177,6 +177,9 @@ final class NotebookClient {
       throw new IOException("Google Drive/Sheets : import natif requis (source_type=drive, document_id, doc_type=sheets). L’import URL est désactivé pour éviter les sources invalides.");
     String id=m.group(1);
     boolean youtube=source.getHost().equals("youtube.com")||source.getHost().endsWith(".youtube.com")||source.getHost().equals("youtu.be");
+    // youtu.be, Shorts and mobile links: NotebookLM imports the canonical watch URL reliably.
+    String videoId=youtube?TranscriptFetcher.videoId(sourceUrl):null;
+    if(youtube&&videoId!=null)sourceUrl="https://www.youtube.com/watch?v="+videoId;
     JSONArray data=new JSONArray();
     for(int i=0;i<11;i++)data.put(JSONObject.NULL);
     data.put(youtube?7:2,new JSONArray().put(sourceUrl));data.put(10,1);
@@ -191,7 +194,20 @@ final class NotebookClient {
     JSONArray sources=outer.optJSONArray(0);
     if(sources==null||sources.length()==0)throw new IOException("Source not confirmed by NotebookLM");
     return new JSONObject().put("sourceAdded",true).put("notebookUrl",notebookUrl)
-      .put("sourceUrl",sourceUrl).put("method","android-java-rpc");
+      .put("sourceUrl",sourceUrl).put("sourceType",youtube?"youtube":"web").put("method","android-java-rpc");
+  }
+
+  /** Several links, one by one (NotebookLM confirms each); a failure does not stop the others. */
+  JSONObject addUrls(String notebookUrl,JSONArray urls) throws Exception {
+    if(urls==null||urls.length()==0)throw new IOException("At least one source URL required");
+    JSONArray results=new JSONArray();int added=0;
+    for(int i=0;i<urls.length()&&i<20;i++){
+      String url=urls.optString(i);
+      try{JSONObject r=addUrl(notebookUrl,url);results.put(r);added++;}
+      catch(Exception e){results.put(new JSONObject().put("sourceUrl",url).put("sourceAdded",false).put("error",String.valueOf(e.getMessage())));}
+      if(i<urls.length()-1)Thread.sleep(1200);
+    }
+    return new JSONObject().put("notebookUrl",notebookUrl).put("requested",Math.min(20,urls.length())).put("added",added).put("results",results);
   }
   private String ownedNotebookId(String notebookUrl) throws Exception {
     if(notebookUrl==null)throw new IOException("Notebook URL required");
@@ -770,7 +786,10 @@ final class NotebookClient {
     return new JSONObject().put("notebookId",id).put("shareData",(JSONArray)raw);
   }
 
-  JSONObject queryNotebook(String notebookUrl,String question) throws Exception {
+  JSONObject queryNotebook(String notebookUrl,String question) throws Exception { return queryNotebook(notebookUrl,question,null); }
+
+  /** sourceIds (optional) limits the answer to those READY sources. */
+  JSONObject queryNotebook(String notebookUrl,String question,JSONArray sourceIds) throws Exception {
     String id=ownedNotebookId(notebookUrl);
     if(question==null||question.trim().isEmpty()||question.length()>10000)
       throw new IOException("Question required (max 10000 characters)");
@@ -778,10 +797,15 @@ final class NotebookClient {
     JSONArray sources=new JSONArray();
     for(int i=0;i<ready.length();i++){
       JSONObject src=ready.getJSONObject(i);
-      if("ready".equals(src.optString("status"))&&!src.optString("id").isEmpty())
-        sources.put(new JSONArray().put(new JSONArray().put(src.getString("id"))));
+      if(!"ready".equals(src.optString("status"))||src.optString("id").isEmpty())continue;
+      if(sourceIds!=null&&sourceIds.length()>0){
+        boolean wanted=false;
+        for(int k=0;k<sourceIds.length();k++)if(src.getString("id").equals(sourceIds.optString(k)))wanted=true;
+        if(!wanted)continue;
+      }
+      sources.put(new JSONArray().put(new JSONArray().put(src.getString("id"))));
     }
-    if(sources.length()==0)throw new IOException("No ready NotebookLM sources to query");
+    if(sources.length()==0)throw new IOException(sourceIds!=null&&sourceIds.length()>0?"None of the requested sources is ready in this notebook":"No ready NotebookLM sources to query");
     String page=request(HOME,"GET",null);
     String csrf=field(page,"SNlM0e"),sid=field(page,"FdrFJe"),bl=field(page,"cfb2h");
     if(csrf.isEmpty())throw new IOException("NotebookLM session token missing");

@@ -171,6 +171,7 @@ public class MainActivity extends Activity {
   private String historyShown;
   private long lastMcpDebugFetch = 0L;
   private Button clearHistory;
+  private View requestsTitle, requestsCard;
   // extract tab
   private EditText urlInput;
   private Spinner langSpinner;
@@ -209,8 +210,7 @@ public class MainActivity extends Activity {
     LinearLayout c = new LinearLayout(this);
     c.setOrientation(LinearLayout.VERTICAL);
     c.setPadding(dp(18), dp(16), dp(18), dp(18));
-    c.setBackground(shape(Color.WHITE, 18, LINE));
-    c.setElevation(dp(1));
+    c.setBackground(shape(Color.WHITE, 16, LINE));
     LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
     lp.setMargins(0, 0, 0, dp(14));
     parent.addView(c, lp);
@@ -218,10 +218,18 @@ public class MainActivity extends Activity {
   }
 
   /** Small upper-case section label above cards. */
-  private void section(LinearLayout parent, String s) {
-    TextView t = text(parent, s.toUpperCase(), 11, BLUE, true);
-    t.setLetterSpacing(0.12f);
-    t.setPadding(dp(4), dp(6), 0, dp(8));
+  private TextView section(LinearLayout parent, String s) {
+    TextView t = text(parent, s.toUpperCase(), 11, MUTED, true);
+    t.setLetterSpacing(0.1f);
+    t.setPadding(dp(4), dp(10), 0, dp(8));
+    return t;
+  }
+
+  /** Vector icon at the start of a button or label (no emoji: same look on every phone). */
+  private <T extends TextView> T withIcon(T v, UiIcons.Kind icon, int color) {
+    v.setCompoundDrawablesRelative(UiIcons.make(icon, color, dp(18)), null, null, null);
+    v.setCompoundDrawablePadding(dp(8));
+    return v;
   }
 
   private TextView text(LinearLayout parent, String s, int sizeSp, int color, boolean bold) {
@@ -398,7 +406,8 @@ public class MainActivity extends Activity {
   @Override public void onCreate(Bundle state) {
     super.onCreate(state);
     getWindow().setStatusBarColor(Color.WHITE);
-    getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+    getWindow().setNavigationBarColor(Color.WHITE);
+    getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
 
     LinearLayout shell = new LinearLayout(this);
     shell.setOrientation(LinearLayout.VERTICAL);
@@ -409,10 +418,6 @@ public class MainActivity extends Activity {
     int beforeHeader = shell.getChildCount();
     buildAppBar(shell);
     appHeader = shell.getChildCount() > beforeHeader ? shell.getChildAt(beforeHeader) : null;
-    int beforeTabs = shell.getChildCount();
-    buildTabs(shell);
-    appTabs = shell.getChildCount() > beforeTabs ? shell.getChildAt(beforeTabs) : null;
-
     FrameLayout host = new FrameLayout(this);
     shell.addView(host, new LinearLayout.LayoutParams(-1, 0, 1));
     buildAssistantPage(page(host, 0));
@@ -420,6 +425,9 @@ public class MainActivity extends Activity {
     buildNotebookTab(host);
     buildLinkedInTab(host);
     buildHelpPage(page(host, 4));
+    int beforeTabs = shell.getChildCount();
+    buildTabs(shell);
+    appTabs = shell.getChildCount() > beforeTabs ? shell.getChildAt(beforeTabs) : null;
 
     setContentView(shell);
     selectTab(state != null ? state.getInt("tab", 0) : 0);
@@ -432,21 +440,25 @@ public class MainActivity extends Activity {
     LinearLayout bar = new LinearLayout(this);
     bar.setGravity(Gravity.CENTER_VERTICAL);
     bar.setBackgroundColor(Color.WHITE);
-    bar.setPadding(dp(16), dp(12), dp(16), dp(12));
-    bar.setElevation(dp(2));
+    bar.setPadding(dp(16), dp(10), dp(12), dp(10));
     ImageView logo = new ImageView(this);
     logo.setImageResource(R.mipmap.ic_launcher);
-    bar.addView(logo, new LinearLayout.LayoutParams(dp(40), dp(40)));
+    bar.addView(logo, new LinearLayout.LayoutParams(dp(36), dp(36)));
     LinearLayout titles = new LinearLayout(this);
     titles.setOrientation(LinearLayout.VERTICAL);
     titles.setPadding(dp(10), 0, dp(8), 0);
-    text(titles, "CamMicGo SEO MCP", 17, INK, true);
-    text(titles, t("app_sub"), 12, MUTED, false);
+    TextView name = text(titles, "CamMicGo", 18, INK, true);
+    name.setLetterSpacing(-0.01f);
+    TextView subtitle = text(titles, t("app_sub"), 11, MUTED, false);
+    subtitle.setSingleLine(true);
+    subtitle.setEllipsize(TextUtils.TruncateAt.END);
     bar.addView(titles, new LinearLayout.LayoutParams(0, -2, 1));
 
-    TextView lang = text(null, "🌐 " + I18n.code(this).toUpperCase(), 12, BLUE, true);
-    lang.setPadding(dp(10), dp(6), dp(10), dp(6));
-    lang.setBackground(shape(FIELD, 20, LINE));
+    TextView lang = withIcon(text(null, I18n.code(this).toUpperCase(), 12, INK, true), UiIcons.Kind.BROWSER, MUTED);
+    lang.setCompoundDrawablePadding(dp(4));
+    lang.setGravity(Gravity.CENTER_VERTICAL);
+    lang.setPadding(dp(10), dp(7), dp(10), dp(7));
+    lang.setBackground(shape(Color.WHITE, 20, LINE));
     lang.setContentDescription(t("language_title"));
     lang.setOnClickListener(v -> pickLanguage());
     LinearLayout.LayoutParams langLp = new LinearLayout.LayoutParams(-2, -2);
@@ -455,8 +467,8 @@ public class MainActivity extends Activity {
 
     LinearLayout chip = new LinearLayout(this);
     chip.setGravity(Gravity.CENTER_VERTICAL);
-    chip.setPadding(dp(10), dp(6), dp(12), dp(6));
-    chip.setBackground(shape(FIELD, 20, LINE));
+    chip.setPadding(dp(10), dp(7), dp(12), dp(7));
+    chip.setBackground(shape(Color.WHITE, 20, LINE));
     chipDot = new View(this);
     chip.addView(chipDot, new LinearLayout.LayoutParams(dp(8), dp(8)));
     chipText = text(null, "", 12, INK, true);
@@ -464,7 +476,14 @@ public class MainActivity extends Activity {
     chip.addView(chipText);
     chip.setOnClickListener(v -> selectTab(0));
     bar.addView(chip);
-    shell.addView(bar, new LinearLayout.LayoutParams(-1, -2));
+
+    LinearLayout header = new LinearLayout(this);
+    header.setOrientation(LinearLayout.VERTICAL);
+    header.addView(bar, new LinearLayout.LayoutParams(-1, -2));
+    View rule = new View(this);
+    rule.setBackgroundColor(LINE);
+    header.addView(rule, new LinearLayout.LayoutParams(-1, Math.max(1, dp(1) / 2 + 1)));
+    shell.addView(header, new LinearLayout.LayoutParams(-1, -2));
   }
 
   /** Lets the user choose one of the 11 languages; the screen is rebuilt in that language. */
@@ -481,28 +500,44 @@ public class MainActivity extends Activity {
         .show();
   }
 
+  private static final UiIcons.Kind[] TAB_ICONS = {UiIcons.Kind.SPARK, UiIcons.Kind.DOC, UiIcons.Kind.BOOK, UiIcons.Kind.LINKEDIN, UiIcons.Kind.HELP};
+  private final android.widget.ImageView[] tabIcons = new android.widget.ImageView[5];
+
+  /** Bottom navigation (Material style): icon in a pill that fills when active, short label under it. */
   private void buildTabs(LinearLayout shell) {
-    LinearLayout wrap = new LinearLayout(this);
-    wrap.setPadding(dp(16), dp(12), dp(16), dp(2));
-    LinearLayout seg = new LinearLayout(this);
-    seg.setPadding(dp(4), dp(4), dp(4), dp(4));
-    seg.setBackground(shape(Color.rgb(230, 237, 250), 14, 0));
+    LinearLayout nav = new LinearLayout(this);
+    nav.setOrientation(LinearLayout.VERTICAL);
+    nav.setBackgroundColor(Color.WHITE);
+    View rule = new View(this);
+    rule.setBackgroundColor(LINE);
+    nav.addView(rule, new LinearLayout.LayoutParams(-1, Math.max(1, dp(1) / 2 + 1)));
+    LinearLayout row = new LinearLayout(this);
+    row.setPadding(dp(4), dp(8), dp(4), dp(10));
     for (int i = 0; i < TABS.length; i++) {
       final int index = i;
-      TextView t = text(null, (i == 2 || i == 3) ? TABS[i] : t(TABS[i]), 12, MUTED, true);
-      t.setGravity(Gravity.CENTER);
-      t.setSingleLine(true);
-      t.setPadding(dp(12), dp(10), dp(12), dp(10));
-      t.setOnClickListener(v -> selectTab(index));
-      seg.addView(t, new LinearLayout.LayoutParams(-2, -2));
-      tabViews[i] = t;
+      LinearLayout item = new LinearLayout(this);
+      item.setOrientation(LinearLayout.VERTICAL);
+      item.setGravity(Gravity.CENTER_HORIZONTAL);
+      item.setClickable(true);
+      item.setBackground(null);
+      android.widget.ImageView icon = new android.widget.ImageView(this);
+      icon.setImageDrawable(UiIcons.make(TAB_ICONS[i], MUTED, dp(22)));
+      icon.setScaleType(android.widget.ImageView.ScaleType.CENTER);
+      item.addView(icon, new LinearLayout.LayoutParams(dp(56), dp(30)));
+      TextView label = text(null, (i == 2 || i == 3) ? TABS[i] : t(TABS[i]), 11, MUTED, true);
+      label.setGravity(Gravity.CENTER);
+      label.setSingleLine(true);
+      label.setEllipsize(TextUtils.TruncateAt.END);
+      label.setPadding(0, dp(4), 0, 0);
+      item.addView(label, new LinearLayout.LayoutParams(-1, -2));
+      item.setContentDescription(label.getText());
+      item.setOnClickListener(v -> selectTab(index));
+      row.addView(item, new LinearLayout.LayoutParams(0, -2, 1));
+      tabViews[i] = label;
+      tabIcons[i] = icon;
     }
-    android.widget.HorizontalScrollView scroller = new android.widget.HorizontalScrollView(this);
-    scroller.setHorizontalScrollBarEnabled(false);
-    scroller.setFillViewport(false);
-    scroller.addView(seg, new android.widget.HorizontalScrollView.LayoutParams(-2, -2));
-    wrap.addView(scroller, new LinearLayout.LayoutParams(-1, -2));
-    shell.addView(wrap);
+    nav.addView(row, new LinearLayout.LayoutParams(-1, -2));
+    shell.addView(nav, new LinearLayout.LayoutParams(-1, -2));
   }
 
   private void selectTab(int index) {
@@ -510,11 +545,11 @@ public class MainActivity extends Activity {
     if (linkedinExpanded && index != 3) setLinkedInExpanded(false);
     currentTab = index;
     for (int i = 0; i < pages.length; i++) {
-      pages[i].setVisibility(i == index ? View.VISIBLE : View.GONE);
       boolean on = i == index;
-      tabViews[i].setTextColor(on ? Color.WHITE : MUTED);
-      tabViews[i].setBackground(on ? shape(BLUE, 11, 0) : null);
-      tabViews[i].setElevation(on ? dp(1) : 0);
+      pages[i].setVisibility(on ? View.VISIBLE : View.GONE);
+      tabViews[i].setTextColor(on ? BLUE : MUTED);
+      tabIcons[i].setImageDrawable(UiIcons.make(TAB_ICONS[i], on ? BLUE : MUTED, dp(22)));
+      tabIcons[i].setBackground(on ? shape(Color.rgb(226, 235, 253), 15, 0) : null);
     }
   }
 
@@ -529,7 +564,7 @@ public class MainActivity extends Activity {
     TextView sub = text(unpairedBox, t("pair_sub"), 13, MUTED, false);
     sub.setPadding(0, dp(4), 0, dp(8));
     step(unpairedBox, "1", t("step1"));
-    Button copyAsk = secondary(t("copy_ask"));
+    Button copyAsk = withIcon(secondary(t("copy_ask")), UiIcons.Kind.COPY, BLUE);
     copyAsk.setOnClickListener(v -> copy(t("ask_text"), t("ask_copied")));
     LinearLayout.LayoutParams askLp = gapTop(2);
     askLp.leftMargin = dp(38);
@@ -609,8 +644,9 @@ public class MainActivity extends Activity {
       Toast.makeText(this, t("unpaired_toast"), Toast.LENGTH_SHORT).show();
     });
 
-    section(root, t("sec_requests"));
+    requestsTitle = section(root, t("sec_requests"));
     LinearLayout p = card(root);
+    requestsCard = p;
     LinearLayout head = new LinearLayout(this);
     head.setGravity(Gravity.BOTTOM);
     progressCount = text(null, "—", 30, INK, true);
@@ -688,7 +724,11 @@ public class MainActivity extends Activity {
     h.setPadding(dp(6), dp(6), dp(6), dp(6));
     historyList = new LinearLayout(this);
     historyList.setOrientation(LinearLayout.VERTICAL);
-    android.widget.ScrollView activityScroll = new android.widget.ScrollView(this);
+    android.widget.ScrollView activityScroll = new android.widget.ScrollView(this) {
+      @Override protected void onMeasure(int w, int h) {
+        super.onMeasure(w, View.MeasureSpec.makeMeasureSpec(dp(360), View.MeasureSpec.AT_MOST));
+      }
+    };
     activityScroll.setFillViewport(false);
     // The feed sits inside the page's own scroll view: keep its scroll bar visible and let it take the
     // finger while it is touched, otherwise the outer page swallows the gesture and the list never scrolls.
@@ -701,7 +741,7 @@ public class MainActivity extends Activity {
       return false;
     });
     activityScroll.addView(historyList);
-    h.addView(activityScroll, new LinearLayout.LayoutParams(-1, dp(360)));
+    h.addView(activityScroll, new LinearLayout.LayoutParams(-1, -2));
     Button diagnostics = secondary(localizedMcpDiagnosticTitle());
     diagnostics.setOnClickListener(v -> {
       SharedPreferences prefs = RelayClient.prefs(this);
@@ -720,7 +760,7 @@ public class MainActivity extends Activity {
       showDiagnostic(localizedMcpDiagnosticTitle(), report);
     });
     h.addView(diagnostics, new LinearLayout.LayoutParams(-1, -2));
-    clearHistory = flat(t("clear_list"), RED);
+    clearHistory = withIcon(flat(t("clear_list"), RED), UiIcons.Kind.TRASH, RED);
     clearHistory.setOnClickListener(v -> new AlertDialog.Builder(this)
         .setTitle(t("clear_title"))
         .setMessage(t("clear_msg"))
@@ -771,12 +811,13 @@ public class MainActivity extends Activity {
   // ---------- tab 2: extract ----------
 
   private void buildExtractPage(LinearLayout root) {
+    offerOldModelCleanup(root);
     section(root, t("sec_transcribe"));
     LinearLayout c = card(root);
     text(c, t("extract_title"), 17, INK, true);
     TextView sub = text(c, t("extract_sub"), 13, MUTED, false);
     sub.setPadding(0, dp(4), 0, dp(10));
-    urlInput = field(t("url_hint"));
+    urlInput = withIcon(field(t("url_hint")), UiIcons.Kind.LINK, MUTED);
     urlInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
     c.addView(urlInput);
     TextView langTitle = text(c, t("language"), 13, INK, true);
@@ -796,120 +837,9 @@ public class MainActivity extends Activity {
       public void afterTextChanged(Editable e) { ui.removeCallbacks(loadLanguages); ui.postDelayed(loadLanguages, 600); }
     });
     runButton.setOnClickListener(v -> extract());
-    Button audioButton = secondary("Télécharger l'audio YouTube (test)");
-    c.addView(audioButton, gapTop(10));
-    TextView audioStatus = text(c, "Audio uniquement, gardé temporairement dans l'app (24 h max).", 12, MUTED, false);
-    Button audioShare = secondary("Partager l'audio (test)");
-    audioShare.setVisibility(View.GONE);
-    c.addView(audioShare, gapTop(6));
-    final String[] lastAudio = {null};
-    audioShare.setOnClickListener(v -> {
-      if (lastAudio[0] == null) return;
-      java.io.File file = new java.io.File(lastAudio[0]);
-      if (!file.isFile()) { audioStatus.setText("L'audio temporaire a été supprimé, relance le téléchargement."); audioShare.setVisibility(View.GONE); return; }
-      try {
-        Uri uri = androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", file);
-        Intent send = new Intent(Intent.ACTION_SEND).setType(file.getName().endsWith(".m4a") ? "audio/mp4" : "audio/webm")
-            .putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        startActivity(Intent.createChooser(send, "Partager l'audio"));
-      } catch (Exception error) {
-        audioStatus.setText("Partage impossible : " + error.getMessage());
-      }
-    });
-    audioButton.setOnClickListener(v -> {
-      String videoId = TranscriptFetcher.videoId(urlInput.getText().toString());
-      if (videoId == null) {
-        audioStatus.setText("URL YouTube invalide.");
-        return;
-      }
-      audioButton.setEnabled(false);
-      audioStatus.setText("Téléchargement audio en cours…");
-      worker.execute(() -> {
-        try {
-          JSONObject result = YouTubeAudioOnly.probeAndDownload(this, videoId);
-          lastAudio[0] = result.optString("savedTo");
-          ui.post(() -> {
-            audioStatus.setText("Audio prêt (temporaire, " + (result.optLong("audioBytes") / 1024) + " Ko, " + result.optString("mime") + ").");
-            audioShare.setVisibility(View.VISIBLE);
-          });
-        } catch (Exception error) {
-          ui.post(() -> audioStatus.setText("Échec audio : " + error.getMessage()));
-        } finally {
-          ui.post(() -> audioButton.setEnabled(true));
-        }
-      });
-    });
-
-    // Local speech recognition for videos without captions (Whisper small or turbo, on this phone).
-    TextView asrTitle = text(c, "Transcription locale (vidéos sans sous-titres)", 14, INK, true);
-    asrTitle.setPadding(0, dp(16), 0, dp(4));
-    TextView asrStatus = text(c, "", 12, MUTED, false);
-    final LocalAsr.Model[] models = LocalAsr.MODELS;
-    final TextView[] modelInfo = new TextView[models.length];
-    final Button[] modelButton = new Button[models.length];
-    final java.util.concurrent.atomic.AtomicBoolean asrCancel = new java.util.concurrent.atomic.AtomicBoolean(false);
-    final int[] downloading = {-1};
-    for (int i = 0; i < models.length; i++) {
-      modelInfo[i] = text(c, "", 12, INK, false);
-      modelInfo[i].setPadding(0, dp(8), 0, 0);
-      modelButton[i] = secondary("");
-      c.addView(modelButton[i], gapTop(4));
-    }
-    android.widget.CheckBox asrToggle = new android.widget.CheckBox(this);
-    asrToggle.setText("Utiliser automatiquement quand une vidéo n'a pas de sous-titres (aussi pour ChatGPT / Claude)");
-    asrToggle.setTextSize(12);
-    asrToggle.setChecked(RelayClient.prefs(this).getBoolean(LocalAsr.PREF_FALLBACK, true));
-    asrToggle.setOnCheckedChangeListener((b, on) -> RelayClient.prefs(this).edit().putBoolean(LocalAsr.PREF_FALLBACK, on).apply());
-    c.addView(asrToggle, gapTop(6));
-    Runnable asrRefresh = () -> {
-      LocalAsr.Model active = LocalAsr.active(this);
-      asrToggle.setVisibility(active != null ? View.VISIBLE : View.GONE);
-      if (downloading[0] < 0) asrStatus.setText(active != null
-          ? "Modèle utilisé : " + active.label + ". Les vidéos sans sous-titres sont transcrites sur ce téléphone ; l'audio temporaire est supprimé ensuite."
-          : "99 langues, mélange de langues accepté. Texte approximatif et horodaté ; l'audio ne quitte pas le téléphone. Télécharge un modèle (une seule fois, il reste ensuite).");
-      for (int i = 0; i < models.length; i++) {
-        LocalAsr.Model m = models[i];
-        boolean ok = LocalAsr.installed(this, m);
-        modelInfo[i].setText(m.label + " (" + m.blurb + ") · " + LocalAsr.size(m.installedBytes()) + (ok ? " · installé" : ""));
-        modelButton[i].setEnabled(downloading[0] < 0 || downloading[0] == i);
-        modelButton[i].setText(downloading[0] == i ? "Annuler le téléchargement"
-            : !ok ? "Télécharger " + m.label + " (" + LocalAsr.size(m.downloadBytes) + ", Wi-Fi conseillé)"
-            : m == active ? "✓ " + m.label + " est utilisé" : "Utiliser " + m.label);
-      }
-    };
-    asrRefresh.run();
-    for (int i = 0; i < models.length; i++) {
-      final int idx = i;
-      final LocalAsr.Model m = models[i];
-      modelButton[i].setOnClickListener(v -> {
-        if (downloading[0] == idx) { asrCancel.set(true); return; }
-        if (LocalAsr.installed(this, m)) { LocalAsr.choose(this, m); asrRefresh.run(); return; }
-        downloading[0] = idx; asrCancel.set(false); asrRefresh.run();
-        asrStatus.setText("Téléchargement de " + m.label + "…");
-        new Thread(() -> {
-          String done;
-          try {
-            LocalAsr.download(this, m, (got, total) -> ui.post(() -> asrStatus.setText("Téléchargement de " + m.label + " : "
-                + (total > 0 ? (got * 100 / total) + " %" : LocalAsr.size(got)))), asrCancel);
-            LocalAsr.choose(this, m);
-            done = null;
-          } catch (Exception e) {
-            done = asrCancel.get() ? "Téléchargement annulé." : "Échec : " + e.getMessage();
-          }
-          final String msg = done;
-          ui.post(() -> { downloading[0] = -1; asrRefresh.run(); refreshModels(); if (msg != null) asrStatus.setText(msg); });
-        }, "asr-download").start();
-      });
-    }
-    modelsChanged = asrRefresh;
-
-    TextView modelsTitle = text(c, "Modèles installés sur ce téléphone", 14, INK, true);
-    modelsTitle.setPadding(0, dp(16), 0, dp(4));
-    modelsBox = new LinearLayout(this);
-    modelsBox.setOrientation(LinearLayout.VERTICAL);
-    c.addView(modelsBox);
-    refreshModels();
-
+    Button toNotebook = withIcon(secondary("Ajouter à un notebook NotebookLM"), UiIcons.Kind.BOOK, BLUE);
+    c.addView(toNotebook, gapTop(8));
+    toNotebook.setOnClickListener(v -> addVideoToNotebook(urlInput.getText().toString()));
 
     resultCard = card(root);
     resultCard.setVisibility(View.GONE);
@@ -917,7 +847,7 @@ public class MainActivity extends Activity {
     resultMeta = text(resultCard, "", 13, MUTED, false);
     resultMeta.setPadding(0, dp(4), 0, dp(10));
     LinearLayout actions = new LinearLayout(this);
-    Button copy = secondary(t("copy_btn")), share = secondary(t("share_btn"));
+    Button copy = withIcon(secondary(t("copy_btn")), UiIcons.Kind.COPY, BLUE), share = withIcon(secondary(t("share_btn")), UiIcons.Kind.SHARE, BLUE);
     actions.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
     LinearLayout.LayoutParams right = new LinearLayout.LayoutParams(0, -2, 1);
     right.leftMargin = dp(8);
@@ -2225,22 +2155,22 @@ public class MainActivity extends Activity {
 
     section(root, t("language_title"));
     LinearLayout lc = card(root);
-    Button langBtn = secondary("🌐  " + I18n.NAMES[I18n.index(this)]);
+    Button langBtn = withIcon(secondary(I18n.NAMES[I18n.index(this)]), UiIcons.Kind.BROWSER, BLUE);
     langBtn.setOnClickListener(v -> pickLanguage());
     lc.addView(langBtn);
 
     section(root, t("sec_tips"));
     LinearLayout tips = card(root);
-    tip(tips, "🔋", t("tip_batt_t"), t("tip_batt"));
+    tip(tips, UiIcons.Kind.BATTERY, t("tip_batt_t"), t("tip_batt"));
     Button battery = secondary(t("battery_btn"));
     battery.setOnClickListener(v -> {
       try { startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))); }
       catch (Exception e) { startActivity(new Intent(Settings.ACTION_SETTINGS)); }
     });
     tips.addView(battery, gapTop(4));
-    tip(tips, "📱", t("tip_awake_t"), t("tip_awake"));
-    tip(tips, "🔄", t("tip_resume_t"), t("tip_resume"));
-    tip(tips, "⏱️", t("tip_a15_t"), t("tip_a15"));
+    tip(tips, UiIcons.Kind.PHONE, t("tip_awake_t"), t("tip_awake"));
+    tip(tips, UiIcons.Kind.REFRESH, t("tip_resume_t"), t("tip_resume"));
+    tip(tips, UiIcons.Kind.SHIELD, t("tip_a15_t"), t("tip_a15"));
 
     TextView versionBanner = text(root, "CamMicGo SEO MCP — VERSION INSTALLÉE : " + version(), 17, BLUE, true);
     versionBanner.setPadding(dp(12), dp(14), dp(12), dp(14));
@@ -2250,11 +2180,16 @@ public class MainActivity extends Activity {
     v.setPadding(0, dp(6), 0, 0);
   }
 
-  private void tip(LinearLayout parent, String icon, String title, String body) {
+  private void tip(LinearLayout parent, UiIcons.Kind icon, String title, String body) {
     LinearLayout row = new LinearLayout(this);
     row.setPadding(0, dp(8), 0, dp(8));
-    TextView i = text(null, icon, 20, INK, false);
-    row.addView(i, new LinearLayout.LayoutParams(dp(34), -2));
+    android.widget.ImageView i = new android.widget.ImageView(this);
+    i.setImageDrawable(UiIcons.make(icon, BLUE, dp(20)));
+    i.setScaleType(android.widget.ImageView.ScaleType.CENTER);
+    i.setBackground(shape(Color.rgb(236, 242, 254), 10, 0));
+    LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(dp(34), dp(34));
+    ilp.setMarginEnd(dp(12));
+    row.addView(i, ilp);
     LinearLayout texts = new LinearLayout(this);
     texts.setOrientation(LinearLayout.VERTICAL);
     text(texts, title, 14, INK, true);
@@ -2355,6 +2290,7 @@ public class MainActivity extends Activity {
     boolean connected = serviceRunning && syncAge >= 0 && syncAge < 30000L;
     boolean starting = paired && !connected && startAge >= 0 && startAge < 30000L;
     unpairedBox.setVisibility(paired ? View.GONE : View.VISIBLE);
+    if (requestsTitle != null) { requestsTitle.setVisibility(paired ? View.VISIBLE : View.GONE); requestsCard.setVisibility(paired ? View.VISIBLE : View.GONE); }
     pairedBox.setVisibility(paired ? View.VISIBLE : View.GONE);
 
     int chipColor = !paired ? GREY : connected ? GREEN : starting ? AMBER : AMBER;
@@ -2931,6 +2867,47 @@ public class MainActivity extends Activity {
     }
   }
 
+  /**
+   * Adds a YouTube video to one of the user's NotebookLM notebooks (NotebookLM reads its transcript
+   * itself). Uses the NotebookLM session of this phone; nothing goes through CamMicGo servers.
+   */
+  private void addVideoToNotebook(String link) {
+    String videoId = TranscriptFetcher.videoId(link == null ? "" : link.trim());
+    if (videoId == null) { Toast.makeText(this, "Collez d'abord un lien YouTube valide.", Toast.LENGTH_LONG).show(); return; }
+    String url = "https://www.youtube.com/watch?v=" + videoId;
+    Toast.makeText(this, "Lecture de vos notebooks…", Toast.LENGTH_SHORT).show();
+    worker.execute(() -> {
+      try {
+        JSONArray notebooks = new NotebookClient(this).list().getJSONArray("notebooks");
+        ui.post(() -> {
+          if (notebooks.length() == 0) {
+            new AlertDialog.Builder(this).setTitle("Aucun notebook").setMessage("Créez d'abord un notebook dans l'onglet NotebookLM.")
+                .setPositiveButton("OK", null).show();
+            return;
+          }
+          String[] titles = new String[notebooks.length()];
+          for (int i = 0; i < titles.length; i++) titles[i] = notebooks.optJSONObject(i).optString("title", "Sans titre");
+          new AlertDialog.Builder(this).setTitle("Ajouter la vidéo à…")
+              .setItems(titles, (d, which) -> {
+                String nb = notebooks.optJSONObject(which).optString("url");
+                worker.execute(() -> {
+                  String msg;
+                  try { new NotebookClient(this).addUrl(nb, url); msg = "Vidéo ajoutée à « " + titles[which] + " ». NotebookLM la traite en quelques instants."; }
+                  catch (Exception e) { msg = "NotebookLM a refusé la vidéo : " + e.getMessage(); }
+                  final String m = msg;
+                  ui.post(() -> Toast.makeText(this, m, Toast.LENGTH_LONG).show());
+                });
+              })
+              .setNegativeButton(t("cancel"), null).show();
+        });
+      } catch (Exception e) {
+        ui.post(() -> new AlertDialog.Builder(this).setTitle("NotebookLM indisponible")
+            .setMessage("Connectez-vous à NotebookLM dans l'onglet NotebookLM, puis réessayez.\n\n" + e.getMessage())
+            .setPositiveButton("Ouvrir NotebookLM", (d, w) -> selectTab(2)).setNegativeButton(t("cancel"), null).show());
+      }
+    });
+  }
+
   private void export(int kind) {
     if (last == null) return;
     String id = last.videoId, lang = last.language;
@@ -2946,51 +2923,35 @@ public class MainActivity extends Activity {
     }
   }
 
-  private LinearLayout modelsBox;
-  private Runnable modelsChanged;
-
-  /** Lists every speech model folder in the app's private storage (current, older, interrupted downloads). */
-  private void refreshModels() {
-    if (modelsBox == null) return;
-    modelsBox.removeAllViews();
-    java.io.File root = new java.io.File(getFilesDir(), "asr");
-    java.io.File[] dirs = root.listFiles(java.io.File::isDirectory);
-    long total = 0;
-    if (dirs != null) for (java.io.File d : dirs) {
-      long size = treeSize(d);
-      total += size;
-      String name = d.getName();
-      LocalAsr.Model known = LocalAsr.byId(name);
-      LocalAsr.Model activeModel = LocalAsr.active(this);
-      String label = known != null ? known.label + (known == activeModel ? " — utilisé pour les vidéos sans sous-titres" : " — installé, pas utilisé")
-          : name.startsWith("qwen3-asr") ? "Qwen3-ASR 0.6B — ancien modèle, plus utilisé par l'app"
-          : "download.tmp".equals(name) ? "Téléchargement interrompu (fichiers incomplets)"
-          : name + " — non utilisé";
-      LinearLayout row = new LinearLayout(this);
-      row.setGravity(Gravity.CENTER_VERTICAL);
-      TextView info = new TextView(this);
-      info.setText(label + "\n" + LocalAsr.size(size));
-      info.setTextSize(12);
-      info.setTextColor(INK);
-      row.addView(info, new LinearLayout.LayoutParams(0, -2, 1));
-      Button del = secondary("Supprimer");
-      del.setOnClickListener(v -> confirmDeleteModel(label.split(" — ")[0], d, () -> {
-        if (known != null) LocalAsr.release();
-        refreshModels();
-        if (modelsChanged != null) modelsChanged.run();
-      }));
-      row.addView(del, new LinearLayout.LayoutParams(-2, -2));
-      modelsBox.addView(row, gapTop(6));
-    }
-    TextView summary = new TextView(this);
-    summary.setTextSize(12);
-    summary.setTextColor(MUTED);
-    summary.setText((dirs == null || dirs.length == 0 ? "Aucun modèle installé. " : "Total des modèles : " + LocalAsr.size(total) + ". ")
-        + "Espace libre sur le téléphone : " + LocalAsr.size(getFilesDir().getUsableSpace()) + ".");
-    modelsBox.addView(summary, gapTop(6));
+  /**
+   * Local speech recognition was removed in 0.8.0. Its temporary audio is cleared automatically; the
+   * downloaded models (up to about 2 GB) are only deleted after the user confirms.
+   */
+  private void offerOldModelCleanup(LinearLayout root) {
+    deleteTree(new java.io.File(getCacheDir(), "audio-temp"));
+    java.io.File models = new java.io.File(getFilesDir(), "asr");
+    long size = treeSize(models);
+    if (size <= 0) { deleteTree(models); return; }
+    LinearLayout c = card(root);
+    text(c, "Espace à libérer", 15, INK, true);
+    TextView info = text(c, "Les modèles de transcription locale (Whisper, Qwen3) ne sont plus utilisés par l'application. Ils occupent "
+        + humanSize(size) + " sur ce téléphone.", 13, MUTED, false);
+    info.setPadding(0, dp(4), 0, dp(10));
+    Button free = secondary("Supprimer ces fichiers (" + humanSize(size) + ")");
+    c.addView(free);
+    free.setOnClickListener(v -> new AlertDialog.Builder(this)
+        .setTitle("Supprimer les anciens modèles ?")
+        .setMessage(humanSize(size) + " seront libérés. Rien d'autre n'est effacé : appairage, historique et réglages sont conservés.")
+        .setNegativeButton(t("cancel"), null)
+        .setPositiveButton("Supprimer", (d, w) -> worker.execute(() -> {
+          deleteTree(models);
+          ui.post(() -> c.setVisibility(View.GONE));
+        }))
+        .show());
   }
 
   private static long treeSize(java.io.File f) {
+    if (f == null || !f.exists()) return 0;
     if (f.isFile()) return f.length();
     long s = 0;
     java.io.File[] kids = f.listFiles();
@@ -2998,18 +2959,17 @@ public class MainActivity extends Activity {
     return s;
   }
 
-  /** Deleting a model always asks first: it has to be downloaded again to be used. */
-  private void confirmDeleteModel(String label, java.io.File dir, Runnable after) {
-    long size = treeSize(dir);
-    new AlertDialog.Builder(this)
-        .setTitle("Supprimer ce modèle ?")
-        .setMessage(label + " (" + LocalAsr.size(size) + ") sera effacé de ce téléphone. Il faudra le retélécharger pour s'en resservir.")
-        .setNegativeButton("Annuler", null)
-        .setPositiveButton("Supprimer", (dlg, w) -> worker.execute(() -> {
-          LocalAsr.deleteTree(dir);
-          runOnUiThread(after);
-        }))
-        .show();
+  private static void deleteTree(java.io.File f) {
+    if (f == null || !f.exists()) return;
+    java.io.File[] kids = f.listFiles();
+    if (kids != null) for (java.io.File k : kids) deleteTree(k);
+    //noinspection ResultOfMethodCallIgnored
+    f.delete();
+  }
+
+  private static String humanSize(long bytes) {
+    return bytes >= 1_000_000_000L ? String.format(java.util.Locale.FRANCE, "%.2f Go", bytes / 1e9)
+        : String.format(java.util.Locale.FRANCE, "%d Mo", Math.round(bytes / 1e6));
   }
 
   private void extract() {
@@ -3023,17 +2983,6 @@ public class MainActivity extends Activity {
     worker.execute(() -> {
       TranscriptFetcher.Result result = null; String error = null;
       try { result = TranscriptFetcher.fetch(id, lang); } catch (Exception e) { error = e.getMessage(); }
-      if (result == null && LocalAsr.noCaptions(error) && LocalAsr.fallbackEnabled(this)) {
-        // No captions: temporary audio + Whisper small on the phone.
-        try {
-          result = LocalAsr.transcribeVideo(this, id, "original".equals(lang) ? null : lang, new java.util.concurrent.atomic.AtomicBoolean(false),
-              (phase, percent) -> runOnUiThread(() -> runButton.setText("audio".equals(phase) ? "Pas de sous-titres : audio…"
-                  : "Transcription locale" + (percent >= 0 ? " " + percent + " %" : "…"))));
-          error = null;
-        } catch (Exception e) {
-          error = error + "\nTranscription locale impossible : " + e.getMessage();
-        }
-      }
       final TranscriptFetcher.Result done = result; final String err = error;
       runOnUiThread(() -> {
         if (isFinishing()) return;
@@ -3042,16 +2991,15 @@ public class MainActivity extends Activity {
         resultCard.setVisibility(View.VISIBLE);
         last = done;
         if (done == null) {
+          if (TranscriptFetcher.noCaptions(err)) {
+            resultMeta.setText("Transcription indisponible");
+            output.setText(TranscriptFetcher.NO_CAPTIONS_MESSAGE);
+            return;
+          }
           resultMeta.setText(t("extract_failed"));
           output.setText(err + "\n\n" + t("check_public"));
           return;
         }
-        if ("local_asr".equals(done.source)) {
-          resultMeta.setText((done.title != null ? done.title + "\n" : "") + "Pas de sous-titres YouTube : transcription locale " + (LocalAsr.byId(done.model) != null ? LocalAsr.byId(done.model).label : done.model)
-              + " · langues : " + (done.languagesDetected.isEmpty() ? "?" : android.text.TextUtils.join(", ", done.languagesDetected))
-              + " · " + t("segments", done.segments.size()) + "\nCalcul : " + Math.round(done.processingMs / 1000.0) + " s pour "
-              + done.durationSeconds + " s d'audio. Texte approximatif.");
-        } else
         resultMeta.setText((done.title != null ? done.title + "\n" : "") + done.languageName + (done.autoGenerated ? " · " + t("auto_generated") : "") + " · " + t("segments", done.segments.size()));
         output.setText(styled(done));
       });
