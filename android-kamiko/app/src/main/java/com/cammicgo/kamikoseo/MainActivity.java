@@ -1379,7 +1379,13 @@ public class MainActivity extends Activity {
         }
         if (found == null) for (int i = 0; i < places.length(); i++) unresolved.put(places.optString(i));
         geo.put("places", ok).put("unresolved", unresolved);
-        if (unresolved.length() > 0) { geoFromJobsPage(unresolved, 0, ok, ids, new JSONArray(), callback); return; }
+        if (unresolved.length() > 0) {
+          linkedinWeb.evaluateJavascript("JSON.stringify(window.__cmgGeoStatus||{})", st -> {
+            try { liGeoDiag = new JSONObject().put("typeaheadHttp", new JSONObject(new JSONArray("[" + st + "]").getString(0))); } catch (Exception e) { liGeoDiag = new JSONObject(); }
+            geoFromJobsPage(unresolved, 0, ok, ids, new JSONArray(), callback);
+          });
+          return;
+        }
         geo.put("applied", ids.length() > 0).put("method", "typeahead")
             .put("param", ids.length() > 0 ? java.net.URLEncoder.encode(ids.toString(), "UTF-8") : "");
       } catch (Exception ignored) { }
@@ -1391,10 +1397,14 @@ public class MainActivity extends Activity {
    * Fallback when LinkedIn's suggestion request fails: LinkedIn's job search turns a typed place into its
    * geo ID (geoId= in the page address and links), the same IDs as people and company searches.
    */
+  /** What the place lookup saw, returned when a place could not be matched (to adapt to LinkedIn changes). */
+  private JSONObject liGeoDiag = new JSONObject();
+
   private void geoFromJobsPage(JSONArray names, int index, JSONArray ok, JSONArray ids, JSONArray stillUnresolved, GeoCallback callback) {
     if (index >= names.length() || index >= 6) {
       JSONObject geo = new JSONObject();
       try {
+        if (stillUnresolved.length() > 0) geo.put("diagnostics", liGeoDiag);
         geo.put("places", ok).put("unresolved", stillUnresolved).put("applied", ids.length() > 0).put("method", "jobs-page")
             .put("param", ids.length() > 0 ? java.net.URLEncoder.encode(ids.toString(), "UTF-8") : "");
       } catch (Exception ignored) { }
@@ -1410,10 +1420,16 @@ public class MainActivity extends Activity {
   private void pollJobsPageGeo(JSONArray names, int index, JSONArray ok, JSONArray ids, JSONArray stillUnresolved, GeoCallback callback, int attempt) {
     ui.postDelayed(() -> linkedinWeb.evaluateJavascript("(function(){const f=u=>{const m=(u||'').match(/[?&]geoId=(\\d+)/);return m?m[1]:'';};let id=f(location.href);"
         + "if(!id){for(const a of document.querySelectorAll('a[href*=\"geoId=\"]')){id=f(a.href);if(id)break;}}"
+        + "const html=document.documentElement.innerHTML;let from='url';"
+        + "if(!id){const m=html.match(/geoId(?:%3D|=|\\\\?\"\\s*:\\s*\\\\?\")(\\d{6,12})/);if(m){id=m[1];from='page-data';}}"
+        + "const urns=[...new Set((html.match(/urn:li:(?:fs_)?geo:\\d{6,12}/g)||[]))].slice(0,5);"
         + "const inp=document.querySelector('input[id*=jobs-search-box-location],input[aria-label*=ocation],input[aria-label*=ieu]');"
-        + "return JSON.stringify({id,label:inp?inp.value:''});})()", raw -> {
+        + "return JSON.stringify({id,from,label:inp?inp.value:'',url:location.pathname+location.search.slice(0,160),urns});})()", raw -> {
       String id = "", label = "";
-      try { JSONObject r = new JSONObject(new JSONArray("[" + raw + "]").getString(0)); id = r.optString("id"); label = r.optString("label"); } catch (Exception ignored) { }
+      try {
+        JSONObject r = new JSONObject(new JSONArray("[" + raw + "]").getString(0)); id = r.optString("id"); label = r.optString("label");
+        if (id.isEmpty() && attempt >= 6) liGeoDiag.put("jobsPage_" + names.optString(index), r);
+      } catch (Exception ignored) { }
       if (id.isEmpty() && attempt < 6) { pollJobsPageGeo(names, index, ok, ids, stillUnresolved, callback, attempt + 1); return; }
       try {
         if (!id.isEmpty()) { ok.put(new JSONObject().put("name", names.optString(index)).put("geoId", id).put("label", label)); ids.put(id); }
@@ -2018,10 +2034,11 @@ public class MainActivity extends Activity {
    * own link as imageUrl. The server deletes results as soon as the assistant has read them.
    */
   private void finishLinkedInCards(String id, JSONObject data) {
+    // WebView methods only work on the UI thread: read the user agent and cookies before going to the worker.
+    final String agent = linkedinWeb == null ? "" : linkedinWeb.getSettings().getUserAgentString();
+    final String cookie = CookieManager.getInstance().getCookie("https://www.linkedin.com/");
     worker.execute(() -> {
       try {
-        String cookie = CookieManager.getInstance().getCookie("https://www.linkedin.com/");
-        String agent = linkedinWeb == null ? "" : linkedinWeb.getSettings().getUserAgentString();
         int budget = 30;
         java.util.List<JSONObject> cards = new java.util.ArrayList<>();
         for (String key : new String[]{"profiles", "people", "companies", "jobs", "posts"}) {
