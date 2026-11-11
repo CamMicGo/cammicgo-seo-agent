@@ -295,7 +295,7 @@ public class RelayService extends Service {
       else if ("source_rename".equals(operation)) result=client.sourceRename(job.optString("notebookUrl"),job.optString("sourceId"),job.optString("title"));
       else if ("source_sync_drive".equals(operation)) result=client.sourceSyncDrive(job.optString("notebookUrl"),job.optString("sourceId"));
       else if ("source_delete".equals(operation)) result=client.sourceDelete(job.optString("notebookUrl"),job.optString("sourceId"),job.optString("expectedTitle"),job.optBoolean("confirm",false));
-      else if ("query".equals(operation)) result=client.queryNotebook(job.optString("notebookUrl"),job.optString("question"));
+      else if ("query".equals(operation)) result=client.queryNotebook(job.optString("notebookUrl"),job.optString("question"),job.has("sourceIds")?new JSONArray(job.optString("sourceIds","[]")):null);
       else if ("studio_create".equals(operation)) result=client.studioCreateAdvanced(job.optString("notebookUrl"),job.optString("kind"),job.optString("language","fr"),job.optString("focus",""),job.optString("format",""),job.optInt("optionA",1),job.optInt("optionB",2),job.optString("stylePrompt",""),job.has("sourceIds")?new JSONArray(job.optString("sourceIds","[]")):null);
       else if ("studio_revise".equals(operation)) result=client.studioRevise(job.optString("notebookUrl"),job.optString("artifactId"),new JSONArray(job.optString("instructions","[]")));
       else if ("export_artifact".equals(operation)) result=client.exportArtifact(job.optString("notebookUrl"),job.optString("artifactId"),job.optString("title","NotebookLM Export"),job.optString("exportType","docs"));
@@ -328,7 +328,8 @@ public class RelayService extends Service {
       else if ("add_text_source".equals(operation)) result=client.addText(job.optString("notebookUrl"),job.optString("title"),job.optString("text"));
       else if ("add_drive_source".equals(operation)) result=client.addDrive(job.optString("notebookUrl"),job.optString("documentId"),job.optString("title"),job.optString("mimeType"));
       else if ("add_url_source".equals(operation))
-        result=client.addUrl(job.optString("notebookUrl"),job.optString("sourceUrl"));
+        result=job.has("sourceUrls")?client.addUrls(job.optString("notebookUrl"),new JSONArray(job.optString("sourceUrls","[]")))
+            :client.addUrl(job.optString("notebookUrl"),job.optString("sourceUrl"));
       else throw new IOException("Opération NotebookLM non prise en charge : "+operation);
       JSONObject body=new JSONObject().put("type","notebooklm").put("result",result);
       RelayClient.request("POST","/api/devices/jobs/"+id,token,body.toString());

@@ -835,6 +835,9 @@ public class MainActivity extends Activity {
       public void afterTextChanged(Editable e) { ui.removeCallbacks(loadLanguages); ui.postDelayed(loadLanguages, 600); }
     });
     runButton.setOnClickListener(v -> extract());
+    Button toNotebook = withIcon(secondary("Ajouter à un notebook NotebookLM"), UiIcons.Kind.BOOK, BLUE);
+    c.addView(toNotebook, gapTop(8));
+    toNotebook.setOnClickListener(v -> addVideoToNotebook(urlInput.getText().toString()));
 
     resultCard = card(root);
     resultCard.setVisibility(View.GONE);
@@ -2860,6 +2863,47 @@ public class MainActivity extends Activity {
       String t = intent.getStringExtra(Intent.EXTRA_TEXT);
       if (t != null) { selectTab(1); urlInput.setText(t); if (TranscriptFetcher.videoId(t) != null) extract(); }
     }
+  }
+
+  /**
+   * Adds a YouTube video to one of the user's NotebookLM notebooks (NotebookLM reads its transcript
+   * itself). Uses the NotebookLM session of this phone; nothing goes through CamMicGo servers.
+   */
+  private void addVideoToNotebook(String link) {
+    String videoId = TranscriptFetcher.videoId(link == null ? "" : link.trim());
+    if (videoId == null) { Toast.makeText(this, "Collez d'abord un lien YouTube valide.", Toast.LENGTH_LONG).show(); return; }
+    String url = "https://www.youtube.com/watch?v=" + videoId;
+    Toast.makeText(this, "Lecture de vos notebooks…", Toast.LENGTH_SHORT).show();
+    worker.execute(() -> {
+      try {
+        JSONArray notebooks = new NotebookClient(this).list().getJSONArray("notebooks");
+        ui.post(() -> {
+          if (notebooks.length() == 0) {
+            new AlertDialog.Builder(this).setTitle("Aucun notebook").setMessage("Créez d'abord un notebook dans l'onglet NotebookLM.")
+                .setPositiveButton("OK", null).show();
+            return;
+          }
+          String[] titles = new String[notebooks.length()];
+          for (int i = 0; i < titles.length; i++) titles[i] = notebooks.optJSONObject(i).optString("title", "Sans titre");
+          new AlertDialog.Builder(this).setTitle("Ajouter la vidéo à…")
+              .setItems(titles, (d, which) -> {
+                String nb = notebooks.optJSONObject(which).optString("url");
+                worker.execute(() -> {
+                  String msg;
+                  try { new NotebookClient(this).addUrl(nb, url); msg = "Vidéo ajoutée à « " + titles[which] + " ». NotebookLM la traite en quelques instants."; }
+                  catch (Exception e) { msg = "NotebookLM a refusé la vidéo : " + e.getMessage(); }
+                  final String m = msg;
+                  ui.post(() -> Toast.makeText(this, m, Toast.LENGTH_LONG).show());
+                });
+              })
+              .setNegativeButton(t("cancel"), null).show();
+        });
+      } catch (Exception e) {
+        ui.post(() -> new AlertDialog.Builder(this).setTitle("NotebookLM indisponible")
+            .setMessage("Connectez-vous à NotebookLM dans l'onglet NotebookLM, puis réessayez.\n\n" + e.getMessage())
+            .setPositiveButton("Ouvrir NotebookLM", (d, w) -> selectTab(2)).setNegativeButton(t("cancel"), null).show());
+      }
+    });
   }
 
   private void export(int kind) {
