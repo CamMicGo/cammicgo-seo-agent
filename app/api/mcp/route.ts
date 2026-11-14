@@ -650,7 +650,22 @@ async function handler(req:NextRequest){
     const videoId=relay.parseVideoId(args.videoId);if(!videoId)return asText({error:'Invalid YouTube URL or video ID'});
     const q=new URLSearchParams({part:args.withReplies?'snippet,replies':'snippet',videoId,order:args.order,maxResults:String(args.maxResults),textFormat:'plainText'});
     if(args.searchTerms)q.set('searchTerms',args.searchTerms);if(args.pageToken)q.set('pageToken',args.pageToken);
-    const r=await googleRequest(yta.YT_DATA_API+'/commentThreads?'+q) as {items?:yta.CommentThread[];nextPageToken?:string;error?:string;status?:number;details?:unknown};
+    // Google only accepts the youtube.force-ssl scope (which can also write comments) for commentThreads.list with
+    // OAuth. Public comments are read with a server API key instead, so users never grant that write scope.
+    const key=process.env.YOUTUBE_DATA_API_KEY?.trim();
+    let r:{items?:yta.CommentThread[];nextPageToken?:string;error?:string;status?:number;details?:unknown;messageForUser?:string};
+    if(key){
+     const session=await readGoogle(user.id);if(!session)return asText(CONNECT_GOOGLE);
+     if(!await consumeQuota(user.id,quotaLimit(session)))return asText({error:'Daily quota exceeded'});
+     q.set('key',key);
+     const res=await fetch(yta.YT_DATA_API+'/commentThreads?'+q,{cache:'no-store'});
+     const body=await res.json().catch(()=>({})) as {items?:yta.CommentThread[];nextPageToken?:string;error?:unknown};
+     r=res.ok?body as typeof r:{error:'youtube_api_error',status:res.status,details:body.error??body};
+    }else{
+     r=await googleRequest(yta.YT_DATA_API+'/commentThreads?'+q) as typeof r;
+     if(r.error==='missing_google_permission')return asText({error:'comments_unavailable',videoId,
+      messageForUser:'Reading YouTube comments needs a YouTube Data API key on the CamMicGo server (YOUTUBE_DATA_API_KEY). Reconnecting Google does not help: Google only allows comment reading with a permission that could also write comments, which CamMicGo never asks for.'});
+    }
     if(r.error){const d=JSON.stringify(r.details??'');
      if(d.includes('commentsDisabled'))return asText({error:'comments_disabled',videoId,messageForUser:'Comments are turned off for this video.'});
      if(d.includes('videoNotFound'))return asText({error:'video_not_found',videoId});
