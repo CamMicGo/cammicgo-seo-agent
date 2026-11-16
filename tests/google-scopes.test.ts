@@ -1,7 +1,7 @@
 // Unit tests for lib/google-scopes.ts — run with: npm test
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {splitScopes,consentSteps,DRIVE_WRITE_SCOPES} from '../lib/google-scopes.ts';
+import {splitScopes,consentSteps,DRIVE_WRITE_SCOPES,YOUTUBE_CHANNEL_SCOPES} from '../lib/google-scopes.ts';
 
 const G='https://www.googleapis.com/auth/';
 const YT=G+'youtube.readonly',DR=G+'drive.readonly',DF=G+'drive.file',DFULL=G+'drive',GSC=G+'webmasters.readonly';
@@ -26,4 +26,12 @@ test('number of Google screens', ()=>{
  assert.equal(consentSteps([YT,DF]),2);
  assert.equal(consentSteps([]),0);
  assert.deepEqual(DRIVE_WRITE_SCOPES,[DF,DFULL]);
+});
+
+test('the separate YouTube grant only asks for YouTube scopes a brand account can authorize', ()=>{
+ assert.ok(YOUTUBE_CHANNEL_SCOPES.length>0);
+ for(const s of YOUTUBE_CHANNEL_SCOPES)assert.match(s,/\/auth\/(youtube|yt-analytics)/);
+ // never the comment-writing scope, and nothing a brand account would refuse (Search Console, Analytics, Drive, Gmail)
+ assert.ok(!YOUTUBE_CHANNEL_SCOPES.some(s=>/force-ssl|webmasters|analytics\.readonly$|drive|gmail/.test(s.replace('yt-analytics','yt'))));
+ assert.ok(YOUTUBE_CHANNEL_SCOPES.includes(G+'youtube.upload'));
 });

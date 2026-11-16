@@ -13,3 +13,6 @@ export function splitScopes(scopes:string[]){
 
 /** Number of Google consent screens needed for these scopes (0, 1 or 2). */
 export function consentSteps(scopes:string[]){const {main,write}=splitScopes(scopes);return (main.length?1:0)+(write.length?1:0);}
+
+/** Scopes of the separate YouTube grant (brand channels can only authorize YouTube). No youtube.force-ssl: it can write comments. */
+export const YOUTUBE_CHANNEL_SCOPES=['https://www.googleapis.com/auth/youtube.readonly','https://www.googleapis.com/auth/yt-analytics.readonly','https://www.googleapis.com/auth/youtube.upload'];

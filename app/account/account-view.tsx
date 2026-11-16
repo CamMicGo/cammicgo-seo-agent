@@ -8,6 +8,7 @@ import DriveStorage from './drive-storage';
 import ScienceKeys from './science-keys';
 import BingKey from './bing-key';
 import LinkedInConnect from './linkedin-connect';
+import YouTubeChannel from './youtube-channel';
 
 type Client={projectId:string|null;clientId:string;secretHint:string;verifiedAt:string|null;updatedAt:string};
 type Account={admin:boolean;client:Client|null;redirectUri:string;google:{connected:boolean;mode:'shared'|'byo'|null;scopes:string[]|null;driveWrite:string[]|null};usage:{used:number;limit:number;perMinute:number;resetsAt:string}};
@@ -219,6 +220,8 @@ export default function AccountView(){
     </div>
     <p className="acc-note">{t.testUsers}</p>
    </section>
+
+   <YouTubeChannel token={token}/>
 
    <DriveStorage token={token} googleConnected={!!acc?.google.connected}/>
 

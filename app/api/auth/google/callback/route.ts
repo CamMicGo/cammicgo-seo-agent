@@ -14,6 +14,7 @@ export async function GET(req:NextRequest){
  const state=req.nextUrl.searchParams.get('state');const code=req.nextUrl.searchParams.get('code');const error=req.nextUrl.searchParams.get('error');
  const back=(p:LinkedPending|null,status:'connected'|'denied'|'partial')=>{
   if(!p?.mcpUserId)return status==='denied'?'/connect?error=denied':'/dashboard';
+  if(p.kind==='youtube_channel')return '/account?youtube='+(status==='denied'?'denied':'connected');
   if(p.returnTo==='/account'&&!p.authorizationId)return '/account?google='+status;
   return '/oauth/consent'+(p.authorizationId?'?authorization_id='+encodeURIComponent(p.authorizationId):'?reauth=google');
  };
@@ -26,6 +27,16 @@ export async function GET(req:NextRequest){
  if(!data.access_token)return NextResponse.json({error:'Missing Google access token'},{status:502});
  const session:GoogleSession={credentials:pending.credentials,accessToken:data.access_token,refreshToken:data.refresh_token,scopes:typeof data.scope==='string'?data.scope.split(' '):undefined,expiresAt:Date.now()+Number(data.expires_in||3600)*1000};
  const store=await import('@/lib/mcp-google-store');
+ // YouTube-only grant (brand channel): stored apart, never replaces the main Google grant nor the browser session.
+ if(pending.kind==='youtube_channel'){
+  if(!pending.mcpUserId)return NextResponse.json({error:'Invalid OAuth state'},{status:400});
+  const ch=await fetch('https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true',{headers:{Authorization:'Bearer '+session.accessToken},cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null) as {items?:Array<{id:string;snippet?:{title?:string}}>}|null;
+  const c=ch?.items?.[0];
+  await store.saveYouTube(pending.mcpUserId,session,{id:c?.id??null,title:c?.snippet?.title??null});
+  const r=NextResponse.redirect(new URL(c?'/account?youtube=connected':'/account?youtube=nochannel',req.url));
+  r.cookies.set(STATE_COOKIE,'',{...cookieOptions,maxAge:0});
+  return r;
+ }
  if(pending.mcpUserId){
   if(pending.kind==='drive_write')await store.saveDriveWrite(pending.mcpUserId,session);
   else{
