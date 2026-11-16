@@ -3,7 +3,7 @@ import {verifySupabaseMcpUser} from '@/lib/supabase-mcp-auth';
 import {encrypt,STATE_COOKIE,cookieOptions,type Credentials} from '@/lib/google-session';
 import {googleAuthRequest} from '@/lib/google-oauth-url';
 import {YOUTUBE_CHANNEL_SCOPES} from '@/lib/google-scopes';
-import {readGoogle,readYouTube,deleteYouTube} from '@/lib/mcp-google-store';
+import {readGoogle,listYouTube,deleteYouTube} from '@/lib/mcp-google-store';
 import {clientCredentials,isAdmin} from '@/lib/account';
 export const runtime='nodejs';
 const noStore={'Cache-Control':'no-store'};
@@ -11,16 +11,16 @@ const user=(req:NextRequest)=>verifySupabaseMcpUser(req.headers.get('authorizati
 const sameOrigin=(req:NextRequest)=>{const o=req.headers.get('origin');return !o||o===req.nextUrl.origin;};
 
 /**
- * YouTube channel used by the YouTube tools. By default they use the main Google connection; the user can pick
- * another channel here (for example a brand channel), through a separate YouTube-only Google authorization.
+ * YouTube channels connected for the YouTube tools, besides the channel of the main Google connection. Each one is
+ * a separate YouTube-only Google authorization, so brand channels can be added; the assistant asks which one to use.
  */
 export async function GET(req:NextRequest){
  const u=await user(req);if(!u)return NextResponse.json({error:'unauthorized'},{status:401,headers:noStore});
- const yt=await readYouTube(u.id).catch(()=>null);
- return NextResponse.json({separate:!!yt,channelId:yt?.channelId??null,channelTitle:yt?.channelTitle??null},{headers:noStore});
+ const list=await listYouTube(u.id).catch(()=>[]);
+ return NextResponse.json({channels:list.map(c=>({id:c.channelId,title:c.channelTitle}))},{headers:noStore});
 }
 
-/** Starts the YouTube-only authorization with Google's account chooser (brand channels are listed there). */
+/** Adds a channel: YouTube-only authorization with Google's account chooser (brand accounts are listed there). */
 export async function POST(req:NextRequest){
  const u=await user(req);if(!u)return NextResponse.json({error:'unauthorized'},{status:401,headers:noStore});
  if(!sameOrigin(req))return NextResponse.json({error:'origin_mismatch'},{status:403,headers:noStore});
@@ -36,10 +36,12 @@ export async function POST(req:NextRequest){
  return r;
 }
 
-/** Goes back to the channel of the main Google connection (the separate YouTube grant is forgotten). */
+/** Removes one connected channel (?channel=UC…). The main Google connection is not touched. */
 export async function DELETE(req:NextRequest){
  const u=await user(req);if(!u)return NextResponse.json({error:'unauthorized'},{status:401,headers:noStore});
  if(!sameOrigin(req))return NextResponse.json({error:'origin_mismatch'},{status:403,headers:noStore});
- await deleteYouTube(u.id);
- return NextResponse.json({separate:false},{headers:noStore});
+ const channel=req.nextUrl.searchParams.get('channel')||'';
+ if(!/^UC[\w-]{22}$/.test(channel))return NextResponse.json({error:'invalid_channel'},{status:400,headers:noStore});
+ await deleteYouTube(u.id,channel);
+ return NextResponse.json({removed:channel},{headers:noStore});
 }

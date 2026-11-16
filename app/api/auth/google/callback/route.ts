@@ -32,7 +32,7 @@ export async function GET(req:NextRequest){
   if(!pending.mcpUserId)return NextResponse.json({error:'Invalid OAuth state'},{status:400});
   const ch=await fetch('https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true',{headers:{Authorization:'Bearer '+session.accessToken},cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null) as {items?:Array<{id:string;snippet?:{title?:string}}>}|null;
   const c=ch?.items?.[0];
-  await store.saveYouTube(pending.mcpUserId,session,{id:c?.id??null,title:c?.snippet?.title??null});
+  if(c)await store.saveYouTube(pending.mcpUserId,session,{id:c.id,title:c.snippet?.title??null});
   const r=NextResponse.redirect(new URL(c?'/account?youtube=connected':'/account?youtube=nochannel',req.url));
   r.cookies.set(STATE_COOKIE,'',{...cookieOptions,maxAge:0});
   return r;
