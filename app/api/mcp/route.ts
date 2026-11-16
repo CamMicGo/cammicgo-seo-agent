@@ -17,7 +17,8 @@ import * as sciExport from '@/lib/science-export';
 import {googleApiCatalog} from '@/lib/google-api-operation-catalog';
 import {getYouTubeTranscript} from '@/lib/youtube-transcript';
 import {verifyMcpAccess} from '@/lib/mcp-access';
-import {authorizedAccessToken,googleFetch} from '@/lib/google-session';
+import {authorizedAccessToken,googleFetch,type GoogleSession} from '@/lib/google-session';
+import {pickChannel} from '@/lib/youtube-channels';
 export const runtime='nodejs';
 export const maxDuration=60;
 const REAUTH_URL='https://seo.cammicgo.com/oauth/consent?reauth=google';
@@ -51,6 +52,45 @@ async function handler(req:NextRequest){
   const admin=await account.isAdmin(user.id).catch(()=>false);
   // External users must use their own Google Cloud project: a shared-project connection only counts for administrators.
   const readGoogle=async(id:string)=>{const s=await store.readGoogle(id);return s&&(admin||s.credentials.mode==='byo')?s:null;};
+  // YouTube channels: the channel of the main Google connection plus YouTube-only grants added on /account (brand
+  // accounts). Tools about the user's own channel pick one with ytSelect(); the choice is kept for this request only.
+  const isYouTubeUrl=(u:string)=>/^https:\/\/(www\.googleapis\.com\/(upload\/)?youtube\/|youtubeanalytics\.googleapis\.com\/)/.test(u);
+  const YT_SCOPE=/\/auth\/(youtube|yt-analytics)/;
+  let ytActive:GoogleSession|null=null;
+  const ytGrants=async()=>(await store.listYouTube(user.id).catch(()=>[])).filter(g=>admin||g.session.credentials.mode==='byo');
+  const sessionFor=async(id:string,u:string)=>{
+   if(!isYouTubeUrl(u))return await readGoogle(id);
+   if(ytActive)return ytActive;
+   const main=await readGoogle(id);
+   if(main&&(!main.scopes||main.scopes.some(x=>YT_SCOPE.test(x))))return main;
+   return (await ytGrants())[0]?.session??main; // public YouTube data: any YouTube grant works
+  };
+  type YtOption={id:string;title:string|null;source:'main Google connection'|'added channel';session:GoogleSession};
+  const ytOptions=async():Promise<YtOption[]>=>{
+   const out:YtOption[]=[];
+   for(const g of await ytGrants())out.push({id:g.channelId,title:g.channelTitle,source:'added channel',session:g.session});
+   const main=await readGoogle(user.id);
+   if(main&&(!main.scopes||main.scopes.some(x=>YT_SCOPE.test(x)))){
+    try{const {token}=await authorizedAccessToken(main);const r=await googleFetch('https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true',token);
+     const c=r.ok?((await r.json()) as {items?:Array<{id:string;snippet?:{title?:string}}>}).items?.[0]:undefined;
+     if(c&&!out.some(o=>o.id===c.id))out.push({id:c.id,title:c.snippet?.title??null,source:'main Google connection',session:main});
+    }catch{}
+   }
+   return out;
+  };
+  const YT_ADD_URL=account.ACCOUNT_URL+'#youtube';
+  /** Picks the channel for a tool about the user's own channel. Several channels and none named: the assistant must ask. */
+  const ytSelect=async(channel?:string):Promise<{id:string;title:string|null}|{error:string;[k:string]:unknown}>=>{
+   const opts=await ytOptions();
+   const list=opts.map(o=>({channel:o.id,title:o.title,source:o.source}));
+   if(!opts.length)return {error:'no_youtube_channel',addChannelUrl:YT_ADD_URL,messageForUser:'No YouTube channel is connected. Open '+YT_ADD_URL+' , click "Add a YouTube channel" and pick the channel on Google\'s screen.',instructions:'Relay messageForUser to the user in their language with the link.'};
+   const r=pickChannel(opts,channel);
+   if('status' in r&&r.status==='unknown')return {error:'unknown_youtube_channel',requested:channel,channels:list,addChannelUrl:YT_ADD_URL,instructions:'This channel is not connected. Show the user the connected channels; to add another one they open addChannelUrl and click "Add a YouTube channel".'};
+   if('status' in r)return {error:'choose_youtube_channel',channels:list,addChannelUrl:YT_ADD_URL,
+    instructions:'Several YouTube channels are connected. Ask the user which channel they mean (show the titles), then call this tool again with channel set to the chosen channel ID. Never guess. To connect another channel the user opens addChannelUrl.'};
+   ytActive=r.pick.session;return {id:r.pick.id,title:r.pick.title};
+  };
+  const ytChannelArg=z.string().min(1).max(200).optional().describe('Which connected YouTube channel to use: channel ID (UC…) or channel name, as listed by youtube_channels. Needed when several channels are connected (the tool then answers choose_youtube_channel: ask the user).');
   const CONNECT_GOOGLE={error:'google_not_connected',setupUrl:account.ACCOUNT_URL,
    messageForUser:'Connect your Google account with your own Google Cloud project first: open '+account.ACCOUNT_URL+' , sign in with your email, paste your OAuth client ID and secret, then click "Connect Google". The guide is at https://seo.cammicgo.com/setup/google-cloud .',
    instructions:'Relay messageForUser to the user in their language with the link.'};
@@ -439,7 +479,7 @@ async function handler(req:NextRequest){
    server.registerTool('linkedin_inbox_access',{title:'LinkedIn inbox access and Android handoff',annotations:{readOnlyHint:true},description:'Check whether personal LinkedIn messages can be read through the connected OAuth account; provide an Android inbox handoff if not.',inputSchema:z.object({})},async()=>asText({connected:await (await import('@/lib/social-store')).readLinkedInConnection(user.id).then(Boolean).catch(()=>false),personalInboxReadable:false,personalInboxWritable:false,reason:'LinkedIn open OAuth permissions do not include personal messaging read or send access.',androidHandoff:'https://www.linkedin.com/messaging/',nextStep:'Open LinkedIn in CamMicGo Android, then share or export the conversation text you want analyzed. No messages are fetched without authorized access.'}));
    server.registerTool('linkedin_summarize_thread',{title:'Summarize a LinkedIn conversation supplied by the user',annotations:{readOnlyHint:true},description:'Structure and summarize LinkedIn conversation text explicitly provided by the user. Does not claim to read LinkedIn inbox. The assistant should use this structure to produce the actual summary.',inputSchema:z.object({participant:z.string().min(1).max(200),messages:z.string().min(1).max(60000),goal:z.string().max(1000).default('Summarize the discussion and identify outstanding questions')})},async a=>asText({source:'user_supplied_text',participant:a.participant,conversation:a.messages,goal:a.goal,instructions:'Summarize accurately, identify last message and author only when explicit, and flag unanswered questions. Do not infer missing messages.'}));
    server.registerTool('linkedin_prepare_reply',{title:'Prepare a LinkedIn reply without sending',annotations:{readOnlyHint:true},description:'Return a user-provided conversation and reply intent for drafting. Never sends messages or claims inbox access.',inputSchema:z.object({participant:z.string().min(1).max(200),conversation:z.string().min(1).max(60000),intent:z.string().min(1).max(2000),tone:z.enum(['professional','friendly','concise']).default('professional')})},async a=>asText({status:'draft_only',participant:a.participant,conversation:a.conversation,intent:a.intent,tone:a.tone,instructions:'Draft an editable message for user review. The user must manually send it through LinkedIn; no private messaging send permission is available.',openUrl:'https://www.linkedin.com/messaging/'}));
-   server.registerTool('service_info',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Authenticated MCP status',description:'Check connected Google account.',inputSchema:z.object({})},async()=>{const session=await readGoogle(user.id);let devices:Array<{name:string;online:boolean}>|string=[];try{devices=(await relay.listDevices(user.id)).map(d=>({name:d.name,online:relay.isOnline(d)}))}catch(e){devices=e instanceof Error?e.message:'unavailable'}const usage=await account.usageToday(user.id,admin).catch(()=>null);return asText({authenticated:true,administrator:admin,camMicGoUsageToday:usage?{used:usage.used,limit:usage.limit,perMinute:usage.perMinute,resetsAt:usage.resetsAt,details:account.ACCOUNT_URL}:null,googleConnected:!!session,...(session?{}:{connectGoogle:CONNECT_GOOGLE.messageForUser}),googleQuota:session?(session.credentials.mode==='byo'?'own Google Cloud project':'shared CamMicGo project'):null,googleScopes:session?.scopes?session.scopes.filter(x=>x.includes('googleapis.com/auth/')).map(x=>x.split('/auth/')[1]):'unknown (connected before scope tracking)',driveWriteGrant:await store.readDriveWrite(user.id).then(w=>w?.scopes?.filter(x=>x.includes('/auth/drive')).map(x=>x.split('/auth/')[1])??null).catch(()=>null),linkedin:await (await import('@/lib/social-store')).readLinkedInConnection(user.id).then(c=>c?{connected:c.expiresAt>Date.now(),name:c.name,daysLeft:li.daysLeft(c.expiresAt),canPost:c.scopes.includes('w_member_social'),app:c.app??'own'}:{connected:false,setup:'https://seo.cammicgo.com/setup/linkedin'}).catch(()=>null),reauthorizeGoogle:REAUTH_URL,transcriptDevices:devices,build:process.env.VERCEL_GIT_COMMIT_SHA?.slice(0,7)??null})});
+   server.registerTool('service_info',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Authenticated MCP status',description:'Check connected Google account.',inputSchema:z.object({})},async()=>{const session=await readGoogle(user.id);let devices:Array<{name:string;online:boolean}>|string=[];try{devices=(await relay.listDevices(user.id)).map(d=>({name:d.name,online:relay.isOnline(d)}))}catch(e){devices=e instanceof Error?e.message:'unavailable'}const usage=await account.usageToday(user.id,admin).catch(()=>null);return asText({authenticated:true,administrator:admin,camMicGoUsageToday:usage?{used:usage.used,limit:usage.limit,perMinute:usage.perMinute,resetsAt:usage.resetsAt,details:account.ACCOUNT_URL}:null,googleConnected:!!session,...(session?{}:{connectGoogle:CONNECT_GOOGLE.messageForUser}),googleQuota:session?(session.credentials.mode==='byo'?'own Google Cloud project':'shared CamMicGo project'):null,googleScopes:session?.scopes?session.scopes.filter(x=>x.includes('googleapis.com/auth/')).map(x=>x.split('/auth/')[1]):'unknown (connected before scope tracking)',youtubeChannelsAdded:await ytGrants().then(g=>g.map(x=>({channel:x.channelId,title:x.channelTitle}))).catch(()=>null),driveWriteGrant:await store.readDriveWrite(user.id).then(w=>w?.scopes?.filter(x=>x.includes('/auth/drive')).map(x=>x.split('/auth/')[1])??null).catch(()=>null),linkedin:await (await import('@/lib/social-store')).readLinkedInConnection(user.id).then(c=>c?{connected:c.expiresAt>Date.now(),name:c.name,daysLeft:li.daysLeft(c.expiresAt),canPost:c.scopes.includes('w_member_social'),app:c.app??'own'}:{connected:false,setup:'https://seo.cammicgo.com/setup/linkedin'}).catch(()=>null),reauthorizeGoogle:REAUTH_URL,transcriptDevices:devices,build:process.env.VERCEL_GIT_COMMIT_SHA?.slice(0,7)??null})});
    server.registerTool('list_google_properties',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Google Search Console and GA4 properties',description:'List properties accessible to the linked Google account.',inputSchema:z.object({})},async()=>{
     try{
      const session=await readGoogle(user.id);if(!session)return asText(CONNECT_GOOGLE);
@@ -470,7 +510,7 @@ async function handler(req:NextRequest){
     const allowed: Set<string>=new Set((('fields' in op ? op.fields : [])).filter(f=>f.location==='query').map(f=>f.name));
     for(const [key,value] of Object.entries(input.args)){if(!allowed.has(key))continue;if(typeof value==='string'||typeof value==='number'||typeof value==='boolean')url.searchParams.set(key,String(value));else if(Array.isArray(value)&&value.every(v=>typeof v==='string'))url.searchParams.set(key,value.join(','));}
     if(op.service==='calendar'&&op.id==='calendar.events.list'){if(!url.searchParams.has('maxResults'))url.searchParams.set('maxResults','25');if(!url.searchParams.has('timeMin')&&!url.searchParams.has('timeMax'))url.searchParams.set('timeMin',new Date(Date.now()-7*24*60*60*1000).toISOString());}
-    const session=await readGoogle(user.id);if(!session)return asText(CONNECT_GOOGLE);
+    const session=await sessionFor(user.id,url.toString());if(!session)return asText(CONNECT_GOOGLE);
     if(!await consumeQuota(user.id,quotaLimit(session)))return asText({error:'Daily quota exceeded'});
     try{const {token}=await authorizedAccessToken(session);
       const body=input.args.body;const init:RequestInit=op.method==='POST'?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body??{})}:{method:'GET'};
@@ -479,7 +519,7 @@ async function handler(req:NextRequest){
    });
    // Google tools are registered for every authenticated user; access is checked per call.
    const googleRequest=async(url:string,init?:RequestInit)=>{
-    const session=await readGoogle(user.id);if(!session)return CONNECT_GOOGLE;
+    const session=await sessionFor(user.id,url);if(!session)return CONNECT_GOOGLE;
     if(!await consumeQuota(user.id,quotaLimit(session)))return {error:'Daily quota exceeded'};
     const {token}=await authorizedAccessToken(session);
     const response=await googleFetch(url,token,init);
@@ -500,7 +540,8 @@ async function handler(req:NextRequest){
     }
     return response.ok?body:{error:'Google API request failed',status:response.status,details:body};
    };
-   server.registerTool('youtube_channel',{annotations:{readOnlyHint:true,openWorldHint:true},title:'YouTube channel information',description:'Read the authenticated Google account YouTube channel metadata and statistics.',inputSchema:z.object({})},async()=>asText(await googleRequest('https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,contentDetails&mine=true')));
+   server.registerTool('youtube_channel',{annotations:{readOnlyHint:true,openWorldHint:true},title:'YouTube channel information',description:'Read the metadata and statistics of one of the user\'s own YouTube channels (the main Google connection\'s channel or a channel added on https://seo.cammicgo.com/account , e.g. a brand account). When several are connected, pass channel; otherwise the tool asks you to ask the user.',inputSchema:z.object({channel:ytChannelArg})},async args=>{const sel=await ytSelect(args.channel);if('error' in sel)return asText(sel);return asText(await googleRequest('https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,contentDetails&mine=true'));});
+   server.registerTool('youtube_channels',{annotations:{readOnlyHint:true,openWorldHint:true},title:'My connected YouTube channels',description:'List the user\'s YouTube channels CamMicGo can use: the channel of the main Google connection and the channels added on the account page (brand accounts). Use it to know which channels to propose when a YouTube tool answers choose_youtube_channel. To connect another channel the user opens addChannelUrl.',inputSchema:z.object({})},async()=>{const opts=await ytOptions();return asText({channels:opts.map(o=>({channel:o.id,title:o.title,source:o.source,url:'https://www.youtube.com/channel/'+o.id})),addChannelUrl:YT_ADD_URL,note:opts.length>1?'Several channels: ask the user which one before using a YouTube tool about their own channel, then pass channel.':undefined});});
    server.registerTool('youtube_search_videos',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Search YouTube videos',description:'Search publicly available YouTube videos or videos from a channel by channel ID. Returns titles, channel, publication time and video IDs; transcripts are not guaranteed by the official API.',inputSchema:z.object({query:z.string().min(1).max(150).optional(),channelId:z.string().min(1).max(100).optional(),maxResults:z.number().int().min(1).max(25).default(10),publishedAfter:z.string().datetime().optional()})},async args=>{
     if(!args.query&&!args.channelId)return asText({error:'Provide query or channelId'});
     const params=new URLSearchParams({part:'snippet',type:'video',maxResults:String(args.maxResults),order:'date'});
@@ -589,17 +630,18 @@ async function handler(req:NextRequest){
    });
    // ---- YouTube statistics of the user's OWN channels (YouTube Analytics API, yt-analytics.readonly) and public comments ----
    const ytPeriod={days:z.number().int().min(1).max(3650).default(28).describe('Length of the period ending yesterday; ignored when startDate is given'),startDate:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),endDate:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()};
-   const ytChannel=z.string().regex(yta.CHANNEL_ID).optional().describe('Channel ID (UC…) owned by the connected Google account; default: the channel chosen when connecting Google');
+   const ytChannel=ytChannelArg;
    type YtResult=yta.Report&{error?:string;status?:number;details?:unknown;messageForUser?:string};
    const ytReport=async(q:yta.ReportQuery)=>await googleRequest(yta.reportUrl(q)) as YtResult;
    const ytFail=(r:YtResult)=>asText(r.status===400?{...r,hint:'YouTube Analytics refused this combination (for example a breakdown not available for a single video, or a very long period). Try another breakdown, remove videoId or shorten the period.'}
-    :r.status===403?{...r,hint:'YouTube Analytics only returns statistics of channels owned by the connected Google account. When connecting Google, pick the right channel (brand account) on the Google screen, and keep "YouTube Analytics" checked.'}:r);
+    :r.status===403?{...r,hint:'YouTube Analytics only returns statistics of channels owned by the connected Google account. Check the channel parameter (youtube_channels lists the connected channels); a brand channel is added on https://seo.cammicgo.com/account ("Add a YouTube channel").'}:r);
    type YtVideo={id:string;snippet?:{title?:string;publishedAt?:string;channelId?:string};contentDetails?:{duration?:string}};
    const ytVideos=async(ids:string[])=>{if(!ids.length)return new Map<string,YtVideo>();const r=await googleRequest(yta.YT_DATA_API+'/videos?'+new URLSearchParams({part:'snippet,contentDetails',id:ids.slice(0,50).join(','),maxResults:'50'})) as {items?:YtVideo[]};return new Map((r.items??[]).map(v=>[v.id,v]));};
    const ytNote='YouTube Analytics data can lag 1 to 3 days: the last days may still grow.';
    server.registerTool('youtube_channel_stats',{annotations:{readOnlyHint:true,openWorldHint:true},title:'YouTube channel statistics',description:'Statistics of the user\'s OWN YouTube channel (YouTube Analytics): views, watch time, average view duration and percentage, subscribers gained and lost, likes, comments and shares for a period, compared with the previous period of the same length, split by format (videos, Shorts, live) and optionally per day. Needs the "YouTube Analytics" Google permission.',inputSchema:z.object({channelId:ytChannel,...ytPeriod,compare:z.boolean().default(true),byFormat:z.boolean().default(true),daily:z.boolean().default(false)})},async args=>{
+    {const sel=await ytSelect(args.channelId);if('error' in sel)return asText(sel);}
     const period=yta.resolvePeriod(args);if('error' in period)return asText(period);
-    const ids=yta.channelIds(args.channelId);
+    const ids=yta.channelIds();
     const cur=await ytReport({ids,...period,metrics:yta.BASIC_METRICS});if(cur.error)return ytFail(cur);
 
     const totals=yta.friendlyTotals(yta.rowsOf(cur)[0]);
@@ -616,18 +658,20 @@ async function handler(req:NextRequest){
     return asText(out);
    });
    server.registerTool('youtube_top_videos',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Top videos of my YouTube channel',description:'Best videos of the user\'s OWN channel for a period (YouTube Analytics), with title, publication date, length, views, watch time, average view duration and percentage, subscribers gained, likes, comments and shares. Sorted by views, watch time or subscribers gained.',inputSchema:z.object({channelId:ytChannel,...ytPeriod,sortBy:z.enum(['views','estimatedMinutesWatched','subscribersGained']).default('views'),maxResults:z.number().int().min(1).max(50).default(10)})},async args=>{
+    {const sel=await ytSelect(args.channelId);if('error' in sel)return asText(sel);}
     const period=yta.resolvePeriod(args);if('error' in period)return asText(period);
-    const r=await ytReport({ids:yta.channelIds(args.channelId),...period,metrics:['views','estimatedMinutesWatched','averageViewDuration','averageViewPercentage','subscribersGained','likes','comments','shares'],dimensions:['video'],sort:'-'+args.sortBy,maxResults:args.maxResults});
+    const r=await ytReport({ids:yta.channelIds(),...period,metrics:['views','estimatedMinutesWatched','averageViewDuration','averageViewPercentage','subscribersGained','likes','comments','shares'],dimensions:['video'],sort:'-'+args.sortBy,maxResults:args.maxResults});
     if(r.error)return ytFail(r);
     const rows=yta.rowsOf(r);const meta=await ytVideos(rows.map(x=>String(x.video)));
     return asText({period:{start:period.startDate,end:period.endDate,days:period.days},sortedBy:args.sortBy,videos:rows.map((x,i)=>{const v=meta.get(String(x.video));const sec=yta.isoSeconds(v?.contentDetails?.duration);
      return {rank:i+1,videoId:x.video,title:v?.snippet?.title??null,publishedAt:v?.snippet?.publishedAt?.slice(0,10)??null,length:sec?yta.duration(sec):null,url:'https://www.youtube.com/watch?v='+x.video,...yta.videoMetrics(x)};}),note:ytNote});
    });
    server.registerTool('youtube_audience',{annotations:{readOnlyHint:true,openWorldHint:true},title:'YouTube audience and traffic sources',description:'Where the views of the user\'s OWN channel (or of one of its videos) come from and who watches (YouTube Analytics). breakdown: trafficSource, youtubeSearchTerms (the words viewers typed in YouTube search before watching), externalSites, suggestedBy (videos next to which YouTube suggested yours), country, device, operatingSystem, ageGender, subscribedStatus, playbackLocation, format (videos/Shorts/live), sharing.',inputSchema:z.object({breakdown:z.enum(yta.BREAKDOWN_NAMES),videoId:z.string().min(1).max(250).optional().describe('Limit to one video of the channel (URL or ID)'),channelId:ytChannel,...ytPeriod,maxResults:z.number().int().min(1).max(50).default(25)})},async args=>{
+    {const sel=await ytSelect(args.channelId);if('error' in sel)return asText(sel);}
     const period=yta.resolvePeriod(args);if('error' in period)return asText(period);
     let videoId:string|null=null;if(args.videoId){videoId=relay.parseVideoId(args.videoId);if(!videoId)return asText({error:'Invalid YouTube URL or video ID'});}
     const b:yta.Breakdown=yta.BREAKDOWNS[args.breakdown];
-    const r=await ytReport({ids:yta.channelIds(args.channelId),...period,metrics:b.metrics,dimensions:b.dimensions,filters:[...(b.filter?[b.filter]:[]),...(videoId?['video=='+videoId]:[])],sort:b.sort,maxResults:b.sort?Math.min(args.maxResults,b.max??50):undefined});
+    const r=await ytReport({ids:yta.channelIds(),...period,metrics:b.metrics,dimensions:b.dimensions,filters:[...(b.filter?[b.filter]:[]),...(videoId?['video=='+videoId]:[])],sort:b.sort,maxResults:b.sort?Math.min(args.maxResults,b.max??50):undefined});
     if(r.error)return ytFail(r);
     let rows=yta.breakdownRows(yta.rowsOf(r));
     if(args.breakdown==='suggestedBy'&&rows.length){const meta=await ytVideos(rows.map(x=>String(x.insightTrafficSourceDetail)).filter(id=>/^[\w-]{11}$/.test(id)));
@@ -635,11 +679,12 @@ async function handler(req:NextRequest){
     return asText({breakdown:args.breakdown,about:b.about,video:videoId,period:{start:period.startDate,end:period.endDate,days:period.days},rows,note:ytNote+(args.breakdown==='ageGender'?' Age and gender cover signed-in viewers only.':'')});
    });
    server.registerTool('youtube_video_retention',{annotations:{readOnlyHint:true,openWorldHint:true},title:'YouTube audience retention',description:'Audience retention of one video of the user\'s OWN channel (YouTube Analytics): share of viewers still watching at 10%, 25%, 50%, 75% and 90% of the video with timestamps, the steepest drops, and how it compares with YouTube videos of similar length. Needs enough views.',inputSchema:z.object({videoId:z.string().min(1).max(250),channelId:ytChannel,startDate:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Default: publication date'),endDate:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()})},async args=>{
+    {const sel=await ytSelect(args.channelId);if('error' in sel)return asText(sel);}
     const videoId=relay.parseVideoId(args.videoId);if(!videoId)return asText({error:'Invalid YouTube URL or video ID'});
     const v=(await ytVideos([videoId])).get(videoId);if(!v)return asText({error:'video_not_found',videoId});
     const period=yta.resolvePeriod({startDate:args.startDate??v.snippet?.publishedAt?.slice(0,10),endDate:args.endDate});if('error' in period)return asText(period);
     const sec=yta.isoSeconds(v.contentDetails?.duration);
-    const r=await ytReport({ids:yta.channelIds(args.channelId),...period,metrics:['audienceWatchRatio','relativeRetentionPerformance'],dimensions:['elapsedVideoTimeRatio'],filters:['video=='+videoId]});
+    const r=await ytReport({ids:yta.channelIds(),...period,metrics:['audienceWatchRatio','relativeRetentionPerformance'],dimensions:['elapsedVideoTimeRatio'],filters:['video=='+videoId]});
     if(r.error)return ytFail(r);
     const video={id:videoId,title:v.snippet?.title??null,length:sec?yta.duration(sec):null,publishedAt:v.snippet?.publishedAt?.slice(0,10)??null};
     const summary=yta.summarizeRetention(yta.rowsOf(r),sec);
@@ -1301,12 +1346,14 @@ async function handler(req:NextRequest){
     return e?.message?'YouTube: '+e.message:undefined;
    };
    server.registerTool('youtube_upload_video',{annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true},title:'Upload a video to my YouTube channel',
-    description:'Upload a video (100 MB max) to the user\'s OWN YouTube channel (the channel chosen when connecting Google) from a public https file, a Google Drive file or a small file you provide, with title, description, tags, category, privacy (private by default, unlisted, public, or scheduled with publishAt) and the declarations YouTube requires: made for kids, and altered or synthetic content (true for realistic AI-generated video). ALWAYS TWO STEPS: confirm=false uploads nothing and returns the exact preview and a confirmationToken; upload only after the user explicitly says yes in a NEW message (same arguments, confirm=true, confirmationToken). Needs the "YouTube ✎ (upload)" Google permission.',
+    description:'Upload a video (100 MB max) to the user\'s OWN YouTube channel (when several channels are connected, pass channel, or the tool answers choose_youtube_channel and you ask the user; youtube_channels lists them) from a public https file, a Google Drive file or a small file you provide, with title, description, tags, category, privacy (private by default, unlisted, public, or scheduled with publishAt) and the declarations YouTube requires: made for kids, and altered or synthetic content (true for realistic AI-generated video). ALWAYS TWO STEPS: confirm=false uploads nothing and returns the exact preview and a confirmationToken; upload only after the user explicitly says yes in a NEW message (same arguments, confirm=true, confirmationToken). Needs the "YouTube ✎ (upload)" Google permission.',
     inputSchema:z.object({video:mediaSource,title:z.string().min(1).max(100),description:z.string().max(5000).default(''),tags:z.array(z.string().min(1).max(100)).max(30).default([]),categoryId:z.string().regex(/^\d{1,3}$/).default('28').describe('28 Science & Technology, 22 People & Blogs, 27 Education, 24 Entertainment'),
      privacy:z.enum(['private','unlisted','public']).default('private'),publishAt:z.string().datetime().optional().describe('Scheduled publication (UTC); the video stays private until then'),language:z.string().max(10).optional().describe('Main language, e.g. fr'),
      madeForKids:z.boolean().describe('Required by YouTube: ask the user if unsure'),containsSyntheticMedia:z.boolean().describe('Required: true when the video is AI-generated or altered and looks realistic'),
+     channel:ytChannelArg,
      confirm:z.boolean().default(false),confirmationToken:z.string().max(80).optional()})},async args=>{
-    const session=await readGoogle(user.id);if(!session)return asText(CONNECT_GOOGLE);
+    const sel=await ytSelect(args.channel);if('error' in sel)return asText(sel);
+    const session=await sessionFor(user.id,'https://www.googleapis.com/upload/youtube/v3/videos');if(!session)return asText(CONNECT_GOOGLE);
     if(session.scopes&&!session.scopes.some(x=>YT_UPLOAD_SCOPES.includes(x)))return asText({error:'missing_google_permission',api:'YouTube upload',reauthorizeUrl:REAUTH_URL,messageForUser:'Your Google connection cannot upload videos yet. Open '+REAUTH_URL+' , check "YouTube ✎ (upload)", click "Reconnect Google", then ask again.'});
     if(/[<>]/.test(args.title))return asText({error:'invalid_title',messageForUser:'YouTube titles cannot contain < or >.'});
     if(args.tags.join(',').length>500)return asText({error:'tags_too_long',messageForUser:'Tags: 500 characters at most in total.'});
@@ -1314,12 +1361,12 @@ async function handler(req:NextRequest){
     const privacy=args.publishAt?'private':args.privacy;
     const metadata={snippet:{title:args.title,description:args.description,tags:args.tags,categoryId:args.categoryId,...(args.language?{defaultLanguage:args.language,defaultAudioLanguage:args.language}:{})},
      status:{privacyStatus:privacy,...(args.publishAt?{publishAt:args.publishAt}:{}),selfDeclaredMadeForKids:args.madeForKids,containsSyntheticMedia:args.containsSyntheticMedia}};
-    const content={video:describeSource(args.video),metadata};
+    const content={video:describeSource(args.video),channel:sel.id,metadata};
     const bound={...content,bind:sourceBinding(args.video)};
     if(!args.confirm){
      const ch=await googleRequest('https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true') as {items?:Array<{id:string;snippet?:{title?:string}}>};
      const c=ch.items?.[0];
-     return asText({uploaded:false,preview:{channel:c?(c.snippet?.title??'')+' ('+c.id+')':'channel of the connected Google account',...content,visibility:args.publishAt?'private until '+args.publishAt+', then public':privacy},
+     return asText({uploaded:false,preview:{...content,channel:c?(c.snippet?.title??'')+' ('+c.id+')':(sel.title??'')+' ('+sel.id+')',visibility:args.publishAt?'private until '+args.publishAt+', then public':privacy},
       confirmationToken:confirmIssue('youtube',bound),expiresInMinutes:15,next:'Show this exact preview to the user. Upload only after the user explicitly says yes in a NEW message: call youtube_upload_video again with the same arguments, confirm=true and this confirmationToken.'});
     }
     const check=confirmFlow('youtube',bound,args.confirmationToken);if(!check.ok||!args.confirmationToken)return asText(tokenProblem(check.ok?'missing':check.reason));
