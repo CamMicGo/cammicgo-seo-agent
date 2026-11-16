@@ -1387,6 +1387,65 @@ async function handler(req:NextRequest){
       note:'YouTube needs a few minutes to process the video (HD can take longer).'}};
     }));
    });
+   // Captions and translated titles/descriptions of a video of the user's own channel. Both write to YouTube with the
+   // youtube.force-ssl scope, which only the YouTube grants added on the account page carry ("Add a YouTube channel").
+   const YT_FORCE_SSL='https://www.googleapis.com/auth/youtube.force-ssl';
+   const ytWriteSession=async(channel?:string)=>{
+    const sel=await ytSelect(channel);if('error' in sel)return {problem:sel};
+    const session=ytActive;
+    if(!session||(session.scopes&&!session.scopes.includes(YT_FORCE_SSL)&&!session.scopes.includes('https://www.googleapis.com/auth/youtube')))
+     return {problem:{error:'missing_google_permission',api:'YouTube captions and translations',addChannelUrl:YT_ADD_URL,messageForUser:'To add captions or translations, connect this channel again: open '+YT_ADD_URL+' , click "Add a YouTube channel" and pick the channel on Google\'s screen (it now asks for permission to manage captions and translations). Then ask again.',instructions:'Relay messageForUser to the user in their language with the link.'}};
+    return {sel,session};
+   };
+   const ytOwnVideo=async(videoId:string)=>{
+    const v=await googleRequest(yta.YT_DATA_API+'/videos?'+new URLSearchParams({part:'snippet,localizations',id:videoId})) as {items?:Array<{id:string;snippet?:{title?:string;description?:string;categoryId?:string;tags?:string[];defaultLanguage?:string;channelId?:string};localizations?:Record<string,{title:string;description:string}>}>;error?:string};
+    return v.items?.[0]??null;
+   };
+   server.registerTool('youtube_upload_captions',{annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},title:'Add captions to a video of my YouTube channel',
+    description:'Add a caption track (SRT or WebVTT text with timings) to a video of the user\'s OWN YouTube channel, e.g. exact English captions so the title, brand and keywords are spelled right. ALWAYS TWO STEPS: confirm=false changes nothing and returns a preview and a confirmationToken; publish only after the user explicitly says yes in a NEW message (same arguments, confirm=true, confirmationToken). When several channels are connected, pass channel.',
+    inputSchema:z.object({videoId:z.string().min(1).max(250),language:z.string().regex(/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/).describe('Caption language, e.g. en, fr, zh-Hans'),name:z.string().max(150).default('').describe('Track name shown to viewers; empty for the standard track'),
+     captions:z.string().min(10).max(600000).describe('The SRT or WebVTT file content'),channel:ytChannelArg,confirm:z.boolean().default(false),confirmationToken:z.string().max(80).optional()})},async args=>{
+    const videoId=relay.parseVideoId(args.videoId);if(!videoId)return asText({error:'Invalid YouTube URL or video ID'});
+    if(!/-->/.test(args.captions))return asText({error:'invalid_captions',messageForUser:'The captions must be SRT or WebVTT text with timings (00:00:01,000 --> 00:00:03,000).'});
+    const w=await ytWriteSession(args.channel);if('problem' in w)return asText(w.problem);
+    const v=await ytOwnVideo(videoId);if(!v)return asText({error:'video_not_found',messageForUser:'This video was not found on the selected channel.'});
+    if(v.snippet?.channelId&&v.snippet.channelId!==w.sel.id)return asText({error:'not_your_channel',messageForUser:'This video belongs to another channel than the selected one.'});
+    const cues=(args.captions.match(/-->/g)??[]).length;
+    const content={kind:'captions',videoId,channel:w.sel.id,language:args.language,name:args.name,hash:contentHash(args.captions)};
+    if(!args.confirm)return asText({published:false,preview:{channel:(w.sel.title??'')+' ('+w.sel.id+')',video:(v.snippet?.title??'')+' (https://youtu.be/'+videoId+')',language:args.language,name:args.name||'(standard track)',cues,firstLines:args.captions.split('\n').slice(0,8).join('\n')},
+     confirmationToken:confirmIssue('ytcaptions',content),expiresInMinutes:15,next:'Show this preview to the user. Add the captions only after the user explicitly says yes in a NEW message: call again with the same arguments, confirm=true and this confirmationToken.'});
+    const check=confirmFlow('ytcaptions',content,args.confirmationToken);if(!check.ok||!args.confirmationToken)return asText(tokenProblem(check.ok?'missing':check.reason));
+    if(!await consumeQuota(user.id,quotaLimit(w.session)))return asText({error:'Daily quota exceeded'});
+    const {token}=await authorizedAccessToken(w.session);
+    const boundary='cmg'+createHash('sha256').update(String(Date.now())+videoId).digest('hex').slice(0,24);
+    const meta=JSON.stringify({snippet:{videoId,language:args.language,name:args.name,isDraft:false}});
+    const body='--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+meta+'\r\n--'+boundary+'\r\nContent-Type: application/octet-stream\r\n\r\n'+args.captions+'\r\n--'+boundary+'--';
+    const r=await googleFetch('https://www.googleapis.com/upload/youtube/v3/captions?part=snippet&uploadType=multipart',token,{method:'POST',headers:{'Content-Type':'multipart/related; boundary='+boundary},body});
+    const out=await r.json().catch(()=>({})) as {id?:string};
+    return asText(r.ok&&out.id?{published:true,captionId:out.id,videoId,language:args.language,studio:'https://studio.youtube.com/video/'+videoId+'/translations'}:{published:false,error:'youtube_captions_failed',status:r.status,messageForUser:ytProblem(out),details:out});
+   });
+   server.registerTool('youtube_set_translations',{annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:true,openWorldHint:true},title:'Translated titles and descriptions of my YouTube video',
+    description:'Set translated titles and descriptions (YouTube "localizations") of a video of the user\'s OWN channel, one per language: viewers whose YouTube language matches see them, and they help search in that language. Existing translations of other languages are kept. ALWAYS TWO STEPS: confirm=false changes nothing and returns a preview and a confirmationToken; apply only after the user explicitly says yes in a NEW message (same arguments, confirm=true, confirmationToken). When several channels are connected, pass channel.',
+    inputSchema:z.object({videoId:z.string().min(1).max(250),defaultLanguage:z.string().regex(/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/).default('en').describe('Language of the original title and description'),
+     translations:z.record(z.string().regex(/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/),z.object({title:z.string().min(1).max(100),description:z.string().max(5000).default('')})).describe('By language code, e.g. {"fr":{"title":"…","description":"…"}}'),
+     channel:ytChannelArg,confirm:z.boolean().default(false),confirmationToken:z.string().max(80).optional()})},async args=>{
+    const videoId=relay.parseVideoId(args.videoId);if(!videoId)return asText({error:'Invalid YouTube URL or video ID'});
+    const langs=Object.keys(args.translations);if(!langs.length||langs.length>60)return asText({error:'translations must hold 1 to 60 languages'});
+    if(Object.values(args.translations).some(t=>/[<>]/.test(t.title)||/[<>]/.test(t.description)))return asText({error:'invalid_text',messageForUser:'YouTube titles and descriptions cannot contain < or >.'});
+    const w=await ytWriteSession(args.channel);if('problem' in w)return asText(w.problem);
+    const v=await ytOwnVideo(videoId);if(!v||!v.snippet)return asText({error:'video_not_found',messageForUser:'This video was not found on the selected channel.'});
+    if(v.snippet.channelId&&v.snippet.channelId!==w.sel.id)return asText({error:'not_your_channel',messageForUser:'This video belongs to another channel than the selected one.'});
+    const content={kind:'translations',videoId,channel:w.sel.id,defaultLanguage:args.defaultLanguage,translations:args.translations};
+    if(!args.confirm)return asText({applied:false,preview:{channel:(w.sel.title??'')+' ('+w.sel.id+')',video:(v.snippet.title??'')+' (https://youtu.be/'+videoId+')',defaultLanguage:args.defaultLanguage,titles:Object.fromEntries(langs.map(l=>[l,args.translations[l].title])),kept:Object.keys(v.localizations??{}).filter(l=>!langs.includes(l))},
+     confirmationToken:confirmIssue('yttranslations',content),expiresInMinutes:15,next:'Show this preview to the user. Apply only after the user explicitly says yes in a NEW message: call again with the same arguments, confirm=true and this confirmationToken.'});
+    const check=confirmFlow('yttranslations',content,args.confirmationToken);if(!check.ok||!args.confirmationToken)return asText(tokenProblem(check.ok?'missing':check.reason));
+    if(!await consumeQuota(user.id,quotaLimit(w.session)))return asText({error:'Daily quota exceeded'});
+    const {token}=await authorizedAccessToken(w.session);
+    const snippet={title:v.snippet.title,description:v.snippet.description??'',categoryId:v.snippet.categoryId,tags:v.snippet.tags,defaultLanguage:args.defaultLanguage};
+    const r=await googleFetch(yta.YT_DATA_API+'/videos?part=snippet,localizations',token,{method:'PUT',headers:{'Content-Type':'application/json; charset=UTF-8'},body:JSON.stringify({id:videoId,snippet,localizations:{...(v.localizations??{}),...args.translations}})});
+    const out=await r.json().catch(()=>({})) as {localizations?:Record<string,unknown>};
+    return asText(r.ok?{applied:true,videoId,languages:Object.keys(out.localizations??{}),studio:'https://studio.youtube.com/video/'+videoId+'/translations'}:{applied:false,error:'youtube_translations_failed',status:r.status,messageForUser:ytProblem(out),details:out});
+   });
    server.registerTool('ads_accounts',{annotations:{readOnlyHint:true,openWorldHint:true},title:'Google Ads accounts',description:'List the Google Ads accounts the connected Google user can access (ID, name, currency, time zone, manager or not). Requires the Google Ads permission (adwords scope).',inputSchema:z.object({})},async()=>{
     const list=await googleRequest(ads.ADS_BASE+'/customers:listAccessibleCustomers') as {resourceNames?:string[];error?:string};
     if(list.error)return asText(list);

@@ -31,7 +31,10 @@ test('number of Google screens', ()=>{
 test('the separate YouTube grant only asks for YouTube scopes a brand account can authorize', ()=>{
  assert.ok(YOUTUBE_CHANNEL_SCOPES.length>0);
  for(const s of YOUTUBE_CHANNEL_SCOPES)assert.match(s,/\/auth\/(youtube|yt-analytics)/);
- // never the comment-writing scope, and nothing a brand account would refuse (Search Console, Analytics, Drive, Gmail)
- assert.ok(!YOUTUBE_CHANNEL_SCOPES.some(s=>/force-ssl|webmasters|analytics\.readonly$|drive|gmail/.test(s.replace('yt-analytics','yt'))));
+ // nothing a brand account would refuse (Search Console, Analytics, Drive, Gmail)
+ assert.ok(!YOUTUBE_CHANNEL_SCOPES.some(s=>/webmasters|analytics\.readonly$|drive|gmail/.test(s.replace('yt-analytics','yt'))));
  assert.ok(YOUTUBE_CHANNEL_SCOPES.includes(G+'youtube.upload'));
+ // captions and translated titles need force-ssl; never the full youtube scope
+ assert.ok(YOUTUBE_CHANNEL_SCOPES.includes(G+'youtube.force-ssl'));
+ assert.ok(!YOUTUBE_CHANNEL_SCOPES.includes(G+'youtube'));
 });
