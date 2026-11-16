@@ -14,5 +14,9 @@ export function splitScopes(scopes:string[]){
 /** Number of Google consent screens needed for these scopes (0, 1 or 2). */
 export function consentSteps(scopes:string[]){const {main,write}=splitScopes(scopes);return (main.length?1:0)+(write.length?1:0);}
 
-/** Scopes of the separate YouTube grant (brand channels can only authorize YouTube). No youtube.force-ssl: it can write comments. */
-export const YOUTUBE_CHANNEL_SCOPES=['https://www.googleapis.com/auth/youtube.readonly','https://www.googleapis.com/auth/yt-analytics.readonly','https://www.googleapis.com/auth/youtube.upload'];
+/**
+ * Scopes of the YouTube grants added on the account page (brand channels can only authorize YouTube). youtube.force-ssl
+ * is needed to add captions and translated titles/descriptions; CamMicGo never uses it to write comments. The main
+ * Google grant still never asks for it.
+ */
+export const YOUTUBE_CHANNEL_SCOPES=['https://www.googleapis.com/auth/youtube.readonly','https://www.googleapis.com/auth/yt-analytics.readonly','https://www.googleapis.com/auth/youtube.upload','https://www.googleapis.com/auth/youtube.force-ssl'];
