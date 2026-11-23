@@ -1261,11 +1261,14 @@ async function handler(req:NextRequest){
     _meta:FILE_META,
     inputSchema:z.object({text:z.string().min(1).max(li.LI_TEXT_MAX),visibility:z.enum(['PUBLIC','CONNECTIONS']).default('PUBLIC'),attachment:chatFileField.optional().describe('ChatGPT conversation image file, transferred securely as an attachment; no Base64 or filesystem path'),image:mediaSource.optional(),video:mediaSource.optional(),link:z.object({url:z.string().url().max(2000),title:z.string().max(200).optional(),description:z.string().max(300).optional()}).optional(),
      confirm:z.boolean().default(false),confirmationToken:z.string().max(80).optional()})},async args=>{
+    console.info('[linkedin_post] start',{hasAttachment:args.attachment!==undefined,hasImage:!!args.image,hasVideo:!!args.video,confirm:args.confirm});
     const conn=await (await import('@/lib/social-store')).readLinkedInConnection(user.id).catch(()=>null);
     if(!conn||conn.expiresAt<Date.now())return asText({error:'linkedin_not_connected',messageForUser:'Connect your LinkedIn profile at '+account.ACCOUNT_URL+' (section LinkedIn, guide: https://seo.cammicgo.com/setup/linkedin), then ask again.'});
     if(!conn.scopes.includes('w_member_social'))return asText({error:'missing_linkedin_permission',messageForUser:'Your LinkedIn app does not include "Share on LinkedIn". Add this product in the LinkedIn developer portal, then reconnect LinkedIn at '+account.ACCOUNT_URL+'.'});
     if([args.image,args.video,args.attachment].filter(Boolean).length>1)return asText({error:'one_media_only',messageForUser:'A post can carry one image or one video.'});
+    console.info('[linkedin_post] attachment_check_start',{hasAttachment:args.attachment!==undefined});
     const checkedAttachment=args.attachment!==undefined?await checkChatFile(args.attachment):null;
+    console.info('[linkedin_post] attachment_check_done',{ok:checkedAttachment?.ok??null,mime:checkedAttachment?.ok?checkedAttachment.file.mime:null,bytes:checkedAttachment?.ok?checkedAttachment.file.bytes:null});
     if(checkedAttachment&&!checkedAttachment.ok)return asText(checkedAttachment.problem);
     if(checkedAttachment&&checkedAttachment.ok&&!['image/png','image/jpeg','image/gif'].includes(checkedAttachment.file.mime))return asText({error:'unsupported_post_image',messageForUser:'LinkedIn posts accept PNG, JPEG or GIF images.'});
     const attachmentFile=checkedAttachment&&checkedAttachment.ok?checkedAttachment.file:null;
@@ -1284,8 +1287,8 @@ async function handler(req:NextRequest){
     if('error' in pre)return asText(pre);
     const content={text:pre.text,visibility:args.visibility,media:attachmentFile?{kind:'IMAGE',src:{file:attachmentFile.name,type:attachmentFile.mime,size:drive.humanBytes(attachmentFile.bytes),sha256:attachmentFile.sha256}}:media?{kind:media.kind,src:describeSource(media.src)}:null,link:args.link??null};
     const bound={...content,bind:sourceBinding(media?.src)};
-    if(!args.confirm)return asText({published:false,preview:{account:'LinkedIn: '+conn.name,...content,characters:pre.text.length},confirmationToken:confirmIssue('linkedin',bound),expiresInMinutes:15,
-     next:'Show this exact post to the user. Publish only after the user explicitly says yes in a NEW message: call linkedin_post again with the same arguments, confirm=true and this confirmationToken.'});
+    if(!args.confirm){console.info('[linkedin_post] preview_ready',{hasAttachment:!!attachmentFile,characters:pre.text.length});return asText({published:false,preview:{account:'LinkedIn: '+conn.name,...content,characters:pre.text.length},confirmationToken:confirmIssue('linkedin',bound),expiresInMinutes:15,
+     next:'Show this exact post to the user. Publish only after the user explicitly says yes in a NEW message: call linkedin_post again with the same arguments, confirm=true and this confirmationToken.'});}
     const check=confirmFlow('linkedin',bound,args.confirmationToken);if(!check.ok||!args.confirmationToken)return asText(tokenProblem(check.ok?'missing':check.reason));
     const author=li.personUrn(conn.memberId);
     const auth={Authorization:'Bearer '+conn.accessToken};
