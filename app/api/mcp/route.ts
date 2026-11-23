@@ -997,6 +997,49 @@ async function handler(req:NextRequest){
     return asText({created:true,fileId:res.data.id,file:drive.slimFile(res.data),parent:parent.name,bytes:content.length,renamed:res.data.name!==name?res.data.name:undefined,convertedTo:target??undefined});
    });
 
+   server.registerTool('drive_upload_chat_file',{title:'Upload a ChatGPT conversation file to Google Drive',
+    description:'Upload a user-provided ChatGPT conversation image or document directly into the user\'s Google Drive. Send the actual conversation file in file; no local path, Base64 or public URL needed. Creates a new file, never overwrites. Returns its Drive file ID for use in linkedin_post image.driveFileId. Requires Google Drive write permission.',
+    _meta:FILE_META,annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true},
+    inputSchema:z.object({file:chatFileField,name:z.string().min(1).max(255).optional(),parentId:driveId.default('root'),ifExists:z.enum(['rename','fail']).default('rename')})},async args=>{
+    if(!await canWriteDrive())return asText(driveScopeMessage(true));
+    console.info('[drive_upload_chat_file] start');
+    const ref=chatFiles.readChatFile(args.file);
+    if(!ref.ok)return asText({error:'invalid_chat_file',...ref.problem});
+    const got=await chatFiles.downloadChatFile(ref.file,drive.DRIVE_LIMITS.maxExportUploadBytes);
+    if(!got.ok)return asText({error:'chat_file_download_failed',...got.problem});
+    const content=got.bytes;
+    const sniffed=chatFiles.sniffType(content);
+    const mime=sniffed?.mime??(chatFiles.looksLikeText(content)?'text/plain':null);
+    if(!mime||!ATTACH_TYPES.includes(mime))return asText({error:'unsupported_file_type',messageForUser:'Supported: PNG, JPEG, GIF, WebP, PDF, DOC, DOCX and TXT.'});
+    if(!content.length)return asText({error:'empty_content'});
+    const name=drive.cleanName(args.name??chatFiles.cleanFileName(ref.file.file_name??ref.file.name,chatFiles.extensionFor(mime),mime.startsWith('image/')?'image':'document'));
+    if(!name)return asText({error:'invalid_name'});
+    const parent=await checkParent(args.parentId);if(!parent.ok)return asText(parent.failure);
+    const existing=await namesIn(args.parentId,name);if('failure' in existing)return asText(existing.failure);
+    const taken=new Set(existing.files.map(f=>f.name));
+    if(taken.has(name)&&args.ifExists==='fail')return asText({error:'already_exists'});
+    const finalName=drive.uniqueName(name,taken);
+    const metadata={name:finalName,parents:[args.parentId]};
+    const fields=new URLSearchParams({fields:drive.FILE_FIELDS,supportsAllDrives:'true'});
+    let res:{data:drive.DriveFile}|{failure:Record<string,unknown>};
+    if(content.length<=drive.DRIVE_LIMITS.resumableAboveBytes){
+     const boundary='cmg'+Math.random().toString(36).slice(2);fields.set('uploadType','multipart');
+     res=await driveJson<drive.DriveFile>(drive.DRIVE_UPLOAD_API+'/files?'+fields,{method:'POST',headers:{'Content-Type':'multipart/related; boundary='+boundary},body:new Uint8Array(drive.multipartBody(metadata,content,mime,boundary))},true);
+    }else{
+     fields.set('uploadType','resumable');
+     const start=await driveFetch(drive.DRIVE_UPLOAD_API+'/files?'+fields,{method:'POST',headers:{'Content-Type':'application/json; charset=UTF-8','X-Upload-Content-Type':mime,'X-Upload-Content-Length':String(content.length)},body:JSON.stringify(metadata)},true);
+     if('failure' in start)return asText(start.failure);
+     if(!start.response.ok)return asText(await driveFailure(start.response,true));
+     const location=start.response.headers.get('location');
+     if(!location||!location.startsWith(drive.DRIVE_UPLOAD_API))return asText({error:'upload_session_failed'});
+     const put=await driveFetch(location,{method:'PUT',headers:{'Content-Type':mime,'Content-Length':String(content.length)},body:new Uint8Array(content)},true);
+     res='failure' in put?put:put.response.ok?{data:await put.response.json() as drive.DriveFile}:{failure:await driveFailure(put.response,true)};
+    }
+    if('failure' in res)return asText(res.failure);
+    console.info('[drive_upload_chat_file] uploaded',{bytes:content.length,mime});
+    return asText({created:true,fileId:res.data.id,file:drive.slimFile(res.data),bytes:content.length,sha256:createHash('sha256').update(content).digest('hex')});
+   });
+
    /** Metadata used to decide whether an item can be trashed or restored. */
    const trashMeta=(id:string)=>driveJson<drive.DriveFile>(drive.DRIVE_API+'/files/'+encodeURIComponent(id)+'?'+new URLSearchParams({fields:drive.TRASH_FIELDS,supportsAllDrives:'true'}));
    const confirmKey=()=>process.env.SESSION_ENCRYPTION_KEY??'';
