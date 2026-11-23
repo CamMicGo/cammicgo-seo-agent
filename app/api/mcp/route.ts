@@ -1004,9 +1004,9 @@ async function handler(req:NextRequest){
     if(!await canWriteDrive())return asText(driveScopeMessage(true));
     console.info('[drive_upload_chat_file] start');
     const ref=chatFiles.readChatFile(args.file);
-    if(!ref.ok)return asText({error:'invalid_chat_file',...ref.problem});
+    if(!ref.ok)return asText({...ref.problem,error:'invalid_chat_file'});
     const got=await chatFiles.downloadChatFile(ref.file,drive.DRIVE_LIMITS.maxExportUploadBytes);
-    if(!got.ok)return asText({error:'chat_file_download_failed',...got.problem});
+    if(!got.ok)return asText({...got.problem,error:'chat_file_download_failed'});
     const content=got.bytes;
     const sniffed=chatFiles.sniffType(content);
     const mime=sniffed?.mime??(chatFiles.looksLikeText(content)?'text/plain':null);
