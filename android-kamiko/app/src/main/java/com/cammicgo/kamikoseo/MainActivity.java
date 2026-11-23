@@ -1093,6 +1093,7 @@ public class MainActivity extends Activity {
         ui.postDelayed(() -> openLinkedInParticipant(id, participant), 2700);
       } else openLinkedInParticipant(id, participant);
     } else if ("post_comments".equals(op) || "comment_post".equals(op) || "reply_comment".equals(op)) {
+      if ("post_comments".equals(op)) linkedinCommentSeen.clear();
       String postUrl = job.optString("postUrl", "").trim();
       if (!postUrl.matches("https://(?:www\\.|[a-z]{2,3}\\.)?linkedin\\.com/(?:feed/update/urn:li:(?:activity|share|ugcPost):[0-9]+|posts/[A-Za-z0-9_%.-]+)/?(?:\\?[^#]*)?")) { finishLinkedInJob(id, null, "Invalid LinkedIn post URL"); return; }
       String action=op;
@@ -1240,16 +1241,37 @@ public class MainActivity extends Activity {
     extractRenderedLinkedInComments(id, action, job, attempt);
   }
 
+  private final java.util.LinkedHashMap<String,JSONObject> linkedinCommentSeen = new java.util.LinkedHashMap<>();
   private void extractRenderedLinkedInComments(String id, String action, JSONObject job, int attempt) {
     if ("post_comments".equals(action)) {
-      String js = "(function(limit){\nconst visible=e=>!!(e.offsetWidth||e.offsetHeight||e.getClientRects().length);\nconst sels='[data-id*=\"comment\"],[data-urn*=\"comment\"],[data-urn*=\"fsd_comment\"],[data-view-name*=\"comment\"],[class*=\"comments-comment-item\"],[class*=\"comment-item\"],[class*=\"comment-entity\"],[data-testid*=\"comment\"],[data-test-id*=\"comment\"]';\nconst all=[...document.querySelectorAll(sels)].filter(visible);\nconst nodes=all.filter(n=>!all.some(o=>o!==n&&n.contains(o)&&((o.innerText||'').length>30)));\nconst comments=[],seen=new Set();\nfor(const n of nodes){\n const id=n.getAttribute('data-id')||n.getAttribute('data-urn')||n.id||'';\n const authorEl=n.querySelector('a[href*=\"/in/\"],[class*=\"comment__author\"],[class*=\"comment__name\"],[data-view-name*=\"actor\"]');\n const textEl=n.querySelector('[class*=\"comment__main-content\"],[class*=\"comment__text\"],[class*=\"commentary\"],[data-test-id*=\"comment-text\"],[data-testid*=\"comment-text\"],[dir=\"ltr\"]');\n const author=(authorEl?.innerText||'').trim().split('\\n')[0].slice(0,160);\n let text=(textEl?.innerText||'').trim();\n if(!text&&author){const lines=(n.innerText||'').split('\\n').map(x=>x.trim()).filter(Boolean);const at=lines.findIndex(x=>x===author);text=lines.slice(at+1).filter(x=>!/^(like|j’aime|répondre|reply|voir plus|see more)$/i.test(x)).join('\\n').slice(0,4000)}\n if(!author||!text||text.length<2||text===author)continue;\n const key=id||author+':'+text;\n if(seen.has(key))continue;seen.add(key);\n const parent=n.parentElement?.closest(sels);\n comments.push({commentId:id||null,author,text:text.slice(0,4000),time:(n.querySelector('time')?.getAttribute('datetime')||n.querySelector('time')?.innerText||'').slice(0,100),reactions:(n.querySelector('[class*=\"reaction-count\"]')?.innerText||'').slice(0,50),parentId:parent?.getAttribute('data-id')||parent?.getAttribute('data-urn')||null,replyable:!!id});\n if(comments.length>=limit)break;\n}\nconst body=(document.body?.innerText||'');\nreturn JSON.stringify({postUrl:location.href,comments,retrieved:comments.length,requested:limit,partial:true,signedOut:!!document.querySelector('input[name=\"session_key\"]')||/authwall|login|checkpoint/.test(location.pathname),diagnostics:{title:document.title.slice(0,120),bodyLength:body.length,bodySample:comments.length?undefined:body.slice(-1000),candidateCount:all.length,leafCandidates:nodes.length,profileLinks:document.querySelectorAll('a[href*=\"/in/\"]').length,buttons:[...document.querySelectorAll('button')].filter(visible).map(b=>(b.innerText||b.getAttribute('aria-label')||'').trim()).filter(Boolean).slice(0,25)},note:'Only rendered comments were read; LinkedIn may hide additional comments or replies.'});\n})" + "(" + Math.min(100, Math.max(1, job.optInt("limit", 40))) + ")";
+      String js = "(function(limit){\nconst visible=e=>!!(e.offsetWidth||e.offsetHeight||e.getClientRects().length);\nconst sels='[data-id*=\"comment\"],[data-urn*=\"comment\"],[data-urn*=\"fsd_comment\"],[data-view-name*=\"comment\"],[class*=\"comments-comment-item\"],[class*=\"comment-item\"],[class*=\"comment-entity\"],[data-testid*=\"comment\"],[data-test-id*=\"comment\"]';\nconst all=[...document.querySelectorAll(sels)].filter(visible);\nconst nodes=all.filter(n=>!all.some(o=>o!==n&&n.contains(o)&&((o.innerText||'').length>30)));\nconst comments=[],seen=new Set();\nfor(const n of nodes){\n const id=n.getAttribute('data-id')||n.getAttribute('data-urn')||n.id||'';\n const authorEl=n.querySelector('a[href*=\"/in/\"],[class*=\"comment__author\"],[class*=\"comment__name\"],[data-view-name*=\"actor\"]');\n const textEl=n.querySelector('[class*=\"comment__main-content\"],[class*=\"comment__text\"],[class*=\"commentary\"],[data-test-id*=\"comment-text\"],[data-testid*=\"comment-text\"],[dir=\"ltr\"]');\n const author=(authorEl?.innerText||'').trim().split('\\n')[0].slice(0,160);\n let text=(textEl?.innerText||'').trim();\n if(!text&&author){const lines=(n.innerText||'').split('\\n').map(x=>x.trim()).filter(Boolean);const at=lines.findIndex(x=>x===author);text=lines.slice(at+1).filter(x=>!/^(like|j’aime|répondre|reply|voir plus|see more)$/i.test(x)).join('\\n').slice(0,4000)}\n if(!author||!text||text.length<2||text===author)continue;\n const key=id||author+':'+text;\n if(seen.has(key))continue;seen.add(key);\n const parent=n.parentElement?.closest(sels);\n comments.push({commentId:id||null,author,text:text.slice(0,4000),time:(n.querySelector('time')?.getAttribute('datetime')||n.querySelector('time')?.innerText||'').slice(0,100),reactions:(n.querySelector('[class*=\"reaction-count\"]')?.innerText||'').slice(0,50),parentId:parent?.getAttribute('data-id')||parent?.getAttribute('data-urn')||null,replyable:!!id});\n if(comments.length>=limit)break;\n}\nconst match=[...document.querySelectorAll('button,[role=button],a')].map(e=>(e.innerText||'')+' '+(e.getAttribute('aria-label')||'')).join(' ').match(/(\\d+)\\s*(?:commentaires|comments)/i);const displayedCount=match?Number(match[1]):0;\nconst body=(document.body?.innerText||'');\nreturn JSON.stringify({postUrl:location.href,comments,retrieved:comments.length,requested:limit,displayedCount,partial:true,signedOut:!!document.querySelector('input[name=\"session_key\"]')||/authwall|login|checkpoint/.test(location.pathname),diagnostics:{title:document.title.slice(0,120),bodyLength:body.length,bodySample:comments.length?undefined:body.slice(-1000),candidateCount:all.length,leafCandidates:nodes.length,profileLinks:document.querySelectorAll('a[href*=\"/in/\"]').length,buttons:[...document.querySelectorAll('button')].filter(visible).map(b=>(b.innerText||b.getAttribute('aria-label')||'').trim()).filter(Boolean).slice(0,25)},note:'Only rendered comments were read; LinkedIn may hide additional comments or replies.'});\n})" + "(" + Math.min(100, Math.max(1, job.optInt("limit", 40))) + ")";
       linkedinWeb.evaluateJavascript(js, raw -> {
         try {
           JSONObject result=new JSONObject(new JSONArray("[" + raw + "]").getString(0));
           if(result.optBoolean("signedOut")) { finishLinkedInJob(id, result, "LinkedIn login required"); return; }
-          if(result.optInt("retrieved")==0 && attempt<3) {
-            linkedinWeb.evaluateJavascript("(function(){const b=[...document.querySelectorAll('button')].find(e=>/comments|commentaires/i.test(e.innerText||''));if(b)b.click();window.scrollBy(0,500);return true})()", ignored -> ui.postDelayed(() -> runLinkedInCommentJob(id,action,job,attempt+1),2200));
-          } else finishLinkedInJob(id,result,null);
+          JSONArray batch = result.optJSONArray("comments");
+          if (batch != null) for (int i=0; i<batch.length(); i++) {
+            JSONObject c=batch.optJSONObject(i); if(c==null)continue;
+            String key=c.optString("commentId");
+            if(key.isEmpty())key=c.optString("author")+":"+c.optString("text");
+            linkedinCommentSeen.put(key,c);
+          }
+          int limit=Math.min(100,Math.max(1,job.optInt("limit",40)));
+          int expected=result.optInt("displayedCount",0);
+          int target=expected>0?Math.min(expected,limit):limit;
+          if(attempt<7 && linkedinCommentSeen.size()<target) {
+            String expand="(function(){const vis=e=>!!e.getClientRects().length;const b=[...document.querySelectorAll('button,[role=button],a')].filter(vis);const t=e=>((e.innerText||'')+' '+(e.getAttribute('aria-label')||'')).trim();const m=b.find(e=>/(voir|afficher|charger|load|show|view|more|plus).{0,55}(commentaire|comment|réponse|repl)/i.test(t(e)));if(m){m.click();return 'expanded'}const l=document.querySelector('[class*=comments-list],[class*=comments-comments-list]');if(l)l.scrollIntoView({block:'end'});window.scrollBy(0,Math.round(innerHeight*.8));return 'scrolled'})()";
+            linkedinWeb.evaluateJavascript(expand, ignored -> ui.postDelayed(() -> extractRenderedLinkedInComments(id,action,job,attempt+1),1800));
+          } else {
+            JSONArray combined=new JSONArray();
+            for(JSONObject c:linkedinCommentSeen.values()){if(combined.length()>=limit)break;combined.put(c);}
+            result.put("comments",combined); result.put("retrieved",combined.length());
+            result.put("partial",expected==0||combined.length()<expected);
+            result.put("attempts",attempt+1);
+            result.put("note",combined.length()<expected?"Not all displayed comments were loaded":"Only rendered comments were read");
+            linkedinCommentSeen.clear();
+            finishLinkedInJob(id,result,null);
+          }
         } catch(Exception e){finishLinkedInJob(id,null,e.getMessage());}
       });
       return;
