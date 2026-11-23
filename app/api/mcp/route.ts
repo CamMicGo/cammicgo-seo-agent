@@ -1216,11 +1216,11 @@ async function handler(req:NextRequest){
    });
    // ---- Publishing: LinkedIn posts (user's own LinkedIn app) and YouTube uploads. ALWAYS previewed, then confirmed by the user. ----
    const contentHash=(x:unknown)=>createHash('sha256').update(JSON.stringify(x)).digest('base64url');
-   const mediaSource=z.union([z.object({url:z.string().url().max(2000).describe('Public https address of the file')}),z.object({driveFileId:z.string().min(5).max(200).describe('A file of the user\'s Google Drive')}),z.object({base64:z.string().max(4_200_000),mimeType:z.string().max(100),name:z.string().max(200).optional()})]);
+   const mediaSource=z.union([z.object({url:z.string().url().max(2000).describe('Public https address of the file')}),z.object({driveFileId:z.string().min(5).max(200).describe('A file of the user\'s Google Drive')}),z.object({base64:z.string().max(4_200_000),mimeType:z.string().max(100),name:z.string().max(200).optional()}),z.object({file:z.string().min(1).max(4_200_000).describe('Base64-encoded image bytes supplied from an attached conversation file; do not supply a local filesystem path'),mimeType:z.string().max(100),name:z.string().max(200).optional()})]);
    type MediaSource=z.infer<typeof mediaSource>;
-   const describeSource=(m:MediaSource)=>'url' in m?{url:m.url}:'driveFileId' in m?{driveFileId:m.driveFileId}:{file:m.name??'file sent by the assistant',type:m.mimeType,size:drive.humanBytes(Math.floor(m.base64.length*3/4))};
+   const describeSource=(m:MediaSource)=>'url' in m?{url:m.url}:'driveFileId' in m?{driveFileId:m.driveFileId}:{file:m.name??'file sent by the assistant',type:m.mimeType,size:drive.humanBytes(Math.floor(('file' in m?m.file:m.base64).length*3/4))};
    const mediaBytes=async(m:MediaSource,max:number):Promise<{content:Buffer;mime:string|null;name?:string}|{error:string;messageForUser?:string}>=>{
-    if('base64' in m){const b=Buffer.from(m.base64,'base64');return b.length>max?{error:'file_too_large',messageForUser:'At most '+drive.humanBytes(max)+'.'}:{content:b,mime:m.mimeType,name:m.name};}
+    if('base64' in m||'file' in m){const encoded='file' in m?m.file:m.base64;if(!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded))return {error:'invalid_file_encoding',messageForUser:'Attach the image bytes as Base64, not a local file path.'};const b=Buffer.from(encoded,'base64');return b.length>max?{error:'file_too_large',messageForUser:'At most '+drive.humanBytes(max)+'.'}:{content:b,mime:m.mimeType,name:m.name};}
     if('url' in m){const r=await fetchPublicFile(m.url,max);return 'error' in r?r:{content:r.content,mime:r.mime,name:decodeURIComponent(new URL(r.finalUrl).pathname.split('/').pop()||'file')};}
     const meta=await driveJson<drive.DriveFile&{size?:string}>(drive.DRIVE_API+'/files/'+encodeURIComponent(m.driveFileId)+'?'+new URLSearchParams({fields:'id,name,mimeType,size',supportsAllDrives:'true'}));
     if('failure' in meta)return {error:'drive_error',messageForUser:JSON.stringify(meta.failure).slice(0,300)};
@@ -1234,7 +1234,7 @@ async function handler(req:NextRequest){
    const confirmIssue=(kind:string,content:unknown)=>drive.confirmToken(confirmKey(),user.id,'publish',[kind+':'+contentHash(content)]);
    const tokenProblem=(reason:string)=>({error:'confirmation_required',reason,messageForUser:reason==='too_fast'?'Show the preview to the user and wait for their explicit answer before publishing.':reason==='expired'?'The preview expired (15 minutes): prepare it again.':'Call this tool with confirm=false first, show the exact preview to the user, and publish only after an explicit yes, with the same arguments and the confirmationToken.'});
    /** Besides the preview, a confirmation is bound to the exact bytes of a file sent inline. */
-   const sourceBinding=(m:MediaSource|undefined)=>m&&'base64' in m?{sha256:createHash('sha256').update(m.base64).digest('base64url')}:null;
+   const sourceBinding=(m:MediaSource|undefined)=>m&&('base64' in m||'file' in m)?{sha256:createHash('sha256').update('file' in m?m.file:m.base64).digest('base64url')}:null;
    type Attempt={ok:true;result:Record<string,unknown>}|{ok:false;response:Record<string,unknown>;uncertain?:boolean};
    /**
     * Runs a confirmed publication at most once per confirmation token: a repeated call (retry after a timeout,
@@ -1265,7 +1265,7 @@ async function handler(req:NextRequest){
     if(!conn.scopes.includes('w_member_social'))return asText({error:'missing_linkedin_permission',messageForUser:'Your LinkedIn app does not include "Share on LinkedIn". Add this product in the LinkedIn developer portal, then reconnect LinkedIn at '+account.ACCOUNT_URL+'.'});
     if(args.image&&args.video)return asText({error:'one_media_only',messageForUser:'A post can carry one image or one video.'});
     const media=args.image?{kind:'IMAGE' as const,src:args.image}:args.video?{kind:'VIDEO' as const,src:args.video}:null;
-    const pre=li.checkPost({text:args.text,media:media?{kind:media.kind,mime:'base64' in media.src?media.src.mimeType:null}:undefined,link:args.link});
+    const pre=li.checkPost({text:args.text,media:media?{kind:media.kind,mime:'base64' in media.src||'file' in media.src?media.src.mimeType:null}:undefined,link:args.link});
     if('error' in pre)return asText(pre);
     const content={text:pre.text,visibility:args.visibility,media:media?{kind:media.kind,src:describeSource(media.src)}:null,link:args.link??null};
     const bound={...content,bind:sourceBinding(media?.src)};
