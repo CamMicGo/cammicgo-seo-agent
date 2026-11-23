@@ -791,11 +791,11 @@ async function handler(req:NextRequest){
    const driveFetch=async(url:string,init?:RequestInit,write=false):Promise<{response:Response}|{failure:Record<string,unknown>}>=>{
     const main=await readGoogle(user.id);
     let session=main;
-    if(write&&!hasDriveWrite(main?.scopes))session=await writeGrant()??null;
+    if(write){const grant=await writeGrant();if(grant&&hasDriveWrite(grant.scopes))session=grant;else if(!hasDriveWrite(main?.scopes))session=null;}
     else if(!write&&(!main||!hasDriveRead(main.scopes))){const w=await writeGrant();if(w)session=w;}
     if(!session)return {failure:write&&main?driveScopeMessage(true):CONNECT_GOOGLE};
     if(!await consumeQuota(user.id,quotaLimit(session)))return {failure:{error:'Daily quota exceeded'}};
-    const {token}=await authorizedAccessToken(session);
+    let token:string;try{({token}=await authorizedAccessToken(session));}catch(error){if(write){console.error('[drive_oauth] write_token_unavailable',{grant:session===main?'main':'drive_write',reason:error instanceof Error?error.message:'unknown'});return {failure:{error:'google_drive_write_token_expired',messageForUser:'Google Drive write authorization could not be refreshed. Reconnect the separate Drive write grant on the CamMicGo account page.',reauthorizeUrl:REAUTH_URL}};}throw error;}
     return {response:await googleFetch(url,token,init)};
    };
    const driveScopeMessage=(write:boolean|'full')=>({error:'missing_google_permission',api:'Google Drive',reauthorizeUrl:REAUTH_URL,
