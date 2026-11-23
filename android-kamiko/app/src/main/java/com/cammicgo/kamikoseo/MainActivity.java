@@ -1205,6 +1205,36 @@ public class MainActivity extends Activity {
     if (!linkedinMcpEnabled) { finishLinkedInJob(id, null, "LinkedIn MCP disabled"); return; }
     if (linkedinWeb == null || linkedinWeb.getUrl() == null || !linkedinWeb.getUrl().startsWith("https://")) { finishLinkedInJob(id, null, "LinkedIn page unavailable"); return; }
     if ("post_comments".equals(action)) {
+      // LinkedIn sometimes redirects /posts/ to /m/posts/ and leaves an empty document.
+      // Never report that a post has zero comments when the document itself did not render.
+      String readyJs = "(function(){const b=document.body;const text=(b?.innerText||'').trim();return JSON.stringify({url:location.href,ready:document.readyState,bodyLength:text.length,htmlLength:b?.innerHTML?.length||0,signedOut:!!document.querySelector('input[name=session_key]')||/authwall|login|checkpoint/.test(location.pathname)});})()";
+      linkedinWeb.evaluateJavascript(readyJs, readyRaw -> {
+        try {
+          JSONObject state = new JSONObject(new JSONArray("[" + readyRaw + "]").getString(0));
+          if (state.optBoolean("signedOut")) { finishLinkedInJob(id, state, "LinkedIn login required"); return; }
+          if (state.optInt("bodyLength") == 0) {
+            if (attempt < 6) {
+              // On a blank mobile redirect, retry the canonical desktop path once.
+              if (attempt == 2 && state.optString("url").contains("linkedin.com/m/posts/")) {
+                String canonical = job.optString("postUrl", "");
+                if (canonical.startsWith("https://www.linkedin.com/posts/")) linkedinWeb.loadUrl(canonical);
+              }
+              ui.postDelayed(() -> runLinkedInCommentJob(id, action, job, attempt + 1), 2200);
+            } else {
+              finishLinkedInJob(id, state, "LinkedIn post document stayed blank after navigation; comments were not inspected");
+            }
+            return;
+          }
+          extractRenderedLinkedInComments(id, action, job, attempt);
+        } catch (Exception e) { finishLinkedInJob(id, null, "LinkedIn page readiness check failed: " + e.getMessage()); }
+      });
+      return;
+    }
+    extractRenderedLinkedInComments(id, action, job, attempt);
+  }
+
+  private void extractRenderedLinkedInComments(String id, String action, JSONObject job, int attempt) {
+    if ("post_comments".equals(action)) {
       String js = "(function(limit){\nconst visible=e=>!!(e.offsetWidth||e.offsetHeight||e.getClientRects().length);\nconst sels='[data-id*=\"comment\"],[data-urn*=\"comment\"],[data-urn*=\"fsd_comment\"],[data-view-name*=\"comment\"],[class*=\"comments-comment-item\"],[class*=\"comment-item\"],[class*=\"comment-entity\"],[data-testid*=\"comment\"],[data-test-id*=\"comment\"]';\nconst all=[...document.querySelectorAll(sels)].filter(visible);\nconst nodes=all.filter(n=>!all.some(o=>o!==n&&n.contains(o)&&((o.innerText||'').length>30)));\nconst comments=[],seen=new Set();\nfor(const n of nodes){\n const id=n.getAttribute('data-id')||n.getAttribute('data-urn')||n.id||'';\n const authorEl=n.querySelector('a[href*=\"/in/\"],[class*=\"comment__author\"],[class*=\"comment__name\"],[data-view-name*=\"actor\"]');\n const textEl=n.querySelector('[class*=\"comment__main-content\"],[class*=\"comment__text\"],[class*=\"commentary\"],[data-test-id*=\"comment-text\"],[data-testid*=\"comment-text\"],[dir=\"ltr\"]');\n const author=(authorEl?.innerText||'').trim().split('\\n')[0].slice(0,160);\n let text=(textEl?.innerText||'').trim();\n if(!text&&author){const lines=(n.innerText||'').split('\\n').map(x=>x.trim()).filter(Boolean);const at=lines.findIndex(x=>x===author);text=lines.slice(at+1).filter(x=>!/^(like|j’aime|répondre|reply|voir plus|see more)$/i.test(x)).join('\\n').slice(0,4000)}\n if(!author||!text||text.length<2||text===author)continue;\n const key=id||author+':'+text;\n if(seen.has(key))continue;seen.add(key);\n const parent=n.parentElement?.closest(sels);\n comments.push({commentId:id||null,author,text:text.slice(0,4000),time:(n.querySelector('time')?.getAttribute('datetime')||n.querySelector('time')?.innerText||'').slice(0,100),reactions:(n.querySelector('[class*=\"reaction-count\"]')?.innerText||'').slice(0,50),parentId:parent?.getAttribute('data-id')||parent?.getAttribute('data-urn')||null,replyable:!!id});\n if(comments.length>=limit)break;\n}\nconst body=(document.body?.innerText||'');\nreturn JSON.stringify({postUrl:location.href,comments,retrieved:comments.length,requested:limit,partial:true,signedOut:!!document.querySelector('input[name=\"session_key\"]')||/authwall|login|checkpoint/.test(location.pathname),diagnostics:{title:document.title.slice(0,120),bodyLength:body.length,bodySample:comments.length?undefined:body.slice(-1000),candidateCount:all.length,leafCandidates:nodes.length,profileLinks:document.querySelectorAll('a[href*=\"/in/\"]').length,buttons:[...document.querySelectorAll('button')].filter(visible).map(b=>(b.innerText||b.getAttribute('aria-label')||'').trim()).filter(Boolean).slice(0,25)},note:'Only rendered comments were read; LinkedIn may hide additional comments or replies.'});\n})" + "(" + Math.min(100, Math.max(1, job.optInt("limit", 40))) + ")";
       linkedinWeb.evaluateJavascript(js, raw -> {
         try {
