@@ -1034,10 +1034,16 @@ public class MainActivity extends Activity {
   /** Close the native LinkedIn app invitation without touching other dialogs. */
   private void dismissLinkedInAppPrompt() {
     if (linkedinWeb == null || linkedinWeb.getUrl() == null || !linkedinWeb.getUrl().contains("linkedin.com/")) return;
-    String js = "(function(){const visible=e=>!!(e.offsetWidth||e.offsetHeight||e.getClientRects().length);"
+    // Mobile LinkedIn displays a persistent "Use the LinkedIn app" bottom banner.
+    // Its X is frequently a bare SVG/span or a parent div, not a <button>.
+    // Only dismiss a control inside a banner containing the exact app-invitation text.
+    String js = "(function(){const vis=e=>!!(e.getClientRects().length);"
       + "const prompt=/utiliser l.app(?:lication)? linkedin|use the linkedin app|open in (the )?linkedin app|usar la aplicaci[oó]n linkedin/i;"
-      + "const panels=[...document.querySelectorAll('[role=dialog],[class*=app-promo],[class*=app-banner],[class*=bottom-sheet],aside,section,div')].filter(visible).filter(e=>{const t=(e.innerText||'').trim();return t.length<240&&prompt.test(t)}).sort((a,b)=>(a.innerText||'').length-(b.innerText||'').length);"
-      + "for(const p of panels){const buttons=[...p.querySelectorAll('button,[role=button]')].filter(visible);const close=buttons.find(b=>/^(close|fermer|dismiss|not now|pas maintenant|×|✕|x)$/i.test((b.getAttribute('aria-label')||b.getAttribute('title')||b.innerText||'').trim()));if(close){close.click();return 'dismissed';}}return 'not_found';})()";
+      + "const nodes=[...document.querySelectorAll('div,section,aside,[role=dialog],footer')].filter(vis).filter(e=>{const t=(e.innerText||'').trim();return t.length>=15&&t.length<170&&prompt.test(t)}).sort((a,b)=>(a.innerText||'').length-(b.innerText||'').length);"
+      + "for(const panel of nodes){const controls=[...panel.querySelectorAll('button,[role=button],a,[aria-label],[title],svg')].filter(vis);"
+      + "let close=controls.find(e=>/^(close|fermer|dismiss|not now|pas maintenant|×|✕|x)$/i.test((e.getAttribute('aria-label')||e.getAttribute('title')||e.innerText||'').trim()));"
+      + "if(!close){const left=controls.filter(e=>{const r=e.getBoundingClientRect(),p=panel.getBoundingClientRect();return r.width>0&&r.width<65&&r.height>0&&r.height<65&&r.left<p.left+p.width*.35&&r.top>=p.top-5&&r.bottom<=p.bottom+5});close=left.find(e=>e.querySelector('svg')||e.tagName.toLowerCase()==='svg'||/close|dismiss|cross/i.test(e.className?.baseVal||e.className||''));}"
+      + "if(close){let target=close.closest('button,[role=button],a')||close; if(target===panel)continue;target.click();return 'dismissed';}}return 'not_found';})()";
     linkedinWeb.evaluateJavascript(js, ignored -> {});
   }
 
@@ -1205,6 +1211,7 @@ public class MainActivity extends Activity {
     if (!linkedinMcpEnabled) { finishLinkedInJob(id, null, "LinkedIn MCP disabled"); return; }
     if (linkedinWeb == null || linkedinWeb.getUrl() == null || !linkedinWeb.getUrl().startsWith("https://")) { finishLinkedInJob(id, null, "LinkedIn page unavailable"); return; }
     if ("post_comments".equals(action)) {
+      dismissLinkedInAppPrompt();
       // LinkedIn sometimes redirects /posts/ to /m/posts/ and leaves an empty document.
       // Never report that a post has zero comments when the document itself did not render.
       String readyJs = "(function(){const b=document.body;const text=(b?.innerText||'').trim();return JSON.stringify({url:location.href,ready:document.readyState,bodyLength:text.length,htmlLength:b?.innerHTML?.length||0,signedOut:!!document.querySelector('input[name=session_key]')||/authwall|login|checkpoint/.test(location.pathname)});})()";
