@@ -1008,7 +1008,7 @@ public class MainActivity extends Activity {
     });
     linkedinWeb.setWebViewClient(new WebViewClient() {
       @Override public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) { markLinkedInNav(url); }
-      @Override public void onPageFinished(WebView view, String url) { markLinkedInNav(url); }
+      @Override public void onPageFinished(WebView view, String url) { markLinkedInNav(url); if (url != null && url.startsWith("https://www.linkedin.com/")) ui.postDelayed(() -> dismissLinkedInAppPrompt(), 600); }
     });
     // Native buttons provide accessible touch targets instead of relying on tiny web icons.
     LinearLayout attachmentRow = toolbarRow();
@@ -1031,6 +1031,16 @@ public class MainActivity extends Activity {
   }
 
   /** Activate LinkedIn's file input; the WebChromeClient opens the Android chooser. */
+  /** Close the native LinkedIn app invitation without touching other dialogs. */
+  private void dismissLinkedInAppPrompt() {
+    if (linkedinWeb == null || linkedinWeb.getUrl() == null || !linkedinWeb.getUrl().contains("linkedin.com/")) return;
+    String js = "(function(){const visible=e=>!!(e.offsetWidth||e.offsetHeight||e.getClientRects().length);"
+      + "const prompt=/utiliser l.app(?:lication)? linkedin|use the linkedin app|open in (the )?linkedin app|usar la aplicaci[oó]n linkedin/i;"
+      + "const panels=[...document.querySelectorAll('[role=dialog],[class*=app-promo],[class*=app-banner],[class*=bottom-sheet],aside,section,div')].filter(visible).filter(e=>{const t=(e.innerText||'').trim();return t.length<240&&prompt.test(t)}).sort((a,b)=>(a.innerText||'').length-(b.innerText||'').length);"
+      + "for(const p of panels){const buttons=[...p.querySelectorAll('button,[role=button]')].filter(visible);const close=buttons.find(b=>/^(close|fermer|dismiss|not now|pas maintenant|×|✕|x)$/i.test((b.getAttribute('aria-label')||b.getAttribute('title')||b.innerText||'').trim()));if(close){close.click();return 'dismissed';}}return 'not_found';})()";
+    linkedinWeb.evaluateJavascript(js, ignored -> {});
+  }
+
   private void openLinkedInAttachmentPicker(boolean image) {
     if (linkedinWeb == null || linkedinWeb.getUrl() == null || !linkedinWeb.getUrl().startsWith("https://www.linkedin.com/messaging/")) {
       Toast.makeText(this, "Ouvrez une conversation LinkedIn avant de joindre un fichier", Toast.LENGTH_LONG).show();
@@ -1233,20 +1243,8 @@ public class MainActivity extends Activity {
    */
   private void extractLinkedInFeed(String id, int limit, int attempt, JSONObject best) {
     if (!linkedinMcpEnabled) { finishLinkedInJob(id, null, "LinkedIn navigation disabled"); return; }
-    String js = "(function(limit){"
-      + "const sel='[data-urn*=\"urn:li:activity\"],[data-id*=\"urn:li:activity\"],[data-urn*=\"urn:li:ugcPost\"],[data-urn*=\"urn:li:share\"],[data-id*=\"urn:li:share\"],div.feed-shared-update-v2,[data-view-name=\"feed-full-update\"],[data-view-name*=\"feed-update\"],article,[role=article]';"
-      + "let nodes=[...document.querySelectorAll(sel)].filter(n=>!n.closest('header,nav,aside'));"
-      + "nodes=nodes.filter(n=>!nodes.some(o=>o!==n&&o.contains(n)));"
-      + "const posts=[],seen=new Set();"
-      + "for(const n of nodes){const t=(n.innerText||'').trim();if(t.length<40)continue;"
-      + "const urn=n.getAttribute('data-urn')||n.getAttribute('data-id')||'';const key=urn||t.slice(0,160);if(seen.has(key))continue;seen.add(key);"
-      + "const a=n.querySelector('[class*=actor__title],[class*=actor-name],[class*=actor__name],a[href*=\"/in/\"] span[aria-hidden=true],a[href*=\"/company/\"] span[aria-hidden=true]');"
-      + "const tm=n.querySelector('[class*=actor__sub-description],[class*=sub-description],time');"
-      + "const links=[...new Set([...n.querySelectorAll('a[href]')].map(x=>x.href.split('?')[0]).filter(u=>/^https:\\/\\/([a-z]+\\.)?linkedin\\.com\\//.test(u)))];"
-      + "const postUrl=links.find(u=>/\\/feed\\/update\\/|\\/posts\\//.test(u))||(urn.startsWith('urn:li:')?'https://www.linkedin.com/feed/update/'+urn+'/':'');"
-      + "posts.push({author:(a?a.innerText:'').trim().split('\\n')[0].slice(0,150),time:(tm?tm.innerText:'').trim().split('\\n')[0].slice(0,80),text:t.slice(0,2500),postUrl,links:links.slice(0,8)});"
-      + "if(posts.length>=limit)break;}"
-      + "return JSON.stringify({url:location.pathname,posts,signedOut:" + LI_SIGNED_OUT_JS + ",diagnostics:{candidates:nodes.length,title:document.title.slice(0,80)}});})(" + limit + ")";
+    dismissLinkedInAppPrompt();
+    String js = "(function(limit){const vis=e=>!!(e.offsetWidth||e.offsetHeight||e.getClientRects().length);const sels='[data-urn*=\"urn:li:\"],[data-id*=\"urn:li:\"],[data-view-name*=\"feed-update\"],[class*=\"feed-shared-update\"],[class*=\"update-components-actor\"],article,[role=\"article\"]';const candidates=[...document.querySelectorAll(sels)].filter(vis).filter(n=>!n.closest('header,nav,aside'));const anchors=[...document.querySelectorAll('a[href*=\"/feed/update/\"],a[href*=\"/posts/\"]')].filter(vis);for(const a of anchors){const n=a.closest('article,[role=\"article\"],[data-urn],[data-id],[class*=\"update\"],li')||a.parentElement;if(n)candidates.push(n)}const unique=[...new Set(candidates)].filter(n=>!candidates.some(p=>p!==n&&p.contains(n)&&((p.innerText||'').length<12000)));const posts=[],seen=new Set();for(const n of unique){const t=(n.innerText||'').trim();if(t.length<35||t.length>16000)continue;const urn=n.getAttribute('data-urn')||n.getAttribute('data-id')||'';const links=[...new Set([...n.querySelectorAll('a[href]')].map(a=>a.href.split('?')[0]).filter(u=>u.startsWith('https://www.linkedin.com/')))];const url=links.find(u=>u.includes('/feed/update/')||u.includes('/posts/'))||(urn.startsWith('urn:li:')?'https://www.linkedin.com/feed/update/'+urn+'/':'');const key=url||urn||t.slice(0,180);if(seen.has(key))continue;seen.add(key);const author=n.querySelector('[class*=\"actor__title\"],[class*=\"actor-name\"],[class*=\"actor__name\"],a[href*=\"/in/\"],a[href*=\"/company/\"]');const tm=n.querySelector('time,[class*=\"actor__sub-description\"]');posts.push({author:(author?.innerText||'').trim().split('\\n')[0].slice(0,150),time:(tm?.getAttribute('datetime')||tm?.innerText||'').trim().split('\\n')[0].slice(0,80),text:t.slice(0,2500),postUrl:url,links:links.slice(0,8)});if(posts.length>=limit)break;}return JSON.stringify({url:location.pathname,posts,signedOut:!!document.querySelector('input[name=\"session_key\"]')||location.pathname.includes('authwall'),diagnostics:{candidates:candidates.length,anchors:anchors.length,unique:unique.length,title:document.title.slice(0,80),bodyLength:(document.body?.innerText||'').length,bodySample:posts.length?undefined:(document.body?.innerText||'').slice(0,350)}});})(" + limit + ")";
     linkedinWeb.evaluateJavascript(js, raw -> {
       JSONObject r;
       try { r = new JSONObject(new JSONArray("[" + raw + "]").getString(0)); } catch (Exception e) { r = null; }
