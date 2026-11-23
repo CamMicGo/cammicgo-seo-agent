@@ -1258,12 +1258,17 @@ async function handler(req:NextRequest){
 
    server.registerTool('linkedin_post',{annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true},title:'Publish a post on my LinkedIn profile',
     description:'Publish a post on the user\'s OWN LinkedIn profile (connected at https://seo.cammicgo.com/account, with the CamMicGo app or their own LinkedIn app; a connection can only post on its owner\'s profile): text up to 3,000 characters, with one image (JPEG, PNG, GIF, 10 MB max) or one video (MP4, 100 MB max) from a public https file, a Google Drive file or a small file you provide, or with a link preview. ALWAYS TWO STEPS: confirm=false publishes nothing and returns the exact preview and a confirmationToken; show it to the user and publish only after they explicitly say yes in a NEW message (same arguments, confirm=true, confirmationToken). Never publish on your own initiative.',
-    inputSchema:z.object({text:z.string().min(1).max(li.LI_TEXT_MAX),visibility:z.enum(['PUBLIC','CONNECTIONS']).default('PUBLIC'),image:mediaSource.optional(),video:mediaSource.optional(),link:z.object({url:z.string().url().max(2000),title:z.string().max(200).optional(),description:z.string().max(300).optional()}).optional(),
+    _meta:FILE_META,
+    inputSchema:z.object({text:z.string().min(1).max(li.LI_TEXT_MAX),visibility:z.enum(['PUBLIC','CONNECTIONS']).default('PUBLIC'),attachment:chatFileField.optional().describe('ChatGPT conversation image file, transferred securely as an attachment; no Base64 or filesystem path'),image:mediaSource.optional(),video:mediaSource.optional(),link:z.object({url:z.string().url().max(2000),title:z.string().max(200).optional(),description:z.string().max(300).optional()}).optional(),
      confirm:z.boolean().default(false),confirmationToken:z.string().max(80).optional()})},async args=>{
     const conn=await (await import('@/lib/social-store')).readLinkedInConnection(user.id).catch(()=>null);
     if(!conn||conn.expiresAt<Date.now())return asText({error:'linkedin_not_connected',messageForUser:'Connect your LinkedIn profile at '+account.ACCOUNT_URL+' (section LinkedIn, guide: https://seo.cammicgo.com/setup/linkedin), then ask again.'});
     if(!conn.scopes.includes('w_member_social'))return asText({error:'missing_linkedin_permission',messageForUser:'Your LinkedIn app does not include "Share on LinkedIn". Add this product in the LinkedIn developer portal, then reconnect LinkedIn at '+account.ACCOUNT_URL+'.'});
-    if(args.image&&args.video)return asText({error:'one_media_only',messageForUser:'A post can carry one image or one video.'});
+    if([args.image,args.video,args.attachment].filter(Boolean).length>1)return asText({error:'one_media_only',messageForUser:'A post can carry one image or one video.'});
+    const checkedAttachment=args.attachment!==undefined?await checkChatFile(args.attachment):null;
+    if(checkedAttachment&&!checkedAttachment.ok)return asText(checkedAttachment.problem);
+    if(checkedAttachment&&checkedAttachment.ok&&!['image/png','image/jpeg','image/gif'].includes(checkedAttachment.file.mime))return asText({error:'unsupported_post_image',messageForUser:'LinkedIn posts accept PNG, JPEG or GIF images.'});
+    const attachmentFile=checkedAttachment&&checkedAttachment.ok?checkedAttachment.file:null;
     const media=args.image?{kind:'IMAGE' as const,src:args.image}:args.video?{kind:'VIDEO' as const,src:args.video}:null;
     // Validate inline media before issuing a publication confirmation. A filesystem path is not an uploaded image.
     if(media&&('base64' in media.src||'file' in media.src)){
@@ -1277,7 +1282,7 @@ async function handler(req:NextRequest){
     }
     const pre=li.checkPost({text:args.text,media:media?{kind:media.kind,mime:'base64' in media.src||'file' in media.src?media.src.mimeType:null}:undefined,link:args.link});
     if('error' in pre)return asText(pre);
-    const content={text:pre.text,visibility:args.visibility,media:media?{kind:media.kind,src:describeSource(media.src)}:null,link:args.link??null};
+    const content={text:pre.text,visibility:args.visibility,media:attachmentFile?{kind:'IMAGE',src:{file:attachmentFile.name,type:attachmentFile.mime,size:drive.humanBytes(attachmentFile.bytes),sha256:attachmentFile.sha256}}:media?{kind:media.kind,src:describeSource(media.src)}:null,link:args.link??null};
     const bound={...content,bind:sourceBinding(media?.src)};
     if(!args.confirm)return asText({published:false,preview:{account:'LinkedIn: '+conn.name,...content,characters:pre.text.length},confirmationToken:confirmIssue('linkedin',bound),expiresInMinutes:15,
      next:'Show this exact post to the user. Publish only after the user explicitly says yes in a NEW message: call linkedin_post again with the same arguments, confirm=true and this confirmationToken.'});
@@ -1300,8 +1305,8 @@ async function handler(req:NextRequest){
     const putPart=(url:string,bytes:Uint8Array<ArrayBuffer>,mime:string)=>fetch(url,{method:'PUT',headers:{...auth,'Content-Type':mime},body:bytes,signal:AbortSignal.timeout(40000)});
     return asText(await publishOnce('linkedin',args.confirmationToken,async():Promise<Attempt>=>{
      let mediaPart:li.PostInput['media'];
-     if(media){
-      const file=await mediaBytes(media.src,media.kind==='VIDEO'?li.LI_VIDEO_MAX:li.LI_IMAGE_MAX);if('error' in file)return {ok:false,response:file};
+     if(media||attachmentFile){
+      const file=attachmentFile?await (async()=>{const ref=chatFiles.readChatFile(args.attachment);if(!ref.ok)return {error:'attachment_unavailable'};const got=await chatFiles.downloadChatFile(ref.file,li.LI_IMAGE_MAX);if(!got.ok)return {error:'attachment_unavailable'};if(createHash('sha256').update(got.bytes).digest('hex')!==attachmentFile.sha256)return {error:'attachment_changed'};return {content:got.bytes,mime:attachmentFile.mime,name:attachmentFile.name};})():await mediaBytes(media!.src,media!.kind==='VIDEO'?li.LI_VIDEO_MAX:li.LI_IMAGE_MAX);if('error' in file)return {ok:false,response:file};
       const ok=li.checkPost({text:pre.text,media:{kind:media.kind,mime:file.mime,bytes:file.content.length}});if('error' in ok)return {ok:false,response:ok};
       if(media.kind==='IMAGE'){
        const init=await liRest('/images?action=initializeUpload',{method:'POST',body:JSON.stringify(li.imageInitBody(author))});
