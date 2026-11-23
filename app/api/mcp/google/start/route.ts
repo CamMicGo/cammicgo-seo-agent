@@ -33,11 +33,12 @@ export async function POST(req:NextRequest){
  const returnTo=payload.returnTo==='/account'?'/account':undefined;
  // Drive writing (drive.file / drive) is granted separately: Google refuses it together with YouTube scopes.
  const {main,write}=splitScopes(scopes);
- // Ask for Drive writing again only when needed: the stored write grant (same OAuth client) may already cover it.
- // When the user unchecked Drive writing, the stored write grant is removed once the new main grant succeeds.
+ // Always refresh the separate Drive write grant on explicit Google reconnection.
+ // A stored refresh token and matching scopes do NOT prove that Google still accepts it
+ // (invalid_grant); skipping this step leaves a revoked token stuck indefinitely.
+ // If Drive writing is unchecked, remove its grant after main authorization succeeds.
  const stored=await readDriveWrite(user.id).catch(()=>null);
- const covered=!!stored?.refreshToken&&stored.credentials.clientId===credentials.clientId&&write.every(s=>stored.scopes?.includes(s));
- const followUp=write.length&&!(main.length&&covered)?write:undefined;
+ const followUp=write.length&&main.length?write:undefined;
  const dropDriveWrite=!!stored&&!write.length&&main.length>0;
  const first=main.length?{scopes:main,kind:'main' as const,followUp}:{scopes:write,kind:'drive_write' as const,followUp:undefined};
  const {url,pending}=googleAuthRequest(credentials,first.scopes,{mcpUserId:user.id,authorizationId:payload.authorizationId,returnTo,kind:first.kind,followUp:first.followUp,...(dropDriveWrite?{dropDriveWrite:true}:{})});
