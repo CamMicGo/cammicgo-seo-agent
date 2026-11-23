@@ -1265,6 +1265,16 @@ async function handler(req:NextRequest){
     if(!conn.scopes.includes('w_member_social'))return asText({error:'missing_linkedin_permission',messageForUser:'Your LinkedIn app does not include "Share on LinkedIn". Add this product in the LinkedIn developer portal, then reconnect LinkedIn at '+account.ACCOUNT_URL+'.'});
     if(args.image&&args.video)return asText({error:'one_media_only',messageForUser:'A post can carry one image or one video.'});
     const media=args.image?{kind:'IMAGE' as const,src:args.image}:args.video?{kind:'VIDEO' as const,src:args.video}:null;
+    // Validate inline media before issuing a publication confirmation. A filesystem path is not an uploaded image.
+    if(media&&('base64' in media.src||'file' in media.src)){
+     const encoded='file' in media.src?media.src.file:media.src.base64;
+     if(!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)||encoded.length<16)
+      return asText({published:false,error:'invalid_media_payload',messageForUser:'The attachment was not transferred. image.file must contain actual Base64 image bytes, not a /mnt/data path. Use image.driveFileId, image.url (public HTTPS), or image.base64 with the real image content.'});
+     const header=Buffer.from(encoded.slice(0,32),'base64');
+     const mime=media.src.mimeType;
+     const valid=mime==='image/png'?header.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])):mime==='image/jpeg'?header[0]===255&&header[1]===216&&header[2]===255:mime==='image/gif'?header.toString('ascii',0,3)==='GIF':mime==='video/mp4'?header.toString('ascii',4,8)==='ftyp':false;
+     if(!valid)return asText({published:false,error:'invalid_media_signature',messageForUser:'The supplied Base64 data does not match the declared PNG/JPEG/GIF/MP4 file. No publication preview was created.'});
+    }
     const pre=li.checkPost({text:args.text,media:media?{kind:media.kind,mime:'base64' in media.src||'file' in media.src?media.src.mimeType:null}:undefined,link:args.link});
     if('error' in pre)return asText(pre);
     const content={text:pre.text,visibility:args.visibility,media:media?{kind:media.kind,src:describeSource(media.src)}:null,link:args.link??null};
