@@ -387,6 +387,16 @@ async function handler(req:NextRequest){
     if(!claim)return asText({status:'error',error:'storage_unavailable',published:false});
     if(!claim.claimed)return asText(claim.status==='published'&&claim.result?{...claim.result,alreadySent:true}:{status:'error',error:'send_already_started',published:false});
     const result=await linkedinDevice(reply?'reply_comment':'comment_post',{postUrl:a.postUrl,text:a.text,...(reply?{commentId:a.commentId!}:{})},55000);
+    const raw=result.content?.[0]?.text;
+    let outcome:Record<string,unknown>={};
+    try{outcome=JSON.parse(typeof raw==='string'?raw:'{}') as Record<string,unknown>;}catch{}
+    const data=outcome.data as Record<string,unknown>|undefined;
+    if(outcome.status==='done'&&data?.clicked===true){
+      await social.finishPublication(claim.id,{status:'submitted',postUrl:a.postUrl,kind:target.kind,commentId:target.commentId,text:a.text,note:'LinkedIn submit clicked; verify comment is visible.'}).catch(()=>{});
+    }else if(outcome.status==='error'){
+      await social.finishPublication(claim.id,null).catch(()=>{});
+    }
+    // Pending results are intentionally not retried automatically: a second send could duplicate a comment.
     return result;
    };
    server.registerTool('linkedin_comment_post',{title:'Comment on a LinkedIn post via Android',annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true},description:'Two-step confirmation required. Adds a top-level comment to an exact LinkedIn post through the paired Android app. First confirm=false, then explicit approval in a NEW user message.',inputSchema:linkedInCommentInput.omit({commentId:true})},async a=>linkedinCommentAction(a,false));
