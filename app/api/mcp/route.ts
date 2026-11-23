@@ -335,7 +335,7 @@ async function handler(req:NextRequest){
    // harvesting browser cookies, scraping private endpoints or fabricating messages.
    // LinkedIn Android relay: explicit opt-in on the device; read/navigation only, never sends messages.
    const IMAGE_HINT='imageUrl is the real LinkedIn photo or company logo of that card, as a small thumbnail served by CamMicGo for 24 hours: show it next to the card with Markdown image syntax, e.g. ![name](imageUrl). A card without imageUrl has no picture on LinkedIn: show none. NEVER search the web for a picture of a person or a logo: it shows the wrong person. CamMicGo deletes the result once delivered and the thumbnails after 24 hours.';
-   const linkedinDevice=async(operation:'inbox'|'open'|'thread'|'back'|'feed'|'search'|'company_search'|'network_suggestions'|'invite'|'send'|'attach'|'job_search'|'job_details'|'recommended_jobs'|'company_profile'|'company_posts'|'person_profile',payload:Record<string,string>={},waitMs=35000)=>{
+   const linkedinDevice=async(operation:'inbox'|'open'|'thread'|'back'|'feed'|'search'|'company_search'|'network_suggestions'|'invite'|'send'|'attach'|'job_search'|'job_details'|'recommended_jobs'|'company_profile'|'company_posts'|'person_profile'|'post_comments'|'comment_post'|'reply_comment',payload:Record<string,string>={},waitMs=35000)=>{
     const liRelay=await import('@/lib/linkedin-relay');
     const devices=await relay.listDevices(user.id);
     if(!devices.some(relay.isOnline))return asText({status:'device_offline',message:'Connectez et ouvrez CamMicGo Android, puis activez le contrôle LinkedIn MCP.'});
@@ -371,6 +371,36 @@ async function handler(req:NextRequest){
       :'The command is waiting for the phone: the CamMicGo app is not open on its LinkedIn tab with "LinkedIn MCP" allowed (a notification on the phone invites the user to open it). It runs as soon as the app is open, within 10 minutes; after that it expires and is never run. Check with linkedin_job_status.',
      instructions:'Relay messageForUser in the user\'s language. Never repeat the command while it is queued or running: that would run it twice.'});
    };
+   // LinkedIn comment access is mediated by the user's authenticated, opt-in Android WebView.
+   const linkedInPostUrl=z.string().url().max(700).refine(v=>/^https:\/\/(?:www\.|[a-z]{2,3}\.)?linkedin\.com\/(?:feed\/update\/urn:li:(?:activity|share|ugcPost):[0-9]+|posts\/[a-zA-Z0-9_%.-]+)\/?(?:\?[^#]*)?$/.test(v),'Use a LinkedIn post URL');
+   server.registerTool('linkedin_post_comments',{title:'Read comments on a LinkedIn post via Android',annotations:{readOnlyHint:true,openWorldHint:true},description:'Read visible comments and nested replies on an exact LinkedIn post through the paired Android app. Includes stable comment references where available, author, text, reactions and partial/pagination diagnostics. Never treat partial comments as all opinions.',inputSchema:z.object({postUrl:linkedInPostUrl,limit:z.number().int().min(1).max(100).optional().default(40)})},async a=>linkedinDevice('post_comments',{postUrl:a.postUrl,limit:String(a.limit)},55000));
+   const linkedInCommentInput=z.object({postUrl:linkedInPostUrl,text:z.string().trim().min(1).max(1250),commentId:z.string().min(1).max(250).optional(),confirm:z.boolean().optional().default(false),confirmationToken:z.string().max(100).optional()});
+   const linkedinCommentAction=async(a:z.infer<typeof linkedInCommentInput>,reply:boolean)=>{
+    if(reply&&!a.commentId)return asText({status:'error',error:'commentId_required',messageForUser:'Read the comments first and choose the exact commentId to reply to.'});
+    const target={postUrl:a.postUrl,text:a.text,commentId:reply?a.commentId:null,kind:reply?'reply':'comment'};
+    const ids=['linkedin-comment:'+dmHash(target)];
+    if(!a.confirm)return asText({status:'preview',published:false,...target,confirmationToken:drive.confirmToken(dmKey(),user.id,'publish',ids),expiresInMinutes:15,next:'Show the exact text and target. Publish only after the user explicitly approves in a NEW message.'});
+    const check=drive.checkConfirmToken(dmKey(),user.id,'publish',ids,a.confirmationToken);
+    if(!check.ok||!a.confirmationToken)return asText({status:'error',error:'confirmation_required',reason:check.ok?'missing':check.reason});
+    const social=await import('@/lib/social-store');
+    const claim=await social.claimPublication(user.id,'linkedin',a.confirmationToken).catch(()=>null);
+    if(!claim)return asText({status:'error',error:'storage_unavailable',published:false});
+    if(!claim.claimed)return asText(claim.status==='published'&&claim.result?{...claim.result,alreadySent:true}:{status:'error',error:'send_already_started',published:false});
+    const result=await linkedinDevice(reply?'reply_comment':'comment_post',{postUrl:a.postUrl,text:a.text,...(reply?{commentId:a.commentId!}:{})},55000);
+    const raw=result.content?.[0]?.text;
+    let outcome:Record<string,unknown>={};
+    try{outcome=JSON.parse(typeof raw==='string'?raw:'{}') as Record<string,unknown>;}catch{}
+    const data=outcome.data as Record<string,unknown>|undefined;
+    if(outcome.status==='done'&&data?.clicked===true){
+      await social.finishPublication(claim.id,{status:'submitted',postUrl:a.postUrl,kind:target.kind,commentId:target.commentId,text:a.text,note:'LinkedIn submit clicked; verify comment is visible.'}).catch(()=>{});
+    }else if(outcome.status==='error'){
+      await social.finishPublication(claim.id,null).catch(()=>{});
+    }
+    // Pending results are intentionally not retried automatically: a second send could duplicate a comment.
+    return result;
+   };
+   server.registerTool('linkedin_comment_post',{title:'Comment on a LinkedIn post via Android',annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true},description:'Two-step confirmation required. Adds a top-level comment to an exact LinkedIn post through the paired Android app. First confirm=false, then explicit approval in a NEW user message.',inputSchema:linkedInCommentInput.omit({commentId:true})},async a=>linkedinCommentAction(a,false));
+   server.registerTool('linkedin_reply_comment',{title:'Reply to a specific LinkedIn comment via Android',annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true},description:'Two-step confirmation required. Reply to a specific commentId returned by linkedin_post_comments. Never send a top-level comment as a fallback.',inputSchema:linkedInCommentInput.required({commentId:true})},async a=>linkedinCommentAction(a,true));
    server.registerTool('linkedin_feed',{title:'Read recent LinkedIn feed posts via paired Android',annotations:{readOnlyHint:true},description:'Read recent posts of the user\'s LinkedIn feed (author, time, text, post link) through the CamMicGo Android app, which scrolls the feed for about 15 s. Read-only. If posts is empty, read note and diagnostics: signedOut means the user must sign in to LinkedIn in the app; never conclude the network has no news.',inputSchema:z.object({limit:z.number().int().min(1).max(50).optional().default(20)})},async a=>linkedinDevice('feed',{limit:String(a.limit)},45000));
    server.registerTool('linkedin_search_jobs',{title:'Search LinkedIn job offers',annotations:{readOnlyHint:true,openWorldHint:true},description:'Search job offers on LinkedIn through the CamMicGo Android app (the user\'s own LinkedIn session): keywords plus an optional place (city, region, \"Lyon\", \"Île-de-France\"), radius in km, publication date and workplace type. Filters: experience level, job type, Easy Apply, newest first. Returns title, company, company logo (imageUrl thumbnail), location, publication date and job link for each offer (up to 50). Read-only: never applies. Use linkedin_job_details for the full description of an offer.',
     inputSchema:z.object({keywords:z.string().min(2).max(150).describe('Job title or skills, e.g. \"développeur web\", \"infirmier\"'),location:z.string().max(120).optional().default('').describe('City, region or country'),radiusKm:z.number().int().min(0).max(160).optional().describe('Distance around the place'),posted:z.enum(['any','day','week','month']).optional().default('any'),workplace:z.enum(['any','onsite','remote','hybrid']).optional().default('any'),experience:z.array(z.enum(['internship','entry','associate','mid_senior','director','executive'])).max(6).optional(),jobType:z.array(z.enum(['full_time','part_time','contract','temporary','internship','volunteer','other'])).max(7).optional(),easyApply:z.boolean().optional().default(false),sort:z.enum(['relevance','recent']).optional().default('relevance'),limit:z.number().int().min(1).max(50).optional().default(25)})},

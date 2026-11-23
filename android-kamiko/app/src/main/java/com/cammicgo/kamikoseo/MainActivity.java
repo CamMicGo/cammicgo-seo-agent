@@ -1076,6 +1076,12 @@ public class MainActivity extends Activity {
         linkedinWeb.loadUrl("https://www.linkedin.com/messaging/");
         ui.postDelayed(() -> openLinkedInParticipant(id, participant), 2700);
       } else openLinkedInParticipant(id, participant);
+    } else if ("post_comments".equals(op) || "comment_post".equals(op) || "reply_comment".equals(op)) {
+      String postUrl = job.optString("postUrl", "").trim();
+      if (!postUrl.matches("https://(?:www\\.|[a-z]{2,3}\\.)?linkedin\\.com/(?:feed/update/urn:li:(?:activity|share|ugcPost):[0-9]+|posts/[A-Za-z0-9_%.-]+)/?(?:\\?[^#]*)?")) { finishLinkedInJob(id, null, "Invalid LinkedIn post URL"); return; }
+      String action=op;
+      linkedinWeb.loadUrl(postUrl);
+      ui.postDelayed(() -> runLinkedInCommentJob(id, action, job, 0), 4200);
     } else if ("feed".equals(op)) {
       linkedinWeb.loadUrl("https://www.linkedin.com/feed/");
       ui.postDelayed(() -> extractLinkedInFeed(id, Math.min(50, Math.max(1, job.optInt("limit", 20))), 0, null), 3500);
@@ -1184,6 +1190,41 @@ public class MainActivity extends Activity {
   }
 
   /** Signed-out pages (login wall, checkpoint) are reported instead of an empty list. */
+  /** Comments are read from the authenticated LinkedIn WebView; no scraping credentials leave the phone. */
+  private void runLinkedInCommentJob(String id, String action, JSONObject job, int attempt) {
+    if (!linkedinMcpEnabled) { finishLinkedInJob(id, null, "LinkedIn MCP disabled"); return; }
+    if (linkedinWeb == null || linkedinWeb.getUrl() == null || !linkedinWeb.getUrl().startsWith("https://")) { finishLinkedInJob(id, null, "LinkedIn page unavailable"); return; }
+    if ("post_comments".equals(action)) {
+      String js = "(function(limit){const visible=e=>!!(e.offsetWidth||e.offsetHeight||e.getClientRects().length);const selectors='[data-id*=\"comment\"],[data-urn*=\"comment\"],[data-urn*=\"fsd_comment\"],li.comments-comment-item,article.comments-comment-item,[class*=\"comments-comment-item\"],[data-view-name*=\"comment\"]';let nodes=[...document.querySelectorAll(selectors)].filter(visible);nodes=nodes.filter(n=>!nodes.some(o=>o!==n&&o.contains(n)));const comments=[],seen=new Set();for(const n of nodes){const id=n.getAttribute('data-id')||n.getAttribute('data-urn')||n.id||'';const textEl=n.querySelector('[class*=\"comment__main-content\"],[class*=\"comment__text\"],[data-test-id*=\"comment-text\"],[dir=\"ltr\"]');const authorEl=n.querySelector('[class*=\"comment__author\"],[class*=\"comment__name\"],a[href*=\"/in/\"]');const text=(textEl?.innerText||'').trim();if(!text||text.length<2)continue;const author=(authorEl?.innerText||'').trim().split('\\n')[0].slice(0,160);const key=id||author+':'+text;if(seen.has(key))continue;seen.add(key);const parent=n.parentElement?.closest(selectors);comments.push({commentId:id||null,author,text:text.slice(0,4000),time:(n.querySelector('time')?.getAttribute('datetime')||n.querySelector('time')?.innerText||'').slice(0,100),reactions:(n.querySelector('[class*=\"reaction-count\"]')?.innerText||'').slice(0,50),parentId:parent?.getAttribute('data-id')||parent?.getAttribute('data-urn')||null,replyable:!!id});if(comments.length>=limit)break;}return JSON.stringify({postUrl:location.href,comments,retrieved:comments.length,requested:limit,partial:true,signedOut:!!document.querySelector('input[name=\"session_key\"]')||/authwall|login|checkpoint/.test(location.pathname),note:'Only rendered comments were read; LinkedIn may hide additional comments or replies.'});})" + "(" + Math.min(100, Math.max(1, job.optInt("limit", 40))) + ")";
+      linkedinWeb.evaluateJavascript(js, raw -> {
+        try {
+          JSONObject result=new JSONObject(new JSONArray("[" + raw + "]").getString(0));
+          if(result.optBoolean("signedOut")) { finishLinkedInJob(id, result, "LinkedIn login required"); return; }
+          if(result.optInt("retrieved")==0 && attempt<3) {
+            linkedinWeb.evaluateJavascript("(function(){const b=[...document.querySelectorAll('button')].find(e=>/comments|commentaires/i.test(e.innerText||''));if(b)b.click();window.scrollBy(0,500);return true})()", ignored -> ui.postDelayed(() -> runLinkedInCommentJob(id,action,job,attempt+1),2200));
+          } else finishLinkedInJob(id,result,null);
+        } catch(Exception e){finishLinkedInJob(id,null,e.getMessage());}
+      });
+      return;
+    }
+    String commentId=job.optString("commentId",""), text=job.optString("text","");
+    if(text.trim().isEmpty() || text.length()>1250 || ("reply_comment".equals(action)&&commentId.isEmpty())) { finishLinkedInJob(id,null,"Invalid comment target or text"); return; }
+    String prepare="(function(action,id,text){const visible=e=>!!(e.offsetWidth||e.offsetHeight||e.getClientRects().length);if(!location.hostname.endsWith('linkedin.com'))return JSON.stringify({error:'wrong_domain'});let root=document;if(action==='reply_comment'){const matches=[...document.querySelectorAll('[data-id],[data-urn],[id]')].filter(n=>(n.getAttribute('data-id')||n.getAttribute('data-urn')||n.id)===id);if(matches.length!==1)return JSON.stringify({error:'comment_target_not_unique',matches:matches.length});root=matches[0];const reply=[...root.querySelectorAll('button')].find(b=>visible(b)&&/^(reply|répondre|antworten|responder)$/i.test((b.innerText||b.getAttribute('aria-label')||'').trim()));if(!reply)return JSON.stringify({error:'reply_button_missing'});reply.click();}else{const triggers=[...document.querySelectorAll('button')].filter(b=>visible(b)&&/^(comment|commenter|commentaire|kommentieren)$/i.test((b.innerText||b.getAttribute('aria-label')||'').trim()));if(triggers.length===1)triggers[0].click();}return JSON.stringify({ready:true});})"+"("+JSONObject.quote(action)+","+JSONObject.quote(commentId)+","+JSONObject.quote(text)+")";
+    linkedinWeb.evaluateJavascript(prepare,raw->{
+      try{
+        JSONObject result=new JSONObject(new JSONArray("["+raw+"]").getString(0));
+        if(!result.optBoolean("ready")){finishLinkedInJob(id,result,result.optString("error","Reply UI unavailable"));return;}
+        ui.postDelayed(()->{
+          String fill="(function(action,id,text){const visible=e=>!!(e.offsetWidth||e.offsetHeight||e.getClientRects().length);let root=document;if(action==='reply_comment'){const nodes=[...document.querySelectorAll('[data-id],[data-urn],[id]')].filter(n=>(n.getAttribute('data-id')||n.getAttribute('data-urn')||n.id)===id);if(nodes.length!==1)return JSON.stringify({error:'reply_target_lost'});root=nodes[0].parentElement||nodes[0];}const editors=[...root.querySelectorAll('[contenteditable=\"true\"][role=\"textbox\"],[contenteditable=\"true\"][data-placeholder],div[contenteditable=\"true\"],textarea')].filter(visible);if(editors.length!==1)return JSON.stringify({error:'editor_not_unique',editors:editors.length});const e=editors[0];e.focus();if(e.tagName==='TEXTAREA'){const setter=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set;setter.call(e,text);e.dispatchEvent(new Event('input',{bubbles:true}));}else{e.textContent=text;e.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:text}));}const area=e.closest('form,[class*=\"comment-box\"],[class*=\"comments-comment\"],[class*=\"editor\"]')||root;const buttons=[...area.querySelectorAll('button')].filter(b=>visible(b)&&!b.disabled&&/^(post|publier|envoyer|send|commenter|répondre)$/i.test((b.innerText||b.getAttribute('aria-label')||'').trim()));if(buttons.length!==1)return JSON.stringify({error:'submit_not_unique',buttons:buttons.length,filled:true});buttons[0].click();return JSON.stringify({clicked:true,kind:action,note:'LinkedIn submit button clicked; server-side acceptance is not independently verified'});})"+"("+JSONObject.quote(action)+","+JSONObject.quote(commentId)+","+JSONObject.quote(text)+")";
+          linkedinWeb.evaluateJavascript(fill,raw2->{
+            try{JSONObject done=new JSONObject(new JSONArray("["+raw2+"]").getString(0));finishLinkedInJob(id,done,done.optBoolean("clicked")?null:done.optString("error","Comment not sent"));}
+            catch(Exception e){finishLinkedInJob(id,null,e.getMessage());}
+          });
+        },800);
+      }catch(Exception e){finishLinkedInJob(id,null,e.getMessage());}
+    });
+  }
+
   private static final String LI_SIGNED_OUT_JS = "(!!document.querySelector('input[name=session_key],form[action*=\\\"login\\\"]')||/\\/(login|authwall|checkpoint|uas)/.test(location.pathname))";
 
   /**
