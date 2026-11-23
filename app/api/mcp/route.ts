@@ -1307,8 +1307,8 @@ async function handler(req:NextRequest){
      let mediaPart:li.PostInput['media'];
      if(media||attachmentFile){
       const file=attachmentFile?await (async()=>{const ref=chatFiles.readChatFile(args.attachment);if(!ref.ok)return {error:'attachment_unavailable'};const got=await chatFiles.downloadChatFile(ref.file,li.LI_IMAGE_MAX);if(!got.ok)return {error:'attachment_unavailable'};if(createHash('sha256').update(got.bytes).digest('hex')!==attachmentFile.sha256)return {error:'attachment_changed'};return {content:got.bytes,mime:attachmentFile.mime,name:attachmentFile.name};})():await mediaBytes(media!.src,media!.kind==='VIDEO'?li.LI_VIDEO_MAX:li.LI_IMAGE_MAX);if('error' in file)return {ok:false,response:file};
-      const ok=li.checkPost({text:pre.text,media:{kind:media.kind,mime:file.mime,bytes:file.content.length}});if('error' in ok)return {ok:false,response:ok};
-      if(media.kind==='IMAGE'){
+      const ok=li.checkPost({text:pre.text,media:{kind:attachmentFile?'IMAGE':media!.kind,mime:file.mime,bytes:file.content.length}});if('error' in ok)return {ok:false,response:ok};
+      if(attachmentFile||media!.kind==='IMAGE'){
        const init=await liRest('/images?action=initializeUpload',{method:'POST',body:JSON.stringify(li.imageInitBody(author))});
        if(!init.ok)return {ok:false,response:await liError(init)};
        const v=((await init.json().catch(()=>({}))) as {value?:{uploadUrl?:string;image?:string}}).value;
