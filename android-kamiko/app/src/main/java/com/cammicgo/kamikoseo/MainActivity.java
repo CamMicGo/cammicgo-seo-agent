@@ -1092,8 +1092,23 @@ public class MainActivity extends Activity {
         linkedinWeb.loadUrl("https://www.linkedin.com/messaging/");
         ui.postDelayed(() -> openLinkedInParticipant(id, participant), 2700);
       } else openLinkedInParticipant(id, participant);
+    } else if ("post_comments".equals(op) && job.optBoolean("readReactions", false)) {
+      String current=linkedinWeb.getUrl();
+      if(current==null || !current.startsWith("https://www.linkedin.com/")) { finishLinkedInJob(id,null,"Open the desired LinkedIn post first"); return; }
+      linkedinWeb.evaluateJavascript("(function(){const vis=e=>!!e.getClientRects().length;const controls=[...document.querySelectorAll('button,a,[role=button]')].filter(vis);const candidates=controls.filter(e=>{const m=[e.innerText,e.getAttribute('aria-label'),e.getAttribute('title'),e.className].join(' ');return /\\d/.test(m)&&/reaction|réaction|social-details.*count/i.test(m)&&!/comment|reply|répondre/i.test(m)&&!e.closest('nav,header');});if(candidates.length!==1)return JSON.stringify({clicked:false,candidates:candidates.length});candidates[0].click();return JSON.stringify({clicked:true});})()", raw -> {
+        try {
+          JSONObject r=new JSONObject(new JSONArray("["+raw+"]").getString(0));
+          if(!r.optBoolean("clicked")) { finishLinkedInJob(id,r,"Reaction count control missing or ambiguous"); return; }
+          ui.postDelayed(() -> extractLinkedInReactions(id,0,Math.min(100,Math.max(1,job.optInt("limit",50))),new java.util.LinkedHashMap<>()),2000);
+        } catch(Exception e){finishLinkedInJob(id,null,e.getMessage());}
+      });
     } else if ("post_comments".equals(op) || "comment_post".equals(op) || "reply_comment".equals(op)) {
       if ("post_comments".equals(op)) linkedinCommentSeen.clear();
+      if ("post_comments".equals(op) && job.optBoolean("currentPost", false)) {
+        String current = linkedinWeb.getUrl();
+        if (current == null || !current.startsWith("https://www.linkedin.com/")) { finishLinkedInJob(id,null,"Open the LinkedIn post first"); return; }
+        runLinkedInCommentJob(id,op,job,0); return;
+      }
       String postUrl = job.optString("postUrl", "").trim();
       if (!postUrl.matches("https://(?:www\\.|[a-z]{2,3}\\.)?linkedin\\.com/(?:feed/update/urn:li:(?:activity|share|ugcPost):[0-9]+|posts/[A-Za-z0-9_%.-]+)/?(?:\\?[^#]*)?")) { finishLinkedInJob(id, null, "Invalid LinkedIn post URL"); return; }
       String action=op;
@@ -1243,7 +1258,7 @@ public class MainActivity extends Activity {
             }
             return;
           }
-          String openComments = "(function(){const vis=e=>!!e.getClientRects().length;const text=e=>((e.innerText||'')+' '+(e.getAttribute('aria-label')||'')).trim();const buttons=[...document.querySelectorAll('button,[role=button],a')].filter(vis);const count=buttons.find(e=>/^\\d+\\s*(commentaires?|comments?)\\b/i.test(text(e)));const button=buttons.find(e=>/^(commenter|comment|commentaires|comments)(\\s|$)/i.test(text(e)));const existing=document.querySelector('[class*=\"comments-comment-item__main-content\"],[class*=\"comment__main-content\"],[data-testid*=\"comment-text\"]');if(existing&&vis(existing))return 'already_open';const target=count||button;if(!target)return 'missing';target.scrollIntoView({block:'center'});target.click();return 'clicked';})()";
+          String openComments = "(function(){const vis=e=>!!e.getClientRects().length;const existing=document.querySelector('[class*=\"comments-comment-item__main-content\"],[class*=\"comment__main-content\"],[data-testid*=\"comment-text\"]');if(existing&&vis(existing))return 'already_open';const controls=[...document.querySelectorAll('button,[role=button],a,[tabindex=\"0\"]')].filter(vis);const meta=e=>[e.innerText,e.getAttribute('aria-label'),e.getAttribute('title'),e.getAttribute('data-testid'),e.getAttribute('data-view-name'),e.className,...[...e.querySelectorAll('svg,use,[aria-label],title')].map(x=>[x.getAttribute('aria-label'),x.getAttribute('data-test-icon'),x.getAttribute('href'),x.getAttribute('xlink:href'),x.getAttribute('class'),x.textContent].join(' '))].join(' ');const matches=controls.filter(e=>{const m=meta(e);return /comment|commentaire|speech.bubble|chat.bubble/i.test(m)&&!/reply|répondre|load.more|show.more|share|repost/i.test(m)&&!e.closest('header,nav,[class*=\"comments-comment-item\"]')&&((e.innerText||'').trim().length<80);});const ranked=matches.map(e=>({e,score:(/^\\s*\\d+\\s*$/.test(e.innerText||'')?5:0)+(/comment|commentaire/i.test(e.getAttribute('aria-label')||'')?4:0)+(/comment/i.test(meta(e))?2:0)})).sort((a,b)=>b.score-a.score);const target=ranked[0]?.e;if(!target)return 'missing';target.scrollIntoView({block:'center'});target.click();return 'clicked';})()";
           linkedinWeb.evaluateJavascript(openComments, opened -> ui.postDelayed(() -> extractRenderedLinkedInComments(id, action, job, attempt), 1800));
         } catch (Exception e) { finishLinkedInJob(id, null, "LinkedIn page readiness check failed: " + e.getMessage()); }
       });
@@ -1311,6 +1326,19 @@ public class MainActivity extends Activity {
    * Reads feed posts. LinkedIn renders the feed late and in several layouts (desktop, mobile web), so
    * this tries several post containers, scrolls to load more and looks again for about 15 s.
    */
+  private void extractLinkedInReactions(String id,int attempt,int limit,java.util.LinkedHashMap<String,JSONObject> found) {
+    linkedinWeb.evaluateJavascript("(function(){const dialog=document.querySelector('[role=dialog],[aria-modal=true]');if(!dialog)return JSON.stringify({people:[],dialogFound:false});const people=[],seen=new Set();const classify=s=>{s=s.toLowerCase();for(const [k,r] of [['celebrate',/celebrate|bravo/],['support',/support|soutien/],['love',/love|adore/],['insightful',/insightful|instructif/],['funny',/funny|drôle/],['like',/\\blike\\b|j’aime|j'aime/]])if(r.test(s))return k;return null;};for(const a of dialog.querySelectorAll('a[href*=\"/in/\"]')){const url=a.href.split('?')[0];const name=(a.innerText||'').trim().split('\\n')[0];if(!name||seen.has(url))continue;const row=a.closest('li,[role=listitem],[class*=\"reaction-list-item\"]')||a.parentElement;const meta=[...row.querySelectorAll('img,svg,[aria-label],[title]')].map(e=>[e.getAttribute('alt'),e.getAttribute('aria-label'),e.getAttribute('title'),e.getAttribute('data-test-icon')].join(' ')).join(' ');seen.add(url);people.push({name,profileUrl:url,reaction:classify(meta)});}const tabs=[...dialog.querySelectorAll('[role=tab],button')].map(e=>({label:(e.innerText||e.getAttribute('aria-label')||'').trim()})).filter(x=>/\\d/.test(x.label));const list=dialog.querySelector('[class*=\"scroll\"],[role=list]')||dialog;list.scrollTop=list.scrollHeight;return JSON.stringify({people,tabs,dialogFound:true});})()",raw -> {
+      try {
+        JSONObject r=new JSONObject(new JSONArray("["+raw+"]").getString(0));
+        JSONArray a=r.optJSONArray("people");
+        for(int i=0;a!=null&&i<a.length()&&found.size()<limit;i++){JSONObject p=a.getJSONObject(i);found.putIfAbsent(p.optString("profileUrl"),p);}
+        if(attempt<5&&found.size()<limit){ui.postDelayed(() -> extractLinkedInReactions(id,attempt+1,limit,found),1500);return;}
+        r.put("people",new JSONArray(found.values()));r.put("retrieved",found.size());r.put("partial",true);
+        finishLinkedInJob(id,r,r.optBoolean("dialogFound")?null:"Reaction dialog not found");
+      }catch(Exception e){finishLinkedInJob(id,null,e.getMessage());}
+    });
+  }
+
   private void extractLinkedInPostSearch(String id, String author, int limit, int attempt, java.util.LinkedHashMap<String, JSONObject> found) {
     if (!linkedinMcpEnabled || linkedinWeb == null) { finishLinkedInJob(id, null, "LinkedIn navigation disabled"); return; }
     dismissLinkedInAppPrompt();
