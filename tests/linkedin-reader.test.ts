@@ -246,6 +246,19 @@ test('fixture: full extraction on a post page returns comments, reactions and th
   noForbiddenClicks(w);
 });
 
+test('fixture: comment list nested far away from the post card on a post page is still read', async ()=>{
+  const deep=(html:string,n:number)=>'<div>'.repeat(n)+html+'</div>'.repeat(n);
+  const post='<div class="card">'+deep('<a href="https://www.linkedin.com/in/alice-martin-123/">Alice Martin</a><div>Dev</div><div>1 j</div>',3)+deep('<p>Les graphismes temps réel, parlons-en deux minutes avec ray tracing.</p>',2)+deep('<button aria-label="14 réactions">14</button><button aria-label="2 commentaires sur le post de Alice Martin">2 commentaires</button>',2)+deep('<button>J’aime</button><button>Commenter</button><button>Republier</button><button>Envoyer</button>',2)+'</div>';
+  const cm=(slug:string,name:string,text:string)=>'<article><div><a href="https://www.linkedin.com/in/'+slug+'/"><img src="https://media.licdn.com/dms/image/v2/'+slug+'/profile-displayphoto/0.jpg" alt="'+name+'"></a><a href="https://www.linkedin.com/in/'+slug+'/">'+name+'</a><div>3e et +</div><div>Métier</div><div>2 h</div></div><p>'+text+'</p><div><button>J’aime</button><button>Répondre</button><button aria-label="Plus d’options" onclick="window.__overflowClicked=true">⋯</button></div></article>';
+  const html='<html><body><main>'+deep(deep(post,6)+deep('<section>'+cm('tom-ricard','Tom Ricard','Très clair.')+cm('sara-benali','Sara Benali','Merci !')+'</section>',9),3)+'</main></body></html>';
+  const {w,li}=page('','https://www.linkedin.com/feed/update/urn:li:activity:7530000000000000001/',{html});
+  const r=await li.readComments({postUrl:'https://www.linkedin.com/feed/update/urn:li:activity:7530000000000000001/'});
+  assert.equal(r.status,'ok',JSON.stringify(r.diagnostics));
+  assert.deepEqual(plain(r.comments.map((c:Li)=>[c.author,c.authorHeadline,c.text])),[['Tom Ricard','Métier','Très clair.'],['Sara Benali','Métier','Merci !']]);
+  assert.equal(r.complete,true);
+  noForbiddenClicks(w);
+});
+
 // ------------------------------------------------------------------ people search (Java string, unchanged code path)
 test('fixture: profile search script shipped in MainActivity reads people cards', ()=>{
   const java=readFileSync(new URL('../android-kamiko/app/src/main/java/com/cammicgo/kamikoseo/MainActivity.java',import.meta.url),'utf8');

@@ -186,7 +186,7 @@
     var m = String(href || '').match(/^(?:https?:\/\/(?:[a-z]{2,3}\.|www\.)?linkedin\.com)?\/(in|company|school|showcase)\/([^/?#]+)/i);
     return m ? 'https://www.linkedin.com/' + m[1].toLowerCase() + '/' + m[2] + '/' : '';
   }
-  var BADGE_RX = /^(auteur|author|autor|autore|verfasser|•|·|\W?\s*(1er|2e|3e|1st|2nd|3rd|3e\+|3rd\+|\d(er|e|nd|rd|th)\+?)|premium|verified|v[eé]rifi[eé]e?|follow(ing)?|suivi|abonn[eé]e?|relation de (1er|2e|3e) niveau|(1st|2nd|3rd)[- ]degree connection|out of network|hors r[eé]seau|she\/her|he\/him|elle|il|they\/them|creator|cr[eé]ateur|top voice|statut vérifié|has a verified status|a un statut v[eé]rifi[eé]|view my (newsletter|services)|open to work)$/i;
+  var BADGE_RX = /^(auteur|author|autor|autore|verfasser|•|·|\W?\s*(1er|2e|3e|1st|2nd|3rd|3e\+|3rd\+|\d(er|e|nd|rd|th)\+?)|premium|verified|v[eé]rifi[eé]e?|follow(ing)?|suivi|abonn[eé]e?|relation de (1er|2e|3e) niveau|(1st|2nd|3rd)[- ]degree connection|(1er|2e|3e) et \+|3rd\+|out of network|hors r[eé]seau|she\/her|he\/him|elle|il|they\/them|creator|cr[eé]ateur|top voice|statut vérifié|has a verified status|a un statut v[eé]rifi[eé]|view my (newsletter|services)|open to work)$/i;
   var TIME_RX = /^(\d+\s*(s|sec|secs|min|mins|mn|h|hr|hrs|hour|hours|heure|heures|j|d|day|days|jour|jours|sem|w|wk|wks|week|weeks|semaine|semaines|mo|mos|month|months|mois|an|ans|y|yr|yrs|year|years|année|années))(\s*[•·].*)?$|^(now|maintenant|à l.instant|just now)$/i;
   var ACTION_LINE_RX = /^(like|j.aime|reply|r[eé]pondre|comment|commenter|repost|republier|send|envoyer|share|partager|see more|voir plus|…\s*(plus|more)|load more.*|afficher.*|voir.*|show.*|view.*|translate.*|traduire.*|voir la traduction|see translation|\d+\s*(reactions?|r[eé]actions?|replies|r[eé]ponses?|comments?|commentaires?)|\|)$/i;
   function cleanName(s) {
@@ -736,9 +736,9 @@
   function widenForComments(scope) {
     if (commentBlocks(scope).length) return scope;
     var all = findPosts().posts;
-    for (var p = scope.parentElement, d = 0; p && p !== document.documentElement && d < 8; p = p.parentElement, d++) {
+    // Climb as high as needed (LinkedIn nests the comment list far from the post card), never over a second post.
+    for (var p = scope.parentElement; p && p !== document.documentElement; p = p.parentElement) {
       if (all.filter(function (x) { return p.contains(x.el); }).length > 1) break;
-      if (isChrome(p)) break;
       if (commentBlocks(p).length) return p;
     }
     return scope;
@@ -791,7 +791,7 @@
       expandClicks: exp.clicks,
       note: expected != null && comments.length < expected ? 'LinkedIn shows ' + expected + ' comments but only ' + comments.length + ' could be loaded (hidden, deleted or still collapsed).' : (expected == null ? 'LinkedIn shows no comment counter here: completeness cannot be checked.' : 'All comments shown by LinkedIn were read.'),
     };
-    if (res.status !== 'ok' || o.diagnose) res.diagnostics = { page: pageState(), dom: domShape({ commentBlocks: commentBlocks(scope).length, replyControls: replyButtons(scope).length }) };
+    if (res.status !== 'ok' || o.diagnose) res.diagnostics = { page: pageState(), dom: domShape({ commentBlocks: commentBlocks(scope).length, replyControls: replyButtons(scope).length, documentCommentBlocks: commentBlocks(document).length, replySamples: replyButtons(document).slice(0, 3).map(function (r) { var path = []; for (var q = r; q && q !== document.body && path.length < 14; q = q.parentElement) path.push(q.tagName.toLowerCase() + (attr(q, 'role') ? '[' + attr(q, 'role') + ']' : '') + (q === scope ? '*' : '')); return { label: (label(r) || ownText(r)).slice(0, 40), inScope: scope.contains(r), path: path.join('<') }; }) }) };
     else res.diagnostics = { clicks: clickLog.slice(-20) };
     return res;
   }
