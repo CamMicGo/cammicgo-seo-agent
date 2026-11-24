@@ -1,5 +1,6 @@
+import {randomUUID} from 'node:crypto';
 import {sb} from '@/lib/device-relay';
-import {addReport,decorateReactions,preferHostedPhotos} from '@/lib/linkedin-reactions';
+import {addReport,decorateReactions,preferHostedPhotos,reportPayload} from '@/lib/linkedin-reactions';
 export type LinkedInOperation='inbox'|'open'|'thread'|'back'|'feed'|'search'|'send'|'company_search'|'network_suggestions'|'invite'|'attach'|'job_search'|'job_details'|'recommended_jobs'|'company_profile'|'company_posts'|'person_profile'|'post_comments'|'comment_post'|'reply_comment';
 export async function enqueueLinkedIn(userId:string,operation:LinkedInOperation,payload:Record<string,string>={}){
  const rows=await sb<Array<{id:string}>>('/rest/v1/cmg_linkedin_jobs',{method:'POST',body:JSON.stringify({user_id:userId,operation,payload}),prefer:'return=representation'});
@@ -22,6 +23,30 @@ const THUMB_PREFIX='data:image/jpeg;base64,';
  * stored for 24 hours under an unguessable id and replaced by a link to /api/linkedin/thumb/<id>.jpg;
  * LinkedIn's own link stays as linkedinImageUrl. Older thumbnails are deleted at every call.
  */
+const REPORT_BUCKET='cmg-notebook-artifacts';
+/**
+ * Stores the visual report for 24 hours in the private bucket (service role only) and adds its private
+ * link: chat apps like ChatGPT do not show external images inline. Older reports of the user are deleted.
+ */
+async function saveReport(userId:string,root:Record<string,unknown>,base:string){
+ const report=reportPayload(root,base);
+ if(!report||!/^[0-9a-f-]{36}$/i.test(userId))return;
+ try{
+  const old=await sb<Array<{name:string;created_at?:string}>>('/storage/v1/object/list/'+REPORT_BUCKET,{method:'POST',body:JSON.stringify({prefix:userId+'/reports',limit:200})}).catch(()=>[]);
+  const stale=(old||[]).filter(o=>o.created_at&&Date.now()-Date.parse(o.created_at)>THUMB_TTL_MS).map(o=>userId+'/reports/'+o.name);
+  if(stale.length)await sb('/storage/v1/object/'+REPORT_BUCKET,{method:'DELETE',body:JSON.stringify({prefixes:stale})}).catch(()=>{});
+  const id=randomUUID();
+  await sb('/storage/v1/object/'+REPORT_BUCKET+'/'+userId+'/reports/'+id+'.json',{method:'POST',body:JSON.stringify(report)});
+  root.reportUrl=base+'/api/linkedin/report/'+userId+'.'+id;
+ }catch{/* the Markdown report stays available */}
+}
+/** A stored report, or null when missing or older than 24 hours. */
+export async function loadReport(userId:string,id:string):Promise<Record<string,unknown>|null>{
+ if(!/^[0-9a-f-]{36}$/i.test(userId)||!/^[0-9a-f-]{36}$/i.test(id))return null;
+ const r=await sb<Record<string,unknown>>('/storage/v1/object/'+REPORT_BUCKET+'/'+userId+'/reports/'+id+'.json').catch(()=>null);
+ if(!r||typeof r.createdAt!=='string'||Date.now()-Date.parse(r.createdAt)>THUMB_TTL_MS)return null;
+ return r;
+}
 export async function hostThumbnails(userId:string,data:unknown,base=process.env.APP_BASE_URL||'https://seo.cammicgo.com'){
  await sb('/rest/v1/cmg_linkedin_thumbs?created_at=lt.'+encodeURIComponent(new Date(Date.now()-THUMB_TTL_MS).toISOString()),{method:'DELETE'}).catch(()=>{});
  if(!data||typeof data!=='object')return data;
@@ -32,7 +57,7 @@ export async function hostThumbnails(userId:string,data:unknown,base=process.env
  const walk=(node:unknown,depth:number)=>{if(depth>5||!node||typeof node!=='object')return;if(Array.isArray(node)){for(const c of node)walk(c,depth+1);return;}const o=node as Record<string,unknown>;cards.push(o);for(const key of ['profiles','people','companies','jobs','posts','comments','reactions','post','candidates'])walk(o[key],depth+1);};
  walk(root,0);
  const withThumb=cards.filter(c=>typeof c.imageDataUrl==='string'&&(c.imageDataUrl as string).startsWith(THUMB_PREFIX)&&(c.imageDataUrl as string).length<=16000+THUMB_PREFIX.length).slice(0,150);
- if(!withThumb.length){for(const c of cards)delete c.imageDataUrl;preferHostedPhotos(root,base);addReport(root,base);return data;}
+ if(!withThumb.length){for(const c of cards)delete c.imageDataUrl;preferHostedPhotos(root,base);addReport(root,base);await saveReport(userId,root,base);return data;}
  try{
   const rows=await sb<Array<{id:string}>>('/rest/v1/cmg_linkedin_thumbs',{method:'POST',body:JSON.stringify(withThumb.map(c=>({user_id:userId,jpeg_b64:(c.imageDataUrl as string).slice(THUMB_PREFIX.length)}))),prefer:'return=representation'});
   withThumb.forEach((c,i)=>{if(!rows[i])return;if(typeof c.imageUrl==='string')c.linkedinImageUrl=c.imageUrl;c.imageUrl=base+'/api/linkedin/thumb/'+rows[i].id+'.jpg';delete c.imageDataUrl;});
@@ -40,6 +65,7 @@ export async function hostThumbnails(userId:string,data:unknown,base=process.env
  for(const c of cards)delete c.imageDataUrl;
  preferHostedPhotos(root,base);
  addReport(root,base);
+ await saveReport(userId,root,base);
  return data;
 }
 /** Jobs the phone never picked up before their deadline become explicit errors (never run later). */

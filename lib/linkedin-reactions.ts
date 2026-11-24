@@ -92,3 +92,60 @@ export function addReport(data:unknown,base=process.env.APP_BASE_URL||'https://s
  if(md&&(comments||reactions))root.reportMarkdown=md;
  return data;
 }
+
+/** What a visual report keeps: post, comments and reacting people, with displayable (hosted) pictures only. */
+export function reportPayload(data:unknown,base=process.env.APP_BASE_URL||'https://seo.cammicgo.com'):Obj|null{
+ if(!data||typeof data!=='object'||Array.isArray(data))return null;
+ const root=data as Obj;
+ const reactions=root.reactions&&typeof root.reactions==='object'?root.reactions as Obj:(Array.isArray(root.people)&&root.byType?root:null);
+ const comments=root.comments&&typeof root.comments==='object'&&!Array.isArray(root.comments)?root.comments as Obj:(Array.isArray(root.comments)?root:null);
+ if(!reactions&&!comments)return null;
+ const pic=(u:unknown)=>str(u).startsWith(base+'/')?str(u):'';
+ const post=(root.post&&typeof root.post==='object'?root.post:comments&&comments.post) as Obj|undefined;
+ return {
+  createdAt:new Date().toISOString(),
+  post:post?{author:str(post.author),authorProfileUrl:str(post.authorProfileUrl),photo:pic(post.authorPhotoUrl),headline:str(post.authorHeadline),time:str(post.time),text:str(post.text).slice(0,3000),url:str(root.postUrl)||str(post.postUrl),reactionCount:post.reactionCount??null,commentCount:post.commentCount??null}:null,
+  comments:comments?{displayed:comments.displayedCount??null,complete:comments.complete??null,items:(Array.isArray(comments.comments)?comments.comments as Obj[]:[]).slice(0,300).map(c=>({author:str(c.author),url:str(c.authorProfileUrl),photo:pic(c.authorPhotoUrl),headline:str(c.authorHeadline),time:str(c.time),text:str(c.text).slice(0,3000),isReply:c.isReply===true,isPostAuthor:c.isPostAuthor===true,parentAuthor:str(c.parentAuthor),reactions:typeof c.reactionCount==='number'?c.reactionCount:null}))}:null,
+  reactions:reactions?{expected:reactions.expectedTotal??null,complete:reactions.complete??null,missing:Array.isArray(reactions.missing)?reactions.missing:[],people:(Array.isArray(reactions.people)?reactions.people as Obj[]:[]).slice(0,600).map(p=>({name:str(p.name),url:str(p.profileUrl),photo:pic(p.photoUrl),headline:str(p.headline),reaction:str(p.reaction)}))}:null,
+ };
+}
+
+const h=(s:unknown)=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
+const safeUrl=(u:string)=>/^https:\/\/([a-z0-9-]+\.)*(linkedin\.com|cammicgo\.com)\//i.test(u)?u:'';
+/** Self-contained HTML page of a report (no script, escaped content, links only to LinkedIn and CamMicGo). */
+export function reportHtml(r:Obj,base=process.env.APP_BASE_URL||'https://seo.cammicgo.com'){
+ const avatar=(name:string,photo:string,url:string)=>{const img=photo?`<img class="av" src="${h(photo)}" alt="${h(name)}">`:`<span class="av ph">${h((name.trim()[0]||'?').toUpperCase())}</span>`;return safeUrl(url)?`<a href="${h(url)}" target="_blank" rel="noopener">${img}</a>`:img;};
+ const nameLink=(name:string,url:string)=>safeUrl(url)?`<a class="nm" href="${h(url)}" target="_blank" rel="noopener">${h(name||'Membre LinkedIn')}</a>`:`<span class="nm">${h(name||'Membre LinkedIn')}</span>`;
+ const post=r.post as Obj|null, comments=r.comments as Obj|null, reactions=r.reactions as Obj|null;
+ const parts:string[]=[];
+ if(post){
+  parts.push(`<section class="card"><div class="row">${avatar(str(post.author),str(post.photo),str(post.authorProfileUrl))}<div>${nameLink(str(post.author),str(post.authorProfileUrl))}<div class="sub">${h([post.headline,post.time].filter(Boolean).join(' · '))}</div></div></div><p class="txt">${h(post.text)}</p>${safeUrl(str(post.url))?`<a class="btn" href="${h(post.url)}" target="_blank" rel="noopener">Ouvrir la publication sur LinkedIn</a>`:''}</section>`);
+ }
+ if(comments){
+  const items=Array.isArray(comments.items)?comments.items as Obj[]:[];
+  parts.push(`<h2>Commentaires — ${items.length}${comments.displayed!=null?` / ${h(comments.displayed)}`:''} ${comments.complete===true?'<span class="ok">complet</span>':comments.complete===false?'<span class="ko">incomplet</span>':''}</h2><section class="card">`+items.map(c=>`<div class="cm${c.isReply?' reply':''}"><div class="row">${avatar(str(c.author),str(c.photo),str(c.url))}<div>${nameLink(str(c.author),str(c.url))}${c.isPostAuthor?' <span class="badge">Auteur</span>':''}<div class="sub">${h([c.headline,c.time,c.isReply&&c.parentAuthor?'en réponse à '+c.parentAuthor:'',typeof c.reactions==='number'?c.reactions+' réaction(s)':''].filter(Boolean).join(' · '))}</div></div></div><p class="txt">${h(c.text)}</p></div>`).join('')+'</section>');
+ }
+ if(reactions){
+  const people=Array.isArray(reactions.people)?reactions.people as Obj[]:[];
+  const groups=new Map<string,Obj[]>();
+  for(const p of people){const t=str(p.reaction)||'unknown';if(!groups.has(t))groups.set(t,[]);groups.get(t)!.push(p);}
+  const types=[...groups.keys()].sort((a,b)=>(ORDER.indexOf(a)+1||99)-(ORDER.indexOf(b)+1||99));
+  parts.push(`<h2>Réactions — ${people.length}${reactions.expected!=null?` / ${h(reactions.expected)}`:''} ${reactions.complete===true?'<span class="ok">complet</span>':reactions.complete===false?'<span class="ko">incomplet</span>':''}</h2><div class="sum">`+types.map(t=>`<span class="pill">${ORDER.includes(t)?`<img class="ri" src="${base}/linkedin/reactions/${t}.png" alt="">`:''}${h(REACTION_LABELS[t]||'Non identifié')} <b>${groups.get(t)!.length}</b></span>`).join('')+'</div>');
+  for(const t of types)parts.push(`<section class="card"><h3>${ORDER.includes(t)?`<img class="ri" src="${base}/linkedin/reactions/${t}.png" alt="">`:''}${h(REACTION_LABELS[t]||'Non identifié')} — ${groups.get(t)!.length}</h3>`+groups.get(t)!.map(p=>`<div class="row person">${avatar(str(p.name),str(p.photo),str(p.url))}<div class="grow">${nameLink(str(p.name),str(p.url))}<div class="sub">${h(p.headline)}</div></div>${ORDER.includes(t)?`<img class="ri" src="${base}/linkedin/reactions/${t}.png" alt="${h(REACTION_LABELS[t])}" title="${h(REACTION_LABELS[t])}">`:''}</div>`).join('')+'</section>');
+ }
+ return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Rapport LinkedIn — CamMicGo</title><style>
+:root{--bg:#f3f6fb;--card:#fff;--ink:#14213d;--muted:#5b6b86;--line:#e3e9f3;--blue:#0a66c2}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1522;--card:#182033;--ink:#e8eefb;--muted:#9aa8c3;--line:#26324a;--blue:#70b5f9}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+main{max-width:760px;margin:0 auto;padding:16px}h1{font-size:20px;margin:8px 0 4px}h2{font-size:17px;margin:22px 0 8px}h3{font-size:15px;margin:0 0 8px;display:flex;align-items:center;gap:8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin:10px 0}
+.row{display:flex;align-items:center;gap:12px}.person{padding:8px 0;border-top:1px solid var(--line)}.person:first-of-type{border-top:0}.grow{flex:1;min-width:0}
+.av{width:44px;height:44px;border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;background:#c9d6ea;color:#14213d;font-weight:700}
+.nm{font-weight:700;color:var(--ink);text-decoration:none}a.nm:hover{color:var(--blue);text-decoration:underline}.sub{color:var(--muted);font-size:13px;overflow-wrap:anywhere}
+.txt{white-space:pre-wrap;margin:8px 0 0;overflow-wrap:anywhere}.cm{padding:10px 0;border-top:1px solid var(--line)}.cm:first-child{border-top:0}.cm.reply{margin-left:40px}
+.ri{width:24px;height:24px;flex:none}.badge{background:#e8f0fb;color:#0a66c2;border-radius:6px;padding:1px 6px;font-size:12px;font-weight:700}
+.sum{display:flex;flex-wrap:wrap;gap:8px}.pill{display:inline-flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:4px 10px}
+.ok{color:#15803d;font-size:13px}.ko{color:#b91c1c;font-size:13px}.btn{display:inline-block;margin-top:10px;background:var(--blue);color:#fff;border-radius:10px;padding:8px 12px;text-decoration:none;font-weight:600}
+footer{color:var(--muted);font-size:12px;margin:24px 0}
+</style></head><body><main><h1>Rapport LinkedIn</h1><div class="sub">Lu en lecture seule par l’application CamMicGo · ${h(new Date(str(r.createdAt)||Date.now()).toLocaleString('fr-FR',{timeZone:'Europe/Paris'}))}</div>${parts.join('')}<footer>Lien privé, non indexé, supprimé automatiquement 24 h après sa création. Données lues depuis la session LinkedIn de l’utilisateur, sans aucune action sur LinkedIn.</footer></main></body></html>`;
+}
