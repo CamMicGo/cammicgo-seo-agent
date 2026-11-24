@@ -50,12 +50,13 @@ test('report page: blue header with title and post id, PDF button with nonce, se
   const B='https://seo.cammicgo.com';
   const payload=reportPayload({postUrl:'https://www.linkedin.com/feed/update/urn:li:activity:7530372844606803968/',post:{author:'Alice',text:'x'},
     reactions:{byType:{like:1},people:[{name:'Eve',profileUrl:'https://www.linkedin.com/in/eve/',photoUrl:B+'/api/linkedin/thumb/11111111-1111-1111-1111-111111111111.jpg',reaction:'like'}]}},B)!;
-  const page=reportHtml(payload,B,{nonce:'abc',downloadUrl:'/api/linkedin/report/x?download=html'});
+  const page=reportHtml(payload,B,{logo:'data:image/png;base64,LOGO',nonce:'abc',downloadUrl:'/api/linkedin/report/x?download=html'});
   assert.match(page,/<h1>Rapport de post LinkedIn<\/h1>/);
   assert.match(page,/Identifiant du post : urn:li:activity:7530372844606803968/);
   assert.match(page,/<script nonce="abc">/);
   assert.match(page,/Exporter en HTML/);
   assert.match(page,/Supprimer maintenant/);
+  assert.match(page,/<img class="logo" src="data:image\/png;base64,LOGO" alt="LinkedIn">/);
   assert.match(page,/Aucun historique/);
   const file=reportHtml(payload,B,{images:{[B+'/api/linkedin/thumb/11111111-1111-1111-1111-111111111111.jpg']:'data:image/jpeg;base64,AAA'},reactionImg:()=>'data:image/png;base64,BBB'});
   assert.ok(!file.includes('<script'),'export has no script');
