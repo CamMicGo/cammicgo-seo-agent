@@ -1,0 +1,258 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- jsdom windows and the injected reader are untyped */
+/**
+ * FIXTURE tests of the LinkedIn reader shipped in the Android app
+ * (android-kamiko/app/src/main/assets/linkedin/cmg-li.js). They run the exact shipped script on saved,
+ * fictional LinkedIn-like pages in jsdom. They are NOT live tests: they prove the logic on known layouts,
+ * not that LinkedIn currently serves these layouts. Live checks are in tests/live/linkedin-live.md.
+ */
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {JSDOM} from 'jsdom';
+
+const plain=(v:unknown)=>JSON.parse(JSON.stringify(v));
+const LIB=readFileSync(new URL('../android-kamiko/app/src/main/assets/linkedin/cmg-li.js',import.meta.url),'utf8');
+const fixture=(name:string)=>readFileSync(new URL('./fixtures/linkedin/'+name,import.meta.url),'utf8');
+const BLOCK=/^(DIV|P|LI|UL|OL|H[1-6]|SECTION|ARTICLE|HEADER|FOOTER|MAIN|NAV|ASIDE|TABLE|TR|FORM|BLOCKQUOTE)$/;
+
+type Li={[k:string]:any};
+function page(name:string,url:string,opts:{html?:string;before?:(w:any)=>void}={}){
+  const dom=new JSDOM(opts.html??fixture(name),{url,runScripts:'dangerously',pretendToBeVisual:true,beforeParse(w:any){
+    w.__cmgLiNoLayout=true;w.__cmgLiDelayScale=0.02;
+    // jsdom has no layout, so no innerText: approximate it (block elements start new lines, hidden ones are skipped).
+    const it=(n:any):string=>{if(n.nodeType===3)return n.data;if(n.nodeType!==1)return '';if(n.hidden||/display:\s*none/.test(n.getAttribute('style')||''))return '';if(/^(SCRIPT|STYLE|TEMPLATE)$/.test(n.tagName))return '';if(n.tagName==='BR')return '\n';const s=[...n.childNodes].map(it).join('');return BLOCK.test(n.tagName)?'\n'+s+'\n':s;};
+    Object.defineProperty(w.HTMLElement.prototype,'innerText',{get(){return it(this).replace(/[ \t]+/g,' ').replace(/ *\n */g,'\n').replace(/\n+/g,'\n').trim();}});
+    opts.before?.(w);
+  }});
+  const w=dom.window as any;
+  w.eval(LIB);
+  return {w,li:w.__cmgLi as Li};
+}
+const noForbiddenClicks=(w:any)=>{
+  assert.equal(w.__overflowClicked,undefined,'an overflow (three dots) menu was clicked');
+  assert.equal(w.__likeClicked,undefined,'a reaction button was clicked');
+};
+
+// ------------------------------------------------------------------ click safety (unit)
+test('unit: overflow menus are recognised in several languages and layouts', ()=>{
+  const {w,li}=page('search-no-results.html','https://www.linkedin.com/search/results/content/?keywords=x');
+  const make=(html:string)=>{const d=w.document.createElement('div');d.innerHTML=html;w.document.body.appendChild(d);return d.firstElementChild;};
+  for(const html of [
+    '<button>More options for comment</button>',
+    '<button aria-label="See more options for comment by Tom Ricard">x</button>',
+    '<button aria-label="Plus d’options pour le commentaire de Sara">⋯</button>',
+    '<button aria-label="Ouvrir le menu de commandes pour la publication">x</button>',
+    '<button aria-haspopup="true">Voir</button>',
+    '<button><svg data-test-icon="overflow-web-ios-small"></svg></button>',
+    '<button>…</button>',
+    '<button class="comment-options-trigger">x</button>',
+  ])assert.equal(li._test.isOverflow(make(html)),true,html);
+  for(const html of ['<button>Load more comments</button>','<button>Voir 2 réponses</button>','<button>Afficher plus de commentaires</button>','<button aria-label="14 réactions">14</button>','<button aria-label="Commenter">Commenter</button>'])
+    assert.equal(li._test.isOverflow(make(html)),false,html);
+  assert.equal(li._test.refusal(make('<button aria-label="Réagir avec J’aime" aria-pressed="false">J’aime</button>'),'open_reactions'),'reaction_toggle');
+  assert.equal(li._test.refusal(make('<button>Supprimer</button>'),'expand_comments'),'unsafe_action');
+});
+
+test('unit: reaction types from labels, SVG traits and LinkedIn internal names (6 types, FR/EN)', ()=>{
+  const {li}=page('search-no-results.html','https://www.linkedin.com/feed/');
+  const c=li._test.classifyReaction;
+  for(const [s,t] of [['Like','like'],['J’aime','like'],['Celebrate','celebrate'],['Bravo','celebrate'],['praise-consumption-small','celebrate'],['Support','support'],['Soutien','support'],['appreciation-consumption-small','support'],['Love','love'],['J’adore','love'],['empathy-consumption-small','love'],['Insightful','insightful'],['Instructif','insightful'],['interest-consumption-small','insightful'],['Funny','funny'],['Drôle','funny'],['entertainment-consumption-small','funny']])
+    assert.equal(c(s),t,s);
+  assert.equal(li._test.reactionTotal({getAttribute:(n:string)=>n==='aria-label'?'Tom Ricard et 13 autres personnes':'',innerText:''}),14);
+  assert.equal(li._test.parseCount('1 234 réactions'),1234);
+  assert.equal(li._test.parseCount('1,2 k'),1200);
+  assert.equal(li._test.urnFromString('https://www.linkedin.com/posts/carla-dupont_design-activity-7311111111111111111-AbCd'),'urn:li:activity:7311111111111111111');
+});
+
+// ------------------------------------------------------------------ search
+test('fixture: post search on the new layout finds posts without data-urn, filters by author, ranks keywords', async ()=>{
+  const {w,li}=page('search-sdui-fr.html','https://www.linkedin.com/search/results/content/?keywords=graphismes');
+  const r=await li.searchPosts({keywords:'graphismes ray tracing PBR 4K',author:'Alice Martin',limit:10,scrolls:0});
+  assert.equal(r.status,'ok',JSON.stringify(r.diagnostics));
+  assert.equal(r.unfiltered,3,'three posts on the page');
+  assert.equal(r.posts.length,2,'two posts by the author');
+  const top=r.posts[0];
+  assert.equal(top.author,'Alice Martin');
+  assert.equal(top.authorProfileUrl,'https://www.linkedin.com/in/alice-martin-123/');
+  assert.match(top.authorPhotoUrl,/profile-displayphoto/);
+  assert.equal(top.authorHeadline,'Développeuse moteur 3D chez Studio Nord');
+  assert.match(top.text,/ray tracing, rendu PBR/);
+  assert.equal(top.imageCount,4);
+  assert.equal(top.reactionCount,14);
+  assert.equal(top.commentCount,3);
+  assert.ok(top.match.score>r.posts[1].match.score);
+  assert.equal(top.postUrl,'','no permalink exists in this layout: not invented');
+  noForbiddenClicks(w);
+});
+
+test('fixture: post URN read from any attribute (componentkey)', async ()=>{
+  const {li}=page('search-sdui-fr.html','https://www.linkedin.com/search/results/content/?keywords=graphismes');
+  const r=await li.searchPosts({keywords:'conférence',author:'Bruno',scrolls:0});
+  assert.equal(r.posts.length,1);
+  assert.equal(r.posts[0].postUrl,'https://www.linkedin.com/feed/update/urn:li:activity:7300000000000000002/');
+});
+
+test('fixture: "no results" and "extraction failure" are told apart', async ()=>{
+  const a=page('search-no-results.html','https://www.linkedin.com/search/results/content/?keywords=zzz');
+  const none=await a.li.searchPosts({keywords:'zzz',scrolls:0,firstWait:50});
+  assert.equal(none.status,'no_results');
+  const b=page('unrecognized-layout.html','https://www.linkedin.com/search/results/content/?keywords=zzz');
+  const broken=await b.li.searchPosts({keywords:'zzz',scrolls:0,firstWait:50});
+  assert.equal(broken.status,'extraction_failed');
+  assert.ok(broken.diagnostics.dom,'structure diagnostics returned for a layout change');
+  assert.ok(broken.diagnostics.page.bodyLength>1000);
+});
+
+test('fixture: no matching author is reported with the authors that were seen', async ()=>{
+  const {li}=page('search-sdui-fr.html','https://www.linkedin.com/search/results/content/?keywords=graphismes');
+  const r=await li.searchPosts({keywords:'graphismes',author:'Personne Inconnue',scrolls:0});
+  assert.equal(r.status,'no_matching_post');
+  assert.ok(r.authorsOnPage.some((a:string)=>a.startsWith('Alice Martin')));
+});
+
+// ------------------------------------------------------------------ feed
+test('fixture: mobile feed extraction (plain buttons, slug permalinks, reshare, suggestion card ignored)', async ()=>{
+  const {li}=page('feed-mobile-en.html','https://www.linkedin.com/feed/');
+  const r=await li.collectPosts({limit:20,scrolls:0});
+  assert.equal(r.status,'ok',JSON.stringify(r.diagnostics));
+  assert.deepEqual(plain(r.posts.map((p:Li)=>p.author)),['Carla Dupont','Acme Tools','Eva Lind','Farid K.']);
+  assert.equal(r.posts[0].postUrl,'https://www.linkedin.com/feed/update/urn:li:activity:7311111111111111111/');
+  assert.equal(r.posts[0].reactionCount,12);
+  assert.equal(r.posts[0].commentCount,4);
+  assert.equal(r.posts[2].postUrl,'https://www.linkedin.com/feed/update/urn:li:activity:7322222222222222299/');
+  assert.match(r.posts[3].text,/remote work/);
+});
+
+// ------------------------------------------------------------------ comments
+test('fixture: comments on a desktop post — expansion, nested replies, Author badge, photos, no menu click', async ()=>{
+  const {w,li}=page('post-comments-desktop-en.html','https://www.linkedin.com/feed/update/urn:li:activity:7322222222222222222/');
+  const r=await li.readComments({postUrl:'https://www.linkedin.com/feed/update/urn:li:activity:7322222222222222222/'});
+  assert.equal(r.status,'ok',JSON.stringify(r.diagnostics));
+  assert.equal(r.opened,'already_open');
+  const by=(n:string)=>r.comments.find((c:Li)=>c.author===n);
+  assert.deepEqual(plain(r.comments.map((c:Li)=>c.author)),['Tom Ricard','Sara Benali','Alice Martin','Jules Moreau','Nina Perez','Marc Olivier','Léa Fontaine']);
+  assert.equal(r.displayedCount,7);
+  assert.equal(r.complete,true);
+  assert.equal(by('Tom Ricard').text,'Great breakdown, the PBR part is spot on.');
+  assert.equal(by('Tom Ricard').authorProfileUrl,'https://www.linkedin.com/in/tom-ricard/');
+  assert.match(by('Tom Ricard').authorPhotoUrl,/tom\/profile-displayphoto/);
+  assert.equal(by('Tom Ricard').authorHeadline,'Lead developer');
+  assert.equal(by('Tom Ricard').time,'2h');
+  assert.equal(by('Tom Ricard').reactionCount,2);
+  assert.equal(by('Tom Ricard').commentId,'urn:li:comment:(activity:7322222222222222222,7400000000000000001)');
+  assert.match(by('Sara Benali').text,/2 MB constant buffers/);
+  const reply=by('Alice Martin');
+  assert.equal(reply.isReply,true);
+  assert.equal(reply.parentAuthor,'Sara Benali');
+  assert.equal(reply.parentId,by('Sara Benali').commentId);
+  assert.equal(reply.isPostAuthor,true,'Author badge kept as a flag');
+  assert.equal(reply.author,'Alice Martin','badge never replaces the name');
+  assert.equal(by('Nina Perez').parentAuthor,'Jules Moreau','collapsed reply opened and threaded');
+  assert.equal(by('Sara Benali').isPostAuthor,false,'a mention of the author in the text is not the badge');
+  assert.ok(r.expandClicks>=2);
+  noForbiddenClicks(w);
+  assert.ok(!li._test.clickLog.some((c:Li)=>/options|menu/i.test(c.label)&&!c.refused),'no menu click attempted');
+});
+
+test('fixture: comment sheet open over search results is read in place (no navigation, no menu click)', async ()=>{
+  const {w,li}=page('search-comment-sheet-fr.html','https://www.linkedin.com/search/results/content/?keywords=graphismes');
+  assert.equal(li.targetOpen({}).open,true,'caller must not navigate away');
+  const r=await li.readComments({});
+  assert.equal(r.status,'ok',JSON.stringify(r.diagnostics));
+  assert.equal(r.scope,'open_panel');
+  assert.deepEqual(plain(r.comments.map((c:Li)=>[c.author,c.isReply,c.parentAuthor])),[['Tarik Mezza',false,null],['Sara Benali',false,null],['Alice Martin',true,'Sara Benali']]);
+  const alice=r.comments[2];
+  assert.equal(alice.isPostAuthor,true);
+  assert.equal(alice.authorHeadline,'Développeuse moteur 3D');
+  assert.equal(alice.reactionCount,1);
+  assert.equal(r.comments[0].reactionCount,3);
+  assert.equal(r.comments[0].text,'Impressionnant, surtout les reflets en temps réel.');
+  noForbiddenClicks(w);
+});
+
+test('fixture: comments are opened with the comment control of the right post, never a menu', async ()=>{
+  // Same page with the sheet closed: the reader must click "Commenter" (or the counter) of the matching post.
+  const html=fixture('search-comment-sheet-fr.html').replace('<div role="dialog" aria-modal="true" class="sheet">','<div id="sheet" role="dialog" aria-modal="true" class="sheet" hidden>')
+    .replace('</body>','<script>document.querySelectorAll("#results .r")[0].querySelectorAll("button")[1].onclick=function(){document.getElementById("sheet").hidden=false};document.querySelectorAll("#results .r")[1].querySelectorAll("button")[1].onclick=function(){window.__wrongPost=true};</script></body>');
+  const {w,li}=page('','https://www.linkedin.com/search/results/content/?keywords=graphismes',{html});
+  const r=await li.readComments({keywords:'graphismes ray tracing',author:'Alice Martin'});
+  assert.equal(r.status,'ok',JSON.stringify(r));
+  assert.equal(r.opened,'clicked_comment');
+  assert.equal(w.__wrongPost,undefined);
+  assert.equal(r.comments.length,3);
+  noForbiddenClicks(w);
+});
+
+// ------------------------------------------------------------------ reactions
+test('fixture: reactions — count control (not Like), 6 categories, lazy loading, dedup, complete', async ()=>{
+  const {w,li}=page('post-reactions-fr.html','https://www.linkedin.com/feed/update/urn:li:activity:7333333333333333333/');
+  const r=await li.readReactions({});
+  assert.equal(r.status,'ok',JSON.stringify(r.diagnostics));
+  assert.equal(r.expectedTotal,14);
+  assert.equal(r.retrieved,14,'14 unique people despite reading every tab');
+  assert.deepEqual(plain(r.byType),{like:8,celebrate:2,support:1,love:1,insightful:1,funny:1});
+  assert.equal(r.complete,true);
+  assert.equal(r.missing.length,0);
+  const p=r.people.find((x:Li)=>x.name==='Personne 9');
+  assert.equal(p.profileUrl,'https://www.linkedin.com/in/person-9/');
+  assert.match(p.photoUrl,/person-9\/profile-displayphoto/);
+  assert.equal(p.headline,'Métier numéro 9');
+  assert.equal(p.reaction,'celebrate');
+  assert.equal(p.reactionFromIcon,'celebrate','SVG trait classification agrees with the tab');
+  assert.equal(r.categories.length,7);
+  noForbiddenClicks(w);
+});
+
+test('fixture: reactions never claim completeness when LinkedIn lists fewer people than it counts', async ()=>{
+  const {li}=page('post-reactions-fr.html','https://www.linkedin.com/feed/update/urn:li:activity:7333333333333333333/',{before:w=>{w.__hiddenReactors=1;}});
+  const r=await li.readReactions({});
+  assert.equal(r.expectedTotal,15);
+  assert.equal(r.retrieved,14);
+  assert.equal(r.complete,false);
+  assert.deepEqual(plain(r.missing.map((m:Li)=>[m.tab,m.missing])),[['all',1],['like',1]]);
+});
+
+test('fixture: ambiguous reaction counters on a list page are refused with diagnostics', async ()=>{
+  const {w,li}=page('search-sdui-fr.html','https://www.linkedin.com/search/results/content/?keywords=graphismes');
+  const r=await li.readReactions({});
+  assert.equal(r.status,'ambiguous_post');
+  assert.ok(r.candidates.length>=2);
+  noForbiddenClicks(w);
+});
+
+// ------------------------------------------------------------------ independence of the steps
+test('fixture: a reaction failure keeps the comments already read', async ()=>{
+  const {w,li}=page('search-comment-sheet-fr.html','https://www.linkedin.com/search/results/content/?keywords=graphismes');
+  const r=await li.readPostFull({});
+  assert.equal(r.comments.status,'ok');
+  assert.equal(r.comments.comments.length,3);
+  assert.notEqual(r.reactions.status,'ok');
+  assert.equal(r.status,'partial');
+  noForbiddenClicks(w);
+});
+
+test('fixture: full extraction on a post page returns comments, reactions and the consistency check', async ()=>{
+  const html=fixture('post-reactions-fr.html').replace('<button>3 commentaires</button>','<button>1 commentaire</button>')
+    .replace('</main>','<div class="cm"><div><a href="https://www.linkedin.com/in/tom-ricard/"><img src="https://media.licdn.com/dms/image/v2/tom/profile-displayphoto/0.jpg" alt="Tom Ricard"></a><a href="https://www.linkedin.com/in/tom-ricard/">Tom Ricard</a><div>Lead</div><div>2 h</div></div><p>Bravo pour l’analyse.</p><div><button>J’aime</button><button>Répondre</button></div></div></main>');
+  const {w,li}=page('','https://www.linkedin.com/feed/update/urn:li:activity:7333333333333333333/',{html});
+  const r=await li.readPostFull({postUrl:'https://www.linkedin.com/feed/update/urn:li:activity:7333333333333333333/'});
+  assert.equal(r.status,'ok',JSON.stringify({c:r.comments.status,r:r.reactions.status,d:r.reactions.diagnostics,e:r.reactions.error}).slice(0,2500));
+  assert.equal(r.comments.comments.length,1);
+  assert.equal(r.reactions.retrieved,14);
+  assert.deepEqual(plain(r.consistency),{commentsDisplayed:1,commentsRead:1,commentsComplete:true,reactionsDisplayed:14,reactionsRead:14,reactionsComplete:true});
+  noForbiddenClicks(w);
+});
+
+// ------------------------------------------------------------------ people search (Java string, unchanged code path)
+test('fixture: profile search script shipped in MainActivity reads people cards', ()=>{
+  const java=readFileSync(new URL('../android-kamiko/app/src/main/java/com/cammicgo/kamikoseo/MainActivity.java',import.meta.url),'utf8');
+  const start=java.indexOf('private void extractLinkedInPeople');
+  const decl=java.indexOf('String js = ',start);
+  const end=java.indexOf(';\n',decl);
+  const pieces=[...java.slice(decl+'String js = '.length,end).matchAll(/"((?:[^"\\]|\\.)*)"/g)].map(m=>JSON.parse('"'+m[1].replace(/\\'/g,"'")+'"'));
+  const js=pieces.join('');
+  const html='<html><body><header><a href="https://www.linkedin.com/in/me-user/">Me</a></header><main><ul><li><a href="https://www.linkedin.com/in/alice-martin-123/?mini=1"><img src="https://media.licdn.com/a.jpg" alt="Alice Martin"><div>Alice Martin</div></a><div>Développeuse 3D</div></li><li><a href="https://fr.linkedin.com/in/bruno-lefevre"><div>Bruno Lefèvre</div></a><div>DA</div></li></ul></main></body></html>';
+  const {w}=page('',' https://www.linkedin.com/search/results/people/?keywords=x'.trim(),{html});
+  const out=JSON.parse(w.eval(js));
+  assert.deepEqual(plain(out.profiles).map((p:Li)=>[p.name,p.profileUrl]),[['Alice Martin','https://www.linkedin.com/in/alice-martin-123/'],['Bruno Lefèvre','https://www.linkedin.com/in/bruno-lefevre/']]);
+});
