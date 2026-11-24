@@ -154,10 +154,10 @@ main{max-width:760px;margin:0 auto;padding:16px}h1{font-size:20px;margin:8px 0 4
 .txt{white-space:pre-wrap;margin:8px 0 0;overflow-wrap:anywhere}.cm{padding:10px 0;border-top:1px solid var(--line)}.cm:first-child{border-top:0}.cm.reply{margin-left:40px}
 .ri{width:24px;height:24px;flex:none}.badge{background:#e8f0fb;color:#0a66c2;border-radius:6px;padding:1px 6px;font-size:12px;font-weight:700}
 .sum{display:flex;flex-wrap:wrap;gap:8px}.pill{display:inline-flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:4px 10px}
-.hdr{background:#0a66c2;color:#fff;padding:18px 16px}.hdr .in{max-width:760px;margin:0 auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-.hdr h1{margin:0;font-size:21px;color:#fff}.hdr .pid{font-size:12px;opacity:.9;overflow-wrap:anywhere}.hdr .grow{flex:1;min-width:200px}
+.hdr{background:#0a66c2;color:#fff;padding:20px 16px;text-align:center}.hdr .in{max-width:760px;margin:0 auto;display:flex;flex-direction:column;align-items:center;gap:10px}
+.hdr h1{margin:0;font-size:21px;color:#fff}.hdr .pid{font-size:12px;opacity:.9;overflow-wrap:anywhere}.hdr .grow{width:100%}
 .logo{width:48px;height:48px;border-radius:10px;background:#fff;flex:none;box-shadow:0 0 0 2px rgba(255,255,255,.85)}
-.tools{display:flex;gap:8px}.tools a,.tools button{font:600 13px system-ui,sans-serif;background:#fff;color:#0a66c2;border:0;border-radius:8px;padding:7px 12px;text-decoration:none;cursor:pointer}
+.tools{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}.tools a,.tools button{font:600 13px system-ui,sans-serif;background:#fff;color:#0a66c2;border:0;border-radius:8px;padding:7px 12px;text-decoration:none;cursor:pointer}
 @media print{.tools{display:none}body{background:#fff}.card{break-inside:avoid}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 .ok{color:#15803d;font-size:13px}.ko{color:#b91c1c;font-size:13px}.btn{display:inline-block;margin-top:10px;background:var(--blue);color:#fff;border-radius:10px;padding:8px 12px;text-decoration:none;font-weight:600}
 footer{color:var(--muted);font-size:12px;margin:24px 0}
