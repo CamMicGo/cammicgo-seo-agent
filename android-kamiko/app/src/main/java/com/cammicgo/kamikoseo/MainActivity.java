@@ -2482,6 +2482,8 @@ public class MainActivity extends Activity {
    */
   private void finishLiWithThumbs(String id, JSONObject data, String error) {
     if (data == null || error != null) { finishLinkedInJob(id, data, error); return; }
+    // The server writes reports in the language chosen in this app.
+    try { data.put("uiLang", I18n.code(this)); } catch (Exception ignored) {}
     final String agent = linkedinWeb == null ? "" : linkedinWeb.getSettings().getUserAgentString();
     final String cookie = CookieManager.getInstance().getCookie("https://www.linkedin.com/");
     worker.execute(() -> {

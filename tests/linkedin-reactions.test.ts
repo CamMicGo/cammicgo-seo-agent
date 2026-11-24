@@ -63,3 +63,20 @@ test('report page: blue header with title and post id, PDF button with nonce, se
   assert.ok(!file.includes(B+'/api/linkedin/thumb/'),'photos embedded');
   assert.ok(file.includes('data:image/png;base64,BBB'));
 });
+
+test('report language follows the app language (English, Arabic right-to-left), French by default', ()=>{
+  const B='https://seo.cammicgo.com';
+  const base={postUrl:'https://www.linkedin.com/feed/update/urn:li:activity:7530372844606803968/',post:{author:'Alice',text:'x'},reactions:{byType:{like:1,celebrate:1},people:[{name:'Eve',reaction:'like'},{name:'Bob',reaction:'celebrate'}]}};
+  const en=JSON.parse(JSON.stringify({...base,uiLang:'en'}));decorateReactions(en,B);addReport(en,B);
+  assert.equal(en.reactions.people[1].reactionLabel,'Celebrate');
+  assert.match(en.reportMarkdown,/### Reactions — 2/);
+  const pageEn=reportHtml(reportPayload(en,B)!,B,{nonce:'n'});
+  assert.match(pageEn,/<html lang="en">/);
+  assert.match(pageEn,/<h1>LinkedIn post report<\/h1>/);
+  assert.match(pageEn,/Export PDF/);
+  assert.ok(!pageEn.includes('Exporter'));
+  const ar=JSON.parse(JSON.stringify({...base,uiLang:'ar'}));
+  assert.match(reportHtml(reportPayload(ar,B)!,B),/<html lang="ar" dir="rtl">/);
+  const fr=JSON.parse(JSON.stringify(base));decorateReactions(fr,B);
+  assert.equal(fr.reactions.people[1].reactionLabel,'Bravo');
+});
