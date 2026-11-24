@@ -1094,6 +1094,11 @@ public class MainActivity extends Activity {
       } else openLinkedInParticipant(id, participant);
     } else if ("post_comments".equals(op) || "comment_post".equals(op) || "reply_comment".equals(op)) {
       if ("post_comments".equals(op)) linkedinCommentSeen.clear();
+      if ("post_comments".equals(op) && job.optBoolean("currentPost", false)) {
+        String current = linkedinWeb.getUrl();
+        if (current == null || !current.startsWith("https://www.linkedin.com/")) { finishLinkedInJob(id,null,"Open the LinkedIn post first"); return; }
+        runLinkedInCommentJob(id,op,job,0); return;
+      }
       String postUrl = job.optString("postUrl", "").trim();
       if (!postUrl.matches("https://(?:www\\.|[a-z]{2,3}\\.)?linkedin\\.com/(?:feed/update/urn:li:(?:activity|share|ugcPost):[0-9]+|posts/[A-Za-z0-9_%.-]+)/?(?:\\?[^#]*)?")) { finishLinkedInJob(id, null, "Invalid LinkedIn post URL"); return; }
       String action=op;
@@ -1243,7 +1248,7 @@ public class MainActivity extends Activity {
             }
             return;
           }
-          String openComments = "(function(){const vis=e=>!!e.getClientRects().length;const text=e=>((e.innerText||'')+' '+(e.getAttribute('aria-label')||'')).trim();const buttons=[...document.querySelectorAll('button,[role=button],a')].filter(vis);const count=buttons.find(e=>/^\\d+\\s*(commentaires?|comments?)\\b/i.test(text(e)));const button=buttons.find(e=>/^(commenter|comment|commentaires|comments)(\\s|$)/i.test(text(e)));const existing=document.querySelector('[class*=\"comments-comment-item__main-content\"],[class*=\"comment__main-content\"],[data-testid*=\"comment-text\"]');if(existing&&vis(existing))return 'already_open';const target=count||button;if(!target)return 'missing';target.scrollIntoView({block:'center'});target.click();return 'clicked';})()";
+          String openComments = "(function(){const vis=e=>!!e.getClientRects().length;const existing=document.querySelector('[class*=\"comments-comment-item__main-content\"],[class*=\"comment__main-content\"],[data-testid*=\"comment-text\"]');if(existing&&vis(existing))return 'already_open';const controls=[...document.querySelectorAll('button,[role=button],a,[tabindex=\"0\"]')].filter(vis);const meta=e=>[e.innerText,e.getAttribute('aria-label'),e.getAttribute('title'),e.getAttribute('data-testid'),e.getAttribute('data-view-name'),e.className,...[...e.querySelectorAll('svg,use,[aria-label],title')].map(x=>[x.getAttribute('aria-label'),x.getAttribute('data-test-icon'),x.getAttribute('href'),x.getAttribute('xlink:href'),x.getAttribute('class'),x.textContent].join(' '))].join(' ');const matches=controls.filter(e=>{const m=meta(e);return /comment|commentaire|speech.bubble|chat.bubble/i.test(m)&&!/reply|répondre|load.more|show.more|share|repost/i.test(m)&&!e.closest('header,nav,[class*=\"comments-comment-item\"]')&&((e.innerText||'').trim().length<80);});const ranked=matches.map(e=>({e,score:(/^\\s*\\d+\\s*$/.test(e.innerText||'')?5:0)+(/comment|commentaire/i.test(e.getAttribute('aria-label')||'')?4:0)+(/comment/i.test(meta(e))?2:0)})).sort((a,b)=>b.score-a.score);const target=ranked[0]?.e;if(!target)return 'missing';target.scrollIntoView({block:'center'});target.click();return 'clicked';})()";
           linkedinWeb.evaluateJavascript(openComments, opened -> ui.postDelayed(() -> extractRenderedLinkedInComments(id, action, job, attempt), 1800));
         } catch (Exception e) { finishLinkedInJob(id, null, "LinkedIn page readiness check failed: " + e.getMessage()); }
       });
