@@ -29,3 +29,19 @@ test('report: hosted photos linked to profiles, LinkedIn reaction pictures, thre
   assert.match(md,/↳ \*\*\[Alice\]\(https:\/\/www\.linkedin\.com\/in\/alice\/\)\*\* · Auteur — en réponse à Bob/);
   assert.match(md,/Réactions — 2 \/ 2 \(complet\)/);
 });
+
+import {reportHtml,reportPayload} from '../lib/linkedin-reactions.ts';
+test('report page: escaped content, only hosted pictures, links limited to LinkedIn', ()=>{
+  const B='https://seo.cammicgo.com';
+  const payload=reportPayload({postUrl:'https://www.linkedin.com/feed/update/urn:li:activity:1/',post:{author:'Alice <b>',authorProfileUrl:'https://www.linkedin.com/in/alice/',text:'<script>alert(1)</script>'},
+    comments:{comments:[{author:'Bob',authorProfileUrl:'javascript:alert(1)',authorPhotoUrl:'https://media.licdn.com/x.jpg',text:'hi',isReply:false}]},
+    reactions:{byType:{like:1},expectedTotal:1,complete:true,people:[{name:'Eve',profileUrl:'https://www.linkedin.com/in/eve/',photoUrl:B+'/api/linkedin/thumb/1.jpg',reaction:'like',headline:'Dev'}]}},B)!;
+  const html=reportHtml(payload,B);
+  assert.ok(!html.includes('<script>'),'no script injected');
+  assert.ok(html.includes('&lt;script&gt;'));
+  assert.ok(!html.includes('javascript:'),'unsafe profile link dropped');
+  assert.ok(!html.includes('media.licdn.com'),'session-only pictures not used');
+  assert.ok(html.includes(B+'/api/linkedin/thumb/1.jpg'));
+  assert.ok(html.includes(B+'/linkedin/reactions/like.png'));
+  assert.ok(html.includes('href="https://www.linkedin.com/in/eve/"'));
+});
