@@ -285,6 +285,22 @@ const ICON_SVG:Record<string,string>={
 };
 const icon=(k:string)=>`<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON_SVG[k]||ICON_SVG.idea}</svg>`;
 
+/**
+ * Companies explicitly named in headlines ("… chez Atos", "… at Atos", "@Atos"), used only when the assistant
+ * sent none. Kept when 2+ people name the same one, so a stray phrase never becomes an employer.
+ */
+export function companiesFromHeadlines(people:Obj[]):Group[]{
+ const by=new Map<string,{names:Map<string,number>;ids:string[]}>();
+ for(const p of people){
+  const m=str(p.headline).match(/(?:\bchez|\bat|\bbei|\bpresso|@)\s*([A-Za-zÀ-ÿ0-9][^|,·•()\n]{1,40})/i);
+  if(!m)continue;
+  const name=m[1].split(/\s+[-–]\s+/)[0].trim().replace(/[.\s]+$/,'');
+  if(name.length<2)continue;
+  const k=name.toLowerCase();const g=by.get(k)||{names:new Map<string,number>(),ids:[] as string[]};
+  g.names.set(name,(g.names.get(name)||0)+1);g.ids.push(personKey(str(p.url),str(p.name)));by.set(k,g);
+ }
+ return [...by.values()].filter(g=>g.ids.length>=2).map(g=>({label:[...g.names.entries()].sort((a,b)=>b[1]-a[1]||(a[0]<b[0]?1:-1))[0][0],count:g.ids.length,ids:g.ids})).sort((a,b)=>b.count-a.count).slice(0,10);
+}
 /** Engagement figures computed from the extracted data (never from the assistant). */
 export function engagementOf(r:Obj){
  const items=r.comments&&Array.isArray((r.comments as Obj).items)?(r.comments as Obj).items as Obj[]:[];
@@ -293,7 +309,15 @@ export function engagementOf(r:Obj){
  const answered=new Set(items.filter(c=>c.isReply&&c.isPostAuthor).map(c=>str(c.parentId)).filter(Boolean));
  const answeredByName=new Set(items.filter(c=>c.isReply&&c.isPostAuthor).map(c=>str(c.parentAuthor)).filter(Boolean));
  const replied=direct.filter(c=>answered.has(str(c.id))||(!str(c.id).startsWith('urn')&&answeredByName.has(str(c.author)))).length;
- const participants=new Set([...people.map(p=>personKey(str(p.url),str(p.name))),...items.map(c=>personKey(str(c.url),str(c.author)))]).size;
+ // LinkedIn gives the same person two links (vanity /in/name/ in comments, member id in reactions): a person
+ // is the same when the link OR the exact name matches.
+ const seen=new Map<string,number>();let nextId=0;const ids=new Set<number>();
+ for(const [u,nm] of [...people.map(p=>[str(p.url),str(p.name)]),...items.map(c=>[str(c.url),str(c.author)])]){
+  const ku=u?personKey(u):'',kn=nm.trim()?'name:'+nm.trim().toLowerCase():'';
+  const id=(ku?seen.get(ku):undefined)??(kn?seen.get(kn):undefined)??nextId++;
+  if(ku)seen.set(ku,id);if(kn)seen.set(kn,id);ids.add(id);
+ }
+ const participants=ids.size;
  const rc=r.reactions as Obj|null, cc=r.comments as Obj|null;
  return {reactions:people.length,expectedReactions:rc&&typeof rc.expected==='number'?rc.expected:null,comments:items.length,interactions:people.length+items.length,participants,
   replyRate:direct.length?Math.round(replied*1000/direct.length)/10:null,repliedDirect:replied,direct:direct.length,
@@ -326,13 +350,14 @@ export function reportHtml(r:Obj,base=process.env.APP_BASE_URL||'https://seo.cam
  // People → domain / company (from the assistant's structured groups), comments → sentiment / themes.
  const domainOf=new Map<string,number>(),companyOf=new Map<string,number>();
  (an?.domainGroups||[]).forEach((g,i)=>g.ids.forEach(id=>domainOf.set(id,i)));
- (an?.companyGroups||[]).forEach((g,i)=>g.ids.forEach(id=>{if(!companyOf.has(id))companyOf.set(id,i);}));
+ const companyList:Group[]=!an?[]:an.companyGroups&&an.companyGroups.length?an.companyGroups:an.companies&&an.companies.length?[]:companiesFromHeadlines(people);
+ companyList.forEach((g,i)=>g.ids.forEach(id=>{if(!companyOf.has(id))companyOf.set(id,i);}));
  const sentOf=new Map((an?.commentSentiments||[]).map(s=>[s.id,s]));
  const themesOf=new Map<string,number[]>();
  (an?.themeGroups||[]).forEach((g,i)=>g.ids.forEach(id=>themesOf.set(id,[...(themesOf.get(id)||[]),i])));
  const sec=(id:string,title:string,inner:string)=>inner?`<section class="sec" id="${id}"><h2>${title}</h2>${inner}</section>`:'';
  const card=(p:Obj)=>{const k=personKey(str(p.url),str(p.name));const d=domainOf.get(k),c=companyOf.get(k);const t=str(p.reaction);
-  return `<article class="pc" data-reaction="${h(t)}" data-domain="${d??''}" data-company="${c??''}">${avatar(str(p.name),str(p.photo),str(p.url))}<div class="grow">${nameLink(str(p.name),str(p.url))}<div class="sub">${h(p.headline)}</div><div class="tags">${c!=null?`<span class="tag">${h(W.company)} : ${h(an!.companyGroups![c].label)}</span>`:''}${d!=null?`<span class="tag" style="--tc:${PALETTE[d%PALETTE.length]}">${h(W.domain)} : ${h(an!.domainGroups![d].label)}</span>`:''}</div></div>${ORDER.includes(t)?`<img class="ri" src="${rimg(t)}" alt="${h(LBL(t))}" title="${h(LBL(t))}">`:''}</article>`;};
+  return `<article class="pc" data-reaction="${h(t)}" data-domain="${d??''}" data-company="${c??''}">${avatar(str(p.name),str(p.photo),str(p.url))}<div class="grow">${nameLink(str(p.name),str(p.url))}<div class="sub">${h(p.headline)}</div><div class="tags">${c!=null?`<span class="tag">${h(W.company)} : ${h(companyList[c].label)}</span>`:''}${d!=null?`<span class="tag" style="--tc:${PALETTE[d%PALETTE.length]}">${h(W.domain)} : ${h(an!.domainGroups![d].label)}</span>`:''}</div></div>${ORDER.includes(t)?`<img class="ri" src="${rimg(t)}" alt="${h(LBL(t))}" title="${h(LBL(t))}">`:''}</article>`;};
  // Filter CSS made from the data: "#f-reaction-like:target ~ .cards .pc:not([data-reaction=like])" hides the others.
  const rules:string[]=[];
  const filterBlock=(_cls:string,item:string,f:string,values:string[],attr:(v:string)=>string)=>{
@@ -365,7 +390,7 @@ export function reportHtml(r:Obj,base=process.env.APP_BASE_URL||'https://seo.cam
   const tg=an.targetGroups&&an.targetGroups.length?an.targetGroups:(an.audienceGroups||[]).map(x=>({...x,ids:[]}) as Group);
   const tTotal=tg.reduce((a,b)=>a+b.count,0)||total;
   const targetHtml=tg.length||an.targetNote?`<div class="card"><h3>${h(W.audienceGroups)}</h3><p class="note">${h(W.targetNote)}</p>${hbars(tg.map(g=>({label:g.label,count:g.count})),tTotal,'')}${tg.filter(g=>g.insight).map(g=>`<p class="txt"><b>${h(g.label)}</b> — ${h(g.insight)}</p>`).join('')}${an.targetNote?`<p class="txt">${h(an.targetNote)}</p>`:''}</div>`:'';
-  const cg=an.companyGroups&&an.companyGroups.length?an.companyGroups:(an.companies||[]).map(x=>({...x,ids:[]}) as Group);
+  const cg=companyList.length?companyList:(an.companies||[]).map(x=>({...x,ids:[]}) as Group);
   const companyHtml=cg.length?`<div class="split"><div class="card"><h3>${h(W.companies)}</h3>${hbars(cg.map((g,i)=>({label:g.label,count:g.count,key:g.ids.length?String(i):undefined})),total,'company',W.profilesOf)}</div>${cg.some(g=>g.ids.length)?panel('pp-company','company',cg.map((_,i)=>String(i)),true):''}</div>`:'';
   parts.push(sec('audience',h(W.secAudience),domainHtml+targetHtml+companyHtml));
  }

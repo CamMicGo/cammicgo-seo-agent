@@ -286,3 +286,17 @@ test('reaction surplus: a comment author picked up outside the list (no headline
  assert.equal((f.reactions.byType as Record<string,number>).like,12);
  const g=fixture();reconcileReactions(g);assert.equal(g.reactions.people.length,16,'nothing removed without surplus');
 });
+
+import {companiesFromHeadlines} from '../lib/linkedin-reactions.ts';
+test('companies from headlines when the assistant sent none: explicit names only, 2+ people, clickable', ()=>{
+ const g=companiesFromHeadlines([{headline:'Ingénieur d’études chez Atos',url:LI+'a'},{headline:'Business Developer chez ATOS | IT',url:LI+'b'},{headline:'Senior Project Manager at Atos',url:LI+'c'},{headline:'Passionate at heart',url:LI+'d'},{headline:'Chef de projet',url:LI+'e'}]);
+ assert.equal(g.length,1);assert.equal(g[0].count,3);assert.equal(g[0].label,'Atos');
+ const p=built('fr',{title:'T',audience:[{domain:'SIG',count:16}]});
+ const html=reportHtml(p,B);
+ assert.match(html,/data-f="company" data-v="0"><div class="hbt"><span>Atos<\/span><b>3 · 18,8 %<\/b>/);
+ assert.equal((html.match(/<article class="pc"[^>]*data-company="0"/g)||[]).length,3*2,'the 3 Atos cards (reaction and company panels) can be filtered');
+});
+test('a person met twice (vanity link in comments, member link in reactions) counts once', ()=>{
+ const f=fixture();f.comments.comments[2].authorProfileUrl=LI+'vanity-p6/';
+ assert.equal(engagementOf(reportPayload(f,B)!).participants,17);
+});
