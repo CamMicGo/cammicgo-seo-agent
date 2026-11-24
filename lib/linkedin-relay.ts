@@ -1,5 +1,5 @@
 import {sb} from '@/lib/device-relay';
-import {decorateReactions} from '@/lib/linkedin-reactions';
+import {addReport,decorateReactions,preferHostedPhotos} from '@/lib/linkedin-reactions';
 export type LinkedInOperation='inbox'|'open'|'thread'|'back'|'feed'|'search'|'send'|'company_search'|'network_suggestions'|'invite'|'attach'|'job_search'|'job_details'|'recommended_jobs'|'company_profile'|'company_posts'|'person_profile'|'post_comments'|'comment_post'|'reply_comment';
 export async function enqueueLinkedIn(userId:string,operation:LinkedInOperation,payload:Record<string,string>={}){
  const rows=await sb<Array<{id:string}>>('/rest/v1/cmg_linkedin_jobs',{method:'POST',body:JSON.stringify({user_id:userId,operation,payload}),prefer:'return=representation'});
@@ -32,12 +32,14 @@ export async function hostThumbnails(userId:string,data:unknown,base=process.env
  const walk=(node:unknown,depth:number)=>{if(depth>5||!node||typeof node!=='object')return;if(Array.isArray(node)){for(const c of node)walk(c,depth+1);return;}const o=node as Record<string,unknown>;cards.push(o);for(const key of ['profiles','people','companies','jobs','posts','comments','reactions','post','candidates'])walk(o[key],depth+1);};
  walk(root,0);
  const withThumb=cards.filter(c=>typeof c.imageDataUrl==='string'&&(c.imageDataUrl as string).startsWith(THUMB_PREFIX)&&(c.imageDataUrl as string).length<=16000+THUMB_PREFIX.length).slice(0,150);
- if(!withThumb.length)return data;
+ if(!withThumb.length){for(const c of cards)delete c.imageDataUrl;preferHostedPhotos(root,base);addReport(root,base);return data;}
  try{
   const rows=await sb<Array<{id:string}>>('/rest/v1/cmg_linkedin_thumbs',{method:'POST',body:JSON.stringify(withThumb.map(c=>({user_id:userId,jpeg_b64:(c.imageDataUrl as string).slice(THUMB_PREFIX.length)}))),prefer:'return=representation'});
   withThumb.forEach((c,i)=>{if(!rows[i])return;if(typeof c.imageUrl==='string')c.linkedinImageUrl=c.imageUrl;c.imageUrl=base+'/api/linkedin/thumb/'+rows[i].id+'.jpg';delete c.imageDataUrl;});
  }catch{/* keep the data: URLs if storage is unavailable */}
  for(const c of cards)delete c.imageDataUrl;
+ preferHostedPhotos(root,base);
+ addReport(root,base);
  return data;
 }
 /** Jobs the phone never picked up before their deadline become explicit errors (never run later). */
