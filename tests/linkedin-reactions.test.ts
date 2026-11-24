@@ -272,3 +272,13 @@ test('every language has every label; no French left in other languages', ()=>{
  }
  assert.match(reportHtml(built('en'),B),/<h2>Overall synthesis<\/h2>|<h2>Overall summary<\/h2>/);
 });
+
+import {reconcileReactions} from '../lib/linkedin-reactions.ts';
+test('reaction surplus: a comment author picked up outside the list (no headline) is removed, never more than the surplus', ()=>{
+ const f=fixture();
+ f.reactions.people.unshift({name:'P6',profileUrl:LI+'p5/',photoUrl:'',headline:'',reaction:'like'});
+ reconcileReactions(f);
+ assert.equal(f.reactions.people.length,16);
+ assert.equal((f.reactions.byType as Record<string,number>).like,12);
+ const g=fixture();reconcileReactions(g);assert.equal(g.reactions.people.length,16,'nothing removed without surplus');
+});
