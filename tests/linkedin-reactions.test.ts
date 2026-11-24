@@ -83,33 +83,192 @@ test('report language follows the app language (English, Arabic right-to-left), 
   assert.equal(fr.reactions.people[1].reactionLabel,'Bravo');
 });
 
-import {cleanAnalysis} from '../lib/linkedin-reactions.ts';
-test('AI analysis: cleaned, escaped, rendered above comments and labelled as written by the assistant', ()=>{
-  const B='https://seo.cammicgo.com';
-  const payload=reportPayload({uiLang:'fr',postUrl:'https://www.linkedin.com/feed/update/urn:li:activity:1234567890123/',post:{author:'Alice',text:'x'},comments:{comments:[{author:'Bob',text:'Bravo'}]},reactions:{byType:{like:1},people:[{name:'Eve',reaction:'like',headline:'Dev'}]}},B)!;
-  payload.analysis=cleanAnalysis({title:'Graphismes de <GTA VI>',postSummary:'Résumé',commentsSummary:'Avis',sentiment:{positive:2,neutral:1,negative:0},opinions:['Très clair','x'.repeat(900)],audience:[{domain:'Géomatique',count:6},{domain:'',count:3}],takeaways:['Publier des visuels']},'ChatGPT');
-  const html=reportHtml(payload,B);
-  assert.match(html,/<h2 class="sec">Post analysé<\/h2><p class="lead">Graphismes de &lt;GTA VI&gt;<\/p>/);
-  assert.match(html,/Rédigé par l’assistant IA \(ChatGPT\)/);
-  assert.match(html,/<span>Positif<\/span><em>2 commentaire\(s\)<\/em><b>66,7 %<\/b>/);
-  assert.match(html,/Géomatique/);
-  assert.ok(html.indexOf('Principaux avis')<html.indexOf('<div class="cm'),'analysis before the raw comments');
-  assert.equal((payload.analysis as {opinions:string[]}).opinions[1].length,400,'long items are cut');
-  assert.equal((payload.analysis as {audience:unknown[]}).audience.length,1,'empty domains dropped');
+import {cleanAnalysis,engagementOf,personKey} from '../lib/linkedin-reactions.ts';
+import {JSDOM} from 'jsdom';
+
+// Test fixture shaped like the reference post (GTA VI, 16 reactions, 3 comments incl. 1 author reply).
+// It lives in the tests only: the generator never contains these values.
+const B='https://seo.cammicgo.com';
+const LI='https://www.linkedin.com/in/';
+const kinds=[...Array(12).fill('like'),'love','love','insightful','funny'];
+const heads=['Géomaticien SIG chez Atos','Cartographe','Ingénieure SIG','Technicien géomatique','Chargée SIG chez Atos',
+ 'Data scientist','Développeur IA chez Atos','Ingénieur data','Commercial grands comptes','Responsable marketing','Business developer',
+ 'Chef de projet','Responsable innovation','Doctorante en géographie','Ingénieur travaux',''];
+function fixture(lang='fr'){
+ return {uiLang:lang,postUrl:'https://www.linkedin.com/feed/update/urn:li:activity:1111111111111111111/',
+  post:{author:'Autrice',authorProfileUrl:LI+'autrice/',text:'Analyse des graphismes',images:['https://media.licdn.com/dms/image/v2/abc/x.jpg','https://evil.example/x.jpg']},
+  comments:{displayedCount:3,complete:true,comments:[
+   {commentId:'urn:li:comment:(1,10)',author:'P1',authorProfileUrl:LI+'p0/',authorHeadline:heads[0],text:'Superbe analyse',isReply:false},
+   {commentId:'urn:li:comment:(1,11)',parentId:'urn:li:comment:(1,10)',parentAuthor:'P1',author:'Autrice',authorProfileUrl:LI+'autrice/',text:'Merci !',isReply:true,isPostAuthor:true},
+   {commentId:'urn:li:comment:(1,12)',author:'P6',authorProfileUrl:LI+'p5/',authorHeadline:heads[5],text:'Et la physique de l’eau ?',isReply:false}]},
+  reactions:{expectedTotal:16,complete:true,byType:{like:12,love:2,insightful:1,funny:1},
+   people:kinds.map((k,i)=>({name:'P'+(i+1),profileUrl:LI+'p'+i+'/?miniProfile=1',photoUrl:B+'/api/linkedin/thumb/'+i+'.jpg',headline:heads[i],reaction:k}))}};
+}
+const ids=(...n:number[])=>n.map(i=>LI+'p'+i+'/');
+const analysis={title:'Graphismes de <GTA VI>',postSummary:'Résumé',commentsSummary:'Avis',
+ domainGroups:[{label:'Géomatique, cartographie et SIG',profiles:ids(0,1,2,3,4)},{label:'Informatique, Data et IA',profiles:ids(5,6,7)},{label:'Commerce et marketing',profiles:ids(8,9,10)},
+  {label:'Gestion de projet et innovation',profiles:ids(11,12)},{label:'Recherche scientifique',profiles:ids(13)},{label:'Ingénierie et travaux',profiles:ids(14)},{label:'Non déterminé',profiles:ids(15,0)}],
+ companyGroups:[{label:'Atos',profiles:ids(0,4,6)}],
+ commentSentiments:[{commentId:'urn:li:comment:(1,10)',sentiment:'positive'},{commentId:'urn:li:comment:(1,11)',sentiment:'positive'},{commentId:'urn:li:comment:(1,12)',sentiment:'neutral'}],
+ themeGroups:[{label:'Réalisme',comments:['urn:li:comment:(1,10)','urn:li:comment:(1,12)']},{label:'Physique',comments:['urn:li:comment:(1,12)']}],
+ targetGroups:[{label:'Tech',profiles:ids(0,1,2,3,4,5,6,7),insight:'Cœur de cible'}],
+ arguments:{arguments:['Qualité visuelle'],questions:['Physique de l’eau ?'],criticisms:[],opinions:['Enthousiasme']},
+ takeawayCards:[{title:'Audience géomatique',text:'31 %',icon:'audience'},{title:'X',text:'Y',icon:'<svg onload=alert(1)>'}],
+ recommendations:[{title:'Série',text:'Comparer les moteurs'}],glossary:[{term:'SIG',definition:'Système d’information géographique'}],overall:'Synthèse finale',
+ html:'<script>alert(1)</script>'};
+function built(lang='fr',an:Record<string,unknown>|null=analysis){
+ const p=reportPayload(fixture(lang),B)!;
+ if(an)p.analysis=cleanAnalysis(an,'Claude');
+ return p;
+}
+
+test('analysis v2: stable ids, one domain per person, legacy fields still accepted, no HTML kept', ()=>{
+ const a=cleanAnalysis(analysis,'Claude');
+ assert.equal(personKey(LI+'p0/?miniProfile=1'),personKey(LI+'P0'),'profile links normalised');
+ assert.deepEqual(a.domainGroups!.map(g=>g.count),[5,3,3,2,1,1,1],'a person listed twice keeps their first domain');
+ assert.deepEqual(a.sentiment,{positive:2,neutral:1,negative:0},'tone counted from per-comment sentiments');
+ assert.equal(a.takeawayCards![1].icon,'idea','unknown icons replaced');
+ assert.ok(!JSON.stringify(a).includes('<script>'),'unknown fields (html) dropped');
+ const legacy=cleanAnalysis({title:'T',sentiment:{positive:1,neutral:0,negative:0},audience:[{domain:'GIS',count:2}],themes:[{label:'x',count:1}],takeaways:['a']},'ChatGPT');
+ assert.equal(legacy.audience[0].count,2);assert.deepEqual(legacy.domainGroups,[]);assert.deepEqual(legacy.takeaways,['a']);
 });
 
-test('report charts: audience donut, companies share, comment themes, reaction bars with localized LinkedIn names and pictures', ()=>{
-  const B='https://seo.cammicgo.com';
-  const p=reportPayload({uiLang:'en',postUrl:'https://www.linkedin.com/feed/update/urn:li:activity:1234567890123/',post:{author:'A',text:'x'},comments:{comments:[{author:'B',text:'c'}]},
-    reactions:{byType:{like:3,funny:1},people:[{name:'P1',reaction:'like'},{name:'P2',reaction:'like'},{name:'P3',reaction:'like'},{name:'P4',reaction:'funny'}]}},B)!;
-  p.analysis=cleanAnalysis({title:'T',audience:[{domain:'GIS',count:3},{domain:'Sales',count:1}],companies:[{label:'Atos',count:2}],themes:[{label:'Optimisation',count:3}],audienceGroups:[{label:'Tech',count:3}]},'Claude');
-  const html=reportHtml(p,B,{reactionImg:t=>'data:image/png;base64,'+t.toUpperCase()});
-  assert.match(html,/<svg class="donut"/);
-  assert.match(html,/<span>GIS<\/span><b>75 %<\/b>/);
-  assert.match(html,/Companies represented/);
-  assert.match(html,/2 of 4 profiles/);
-  assert.match(html,/Main comment themes/);
-  assert.match(html,/<svg class="rc"[\s\S]*<image href="data:image\/png;base64,FUNNY"[\s\S]*class="bl">Funny<\/text>/);
-  assert.match(html,/class="bl">Like<\/text>/);
-  for(const sec of ['Post analysed','Summary','Audience','Comments','Reactions'])assert.ok(html.includes(sec),sec);
+test('engagement figures are computed from the data: interactions, unique people, author reply rate, completeness', ()=>{
+ const e=engagementOf(built());
+ assert.equal(e.reactions,16);assert.equal(e.comments,3);assert.equal(e.interactions,19);
+ assert.equal(e.participants,17,'16 reacting people + the author (commenters already counted)');
+ assert.equal(e.replyRate,50);assert.equal(e.repliedDirect,1);assert.equal(e.direct,2);assert.equal(e.complete,true);
+ const noComments=reportPayload({...fixture(),comments:{comments:[]}},B)!;
+ assert.equal(engagementOf(noComments).replyRate,null,'no direct comment: not calculable');
+ assert.match(reportHtml(noComments,B),/non calculable/);
+});
+
+test('dashboard: reaction bars with real pictures, labels, counts and shares; bars are keyboard-clickable filters', ()=>{
+ const html=reportHtml(built(),B,{reactionImg:t=>'data:image/png;base64,'+t.toUpperCase()});
+ assert.match(html,/<section class="sec" id="engagement"><h2>Engagement<\/h2>/);
+ for(const [t,label,n,pc] of [['like','J’aime',12,'75 %'],['love','J’adore',2,'12,5 %'],['insightful','Instructif',1,'6,3 %'],['funny','Drôle',1,'6,3 %']] as const){
+  const re=new RegExp(`<g class="bar" data-f="reaction" data-v="${t}" tabindex="0" role="button"[\\s\\S]*?class="bv">${n}</text><image href="data:image/png;base64,${t.toUpperCase()}"[\\s\\S]*?class="bl">${label}</text><text[^>]*class="bp">${pc}</text>`);
+  assert.match(html,re,t);
+ }
+ assert.match(html,/<b>19<\/b><span>Interactions totales<\/span>/);
+ assert.match(html,/<b>17<\/b><span>Participants uniques<\/span>/);
+ assert.match(html,/<b>50 %<\/b><span>Taux de réponse de l’auteur \(1\/2\)<\/span>/);
+ assert.equal((html.match(/<article class="pc" data-reaction="like"/g)||[]).length,12*3,'12 like cards in each people panel');
+});
+
+test('audience: domain donut (total in the centre, %), Atos bars, target note, cards carry company and domain', ()=>{
+ const html=reportHtml(built(),B);
+ assert.match(html,/<text x="70" y="68" text-anchor="middle" class="dc">16<\/text>/);
+ assert.match(html,/data-f="domain" data-v="0"><i style="background:#0a66c2"><\/i><span>Géomatique, cartographie et SIG<\/span><b>5 · 31,3 %<\/b>/);
+ assert.match(html,/<span>Non déterminé<\/span><b>1 · 6,3 %<\/b>/);
+ assert.match(html,/data-f="company" data-v="0"><div class="hbt"><span>Atos<\/span><b>3 · 18,8 %<\/b>/);
+ assert.match(html,/et non l’ensemble des personnes l’ayant consultée/);
+ assert.match(html,/<article class="pc" data-reaction="like" data-domain="0" data-company="0">[\s\S]*?Entreprise : Atos[\s\S]*?Domaine : Géomatique/);
+ assert.match(html,/<article class="pc" data-reaction="funny" data-domain="6" data-company="">/,'no employer invented');
+});
+
+test('comment tone: 3 legend lines even at 0, no red segment without negatives, centre = messages analysed', ()=>{
+ const html=reportHtml(built(),B);
+ const tone=html.slice(html.indexOf('Tonalité des commentaires'));
+ assert.match(tone,/class="dc">3<\/text><text[^>]*class="ds">messages<\/text>/);
+ assert.match(tone,/<span>Positif<\/span><b>2 · 66,7 %<\/b>/);
+ assert.match(tone,/<span>Neutre<\/span><b>1 · 33,3 %<\/b>/);
+ assert.match(tone,/<span>Négatif<\/span><b>0 · 0 %<\/b>/,'negative shown at 0');
+ assert.ok(!/stroke="#dc2626"/.test(html),'no red arc');
+ assert.match(html,/data-sentiment="positive" data-theme=" 0 "/);
+ assert.match(html,/data-sentiment="neutral" data-theme=" 0  1 "/,'a comment can belong to several themes');
+ assert.match(html,/<span class="badge">Auteur<\/span>/);
+ assert.match(html,/class="cm reply"/);
+});
+
+test('themes sorted by occurrences, arguments, takeaway cards with icons, recommendations, glossary, overall synthesis', ()=>{
+ const html=reportHtml(built(),B);
+ assert.ok(html.indexOf('<span>Réalisme</span>')<html.indexOf('<span>Physique</span>'));
+ assert.match(html,/<h5><svg class="ic"[^>]*>[\s\S]*?<\/svg>Interrogations<\/h5><ul><li>Physique de l’eau \?<\/li>/);
+ assert.ok(!html.includes('>Critiques</h5>'),'empty boxes hidden');
+ assert.match(html,/<div class="tk"><svg class="ic"[\s\S]*?<h5>Audience géomatique<\/h5>/);
+ assert.match(html,/ce ne sont pas des prédictions/);
+ assert.match(html,/<details><summary>SIG<\/summary><p>Système d’information géographique<\/p><\/details>/);
+ assert.match(html,/<h2>Synthèse globale<\/h2><div class="card"><p class="txt">Synthèse finale/);
+ assert.ok(!html.includes('onload=alert'),'no markup from the assistant');
+ const order=['id="post"','id="engagement"','id="audience"','id="comments"','id="takeaways"','id="recommendations"','id="glossary"','id="overall"'].map(x=>html.indexOf(x));
+ assert.deepEqual([...order].sort((a,b)=>a-b),order,'section order');
+});
+
+test('filters work in the browser: a bar shows its people, a segment its domain, a tone its comments, "show all" resets', ()=>{
+ const html=reportHtml(built(),B,{nonce:'n1'});
+ const dom=new JSDOM(html,{runScripts:'dangerously'});
+ const d=dom.window.document;
+ const visible=(sel:string)=>[...d.querySelectorAll(sel)].filter(e=>!(e as HTMLElement).hidden).length;
+ (d.querySelector('[data-f="reaction"][data-v="love"]') as unknown as {dispatchEvent:(e:Event)=>void}).dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true}));
+ assert.equal(visible('#pp-reaction .pc'),2);
+ assert.equal(d.querySelector('#pp-reaction .pcount')!.textContent,'2 profil(s) affiché(s)');
+ assert.ok(d.querySelector('[data-f="reaction"][data-v="love"]')!.classList.contains('on'),'selected bar highlighted');
+ (d.querySelector('#pp-reaction .reset') as HTMLElement).click();
+ assert.equal(visible('#pp-reaction .pc'),16);
+ assert.equal(d.querySelector('#pp-domain')!.hasAttribute('data-empty'),true,'domain panel waits for a choice');
+ (d.querySelector('button[data-f="domain"][data-v="0"]') as HTMLElement).click();
+ assert.equal(visible('#pp-domain .pc'),5);
+ (d.querySelector('button[data-f="company"][data-v="0"]') as HTMLElement).click();
+ assert.equal(visible('#pp-company .pc'),3);
+ (d.querySelector('button[data-f="sentiment"][data-v="neutral"]') as HTMLElement).click();
+ assert.equal(visible('#cp .cm'),1);
+ (d.querySelector('button[data-f="theme"][data-v="0"]') as HTMLElement).click();
+ assert.equal(visible('#cp .cm'),2);
+ d.querySelectorAll('details').forEach(x=>assert.equal((x as HTMLDetailsElement).open,false));
+ dom.window.dispatchEvent(new dom.window.Event('beforeprint'));
+ assert.equal(visible('.pc'),48,'print shows every card whatever the filters');
+ assert.equal(visible('.cm'),3);
+ d.querySelectorAll('details').forEach(x=>assert.equal((x as HTMLDetailsElement).open,true,'glossary expanded for the PDF'));
+});
+
+test('PDF print rules and self-contained interactive HTML export', ()=>{
+ const html=reportHtml(built(),B,{nonce:'n1'});
+ const print=html.slice(html.indexOf('@media print'));
+ assert.match(print,/\[hidden\]\{display:flex!important\}/);
+ assert.match(print,/\.panel\[data-empty\] \.cards\{display:block!important\}/);
+ assert.match(print,/print-color-adjust:exact/);
+ assert.match(print,/\.tools,\.reset,\.hint,\.phd\{display:none!important\}/);
+ const file=reportHtml(built(),B,{images:{[B+'/api/linkedin/thumb/0.jpg']:'data:image/jpeg;base64,AAA'},reactionImg:()=>'data:image/png;base64,BBB',interactive:true});
+ assert.match(file,/<script>\(function\(\)\{/,'export keeps the filters');
+ assert.ok(!file.includes('id="del"')&&!file.includes("method:'DELETE'"),'no delete in the export');
+ assert.ok(file.includes('data:image/jpeg;base64,AAA'));
+ const dom=new JSDOM(file,{runScripts:'dangerously'});
+ (dom.window.document.querySelector('[data-f="reaction"][data-v="funny"]') as unknown as {dispatchEvent:(e:Event)=>void}).dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true}));
+ assert.equal([...dom.window.document.querySelectorAll('#pp-reaction .pc')].filter(e=>!(e as HTMLElement).hidden).length,1);
+});
+
+test('incomplete or empty reports: no analysis, no comments, no reactions, partial extraction', ()=>{
+ const p=reportPayload({...fixture(),reactions:{...fixture().reactions,complete:false}},B)!;
+ const html=reportHtml(p,B);
+ assert.match(html,/<b>partielle<\/b><span>Extraction<\/span>/);
+ assert.ok(!html.includes('id="audience"'),'no audience section without analysis');
+ assert.ok(!html.includes('id="glossary"'));
+ const onlyComments=reportPayload({postUrl:fixture().postUrl,comments:{comments:[]}},B)!;
+ const h2=reportHtml(onlyComments,B,{nonce:'x'});
+ assert.ok(!h2.includes('<svg class="rc"'),'no empty reaction chart');
+ assert.doesNotThrow(()=>new JSDOM(h2,{runScripts:'dangerously'}));
+ const sparse=built('fr',{title:'T',commentSentiments:[],domainGroups:[{label:'Vide',profiles:[]}],glossary:[{term:'x',definition:''}]});
+ const h3=reportHtml(sparse,B);
+ assert.ok(!h3.includes('Vide'),'empty categories dropped');
+ assert.ok(!h3.includes('Tonalité des commentaires'),'no tone chart without data');
+});
+
+test('post illustrations: only embedded images are shown, nothing loaded from LinkedIn or elsewhere', ()=>{
+ const p=reportPayload(fixture(),B)!;
+ assert.deepEqual((p.post as {images:string[]}).images,['https://media.licdn.com/dms/image/v2/abc/x.jpg'],'only LinkedIn image CDN kept, then embedded by the server');
+ assert.ok(!reportHtml(p,B).includes('class="gal"'),'not embedded yet: not shown');
+ (p.post as {images:string[]}).images=['data:image/jpeg;base64,QUJD','data:text/html;base64,PHNjcmlwdD4='];
+ const html=reportHtml(p,B);
+ assert.match(html,/<div class="gal"[^>]*><img src="data:image\/jpeg;base64,QUJD"/);
+ assert.ok(!html.includes('data:text/html'));
+});
+
+test('every language has every label; no French left in other languages', ()=>{
+ for(const lang of ['en','fr','es','de','pt','it','ru','zh','ja','ko','ar']){
+  const html=reportHtml(built(lang),B,{nonce:'n'});
+  assert.ok(!/undefined|\{agent\}/.test(html.replace(/<script[\s\S]*<\/script>/,'')),lang);
+  if(lang!=='fr')for(const fr of ['Taux de réponse','Synthèse globale','Glossaire','Tout afficher','Négatif'])assert.ok(!html.includes(fr),lang+': '+fr);
+ }
+ assert.match(reportHtml(built('en'),B),/<h2>Overall synthesis<\/h2>|<h2>Overall summary<\/h2>/);
 });

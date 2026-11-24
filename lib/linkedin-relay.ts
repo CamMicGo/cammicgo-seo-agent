@@ -28,9 +28,26 @@ const REPORT_BUCKET='cmg-notebook-artifacts';
  * Stores the visual report for 24 hours in the private bucket (service role only) and adds its private
  * link: chat apps like ChatGPT do not show external images inline. Older reports of the user are deleted.
  */
+/**
+ * The post's illustrations are copied into the report (data URL, at most 700 KB each) so the page, its PDF and
+ * its HTML export show them without loading anything from LinkedIn in the reader's browser. Only LinkedIn's
+ * own image CDN is fetched; anything else is dropped. Deleted with the report after 24 hours.
+ */
+export async function embedPostImage(url:string):Promise<string>{
+ if(!/^https:\/\/media\.licdn\.com\/dms\/image\//.test(String(url||'')))return '';
+ try{
+  const r=await fetch(url,{signal:AbortSignal.timeout(6000),redirect:'error'});
+  const type=(r.headers.get('content-type')||'').split(';')[0].trim();
+  if(!r.ok||!/^image\/(jpeg|png|webp|gif)$/.test(type))return '';
+  const buf=Buffer.from(await r.arrayBuffer());
+  return buf.length&&buf.length<=700_000?'data:'+type+';base64,'+buf.toString('base64'):'';
+ }catch{return '';}
+}
 async function saveReport(userId:string,root:Record<string,unknown>,base:string){
  const report=reportPayload(root,base);
  if(!report||!/^[0-9a-f-]{36}$/i.test(userId))return;
+ const post=report.post as Record<string,unknown>|null;
+ if(post&&Array.isArray(post.images)&&post.images.length)post.images=(await Promise.all((post.images as string[]).map(embedPostImage))).filter(Boolean);
  try{
   const old=await sb<Array<{name:string;created_at?:string}>>('/storage/v1/object/list/'+REPORT_BUCKET,{method:'POST',body:JSON.stringify({prefix:userId+'/reports',limit:200})}).catch(()=>[]);
   const stale=(old||[]).filter(o=>o.created_at&&Date.now()-Date.parse(o.created_at)>THUMB_TTL_MS).map(o=>userId+'/reports/'+o.name);
