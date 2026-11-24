@@ -331,16 +331,18 @@
     });
     qsa(root, LEGACY_POST).filter(vis).forEach(function (e) { if (txt(e).length >= 40) { found.push({ el: e, via: 'legacy' }); strategies.legacy++; } });
 
-    // Smallest first; a candidate that holds an accepted post is the same post (or a list of posts).
+    // Action-bar posts first (they hold the author and the actions); URN/legacy elements only add their
+    // URN to the post they belong to, and stand alone only when no action-bar post overlaps them.
     found.forEach(function (f) { f.len = txt(f.el).length; });
-    found.sort(function (x, y) { return x.len - y.len; });
+    found.sort(function (x, y) { return (x.via === 'actionBar' ? 0 : 1) - (y.via === 'actionBar' ? 0 : 1) || x.len - y.len; });
     var posts = [];
     found.forEach(function (f) {
       if (isChrome(f.el)) return;
-      var inner = posts.filter(function (p) { return f.el.contains(p.el); });
-      if (inner.length === 1) { inner[0].vias[f.via] = 1; if (!inner[0].urn) inner[0].urn = ownUrn(f.el); if (!inner[0].actor && f.actor) inner[0].actor = f.actor; return; }
+      var outer = posts.filter(function (p) { return p.el.contains(f.el); });
+      var inner = posts.filter(function (p) { return f.el.contains(p.el) && p.el !== f.el; });
+      if (outer.length) { var o = outer[outer.length - 1]; o.vias[f.via] = 1; if (!o.urn) o.urn = ownUrn(f.el); return; }
+      if (inner.length === 1) { inner[0].vias[f.via] = 1; if (!inner[0].urn) inner[0].urn = ownUrn(f.el); return; }
       if (inner.length > 1) return;
-      if (posts.some(function (p) { return p.el.contains(f.el); })) return;
       var v = {}; v[f.via] = 1;
       posts.push({ el: f.el, actor: f.actor || null, urn: ownUrn(f.el), vias: v });
     });
@@ -356,7 +358,11 @@
     var actorBox = actor ? qsa(c, PROFILE_LINK).filter(function (a) { return profileUrl(a.href || attr(a, 'href')) === info.profileUrl; }).reduce(function (acc, a) { return acc ? lca(acc, a) : a; }, null) : null;
     if (actorBox === c) actorBox = actor;
     var nameLink = actor ? qsa(c, PROFILE_LINK).filter(function (a) { return profileUrl(a.href || attr(a, 'href')) === info.profileUrl && nameLines(a).length; })[0] || actor : null;
-    var headRoot = nameLink && nameLink.parentElement && nameLink.parentElement !== c && txt(nameLink.parentElement).length < 400 ? nameLink.parentElement : (actorBox !== c ? actorBox : nameLink);
+    var headRoot = nameLink;
+    for (var hp = nameLink && nameLink.parentElement; hp && hp !== c; hp = hp.parentElement) {
+      if (txt(hp).length > 400 || controls(hp).some(function (e) { var k = actionKind(e); return k && k !== 'overflow' && k !== ''; }) || qsa(hp, BODY_SEL).some(function (b) { return txt(b).length > 200; })) break;
+      headRoot = hp;
+    }
     var headLines = headRoot ? lines(txt(headRoot)) : [];
     var headline = headLines.filter(function (x) { return x !== info.name && !BADGE_RX.test(x) && !TIME_RX.test(x.replace(/^[•·]\s*/, '')) && !/^(follow|suivre|\+ follow|\+ suivre)$/i.test(x); })[0] || '';
     var timeEl = c.querySelector('time');
@@ -402,7 +408,7 @@
       authorProfileUrl: info.profileUrl || null,
       authorPhotoUrl: info.photoUrl || null,
       authorHeadline: headline.slice(0, 220) || null,
-      time: String(time || '').slice(0, 80) || null,
+      time: String(time || '').replace(/\s*[•·].*$/, '').trim().slice(0, 80) || null,
       text: text.slice(0, 5000),
       images: imgs.slice(0, 8).map(function (i) { return i.currentSrc || attr(i, 'src'); }).filter(Boolean),
       imageCount: imgs.length,
@@ -658,7 +664,7 @@
       authorHeadline: headline.slice(0, 220) || null,
       isPostAuthor: isPostAuthor,
       text: text.slice(0, 4000),
-      time: String(time || '').slice(0, 80) || null,
+      time: String(time || '').replace(/\s*[•·].*$/, '').trim().slice(0, 80) || null,
       reactionCount: reactions,
     };
   }

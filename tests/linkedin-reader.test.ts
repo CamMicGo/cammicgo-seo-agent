@@ -81,7 +81,10 @@ test('fixture: post search on the new layout finds posts without data-urn, filte
   assert.equal(top.reactionCount,14);
   assert.equal(top.commentCount,3);
   assert.ok(top.match.score>r.posts[1].match.score);
-  assert.equal(top.postUrl,'','no permalink exists in this layout: not invented');
+  assert.equal(top.postUrl,'https://www.linkedin.com/feed/update/urn:li:activity:7300000000000000001/','URN of the text block (tracking scope) attached to the whole post');
+  assert.equal(top.time,'3 j');
+  assert.ok(!/Développeuse/.test(top.text),'headline not mixed into the text');
+  assert.equal(r.posts[1].postUrl,'','no URN anywhere: no URL invented');
   noForbiddenClicks(w);
 });
 
