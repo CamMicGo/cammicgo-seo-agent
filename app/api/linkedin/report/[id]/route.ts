@@ -30,7 +30,7 @@ export async function GET(req:NextRequest,{params}:{params:Promise<{id:string}>}
    const rows=await sb<Array<{id:string;jpeg_b64:string}>>('/rest/v1/cmg_linkedin_thumbs?id=in.('+chunk.join(',')+')&created_at=gt.'+encodeURIComponent(since)+'&select=id,jpeg_b64').catch(()=>[]);
    for(const r of rows)images[base+'/api/linkedin/thumb/'+r.id+'.jpg']='data:image/jpeg;base64,'+r.jpeg_b64;
   }
-  const html=reportHtml(report,base,{logo,brandLogo,images,reactionImg});
+  const html=reportHtml(report,base,{logo,brandLogo,images,reactionImg,interactive:true});
   return new NextResponse(html,{headers:{'Content-Type':'text/html; charset=utf-8','Content-Disposition':'attachment; filename="rapport-post-linkedin.html"','Cache-Control':'private, no-store','X-Robots-Tag':'noindex, nofollow'}});
  }
  const nonce=randomBytes(16).toString('base64');
