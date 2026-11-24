@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {sb} from '@/lib/device-relay';
-import {addReport,decorateReactions,preferHostedPhotos,reportPayload} from '@/lib/linkedin-reactions';
+import {addReport,cleanAnalysis,decorateReactions,preferHostedPhotos,reportPayload} from '@/lib/linkedin-reactions';
 export type LinkedInOperation='inbox'|'open'|'thread'|'back'|'feed'|'search'|'send'|'company_search'|'network_suggestions'|'invite'|'attach'|'job_search'|'job_details'|'recommended_jobs'|'company_profile'|'company_posts'|'person_profile'|'post_comments'|'comment_post'|'reply_comment';
 export async function enqueueLinkedIn(userId:string,operation:LinkedInOperation,payload:Record<string,string>={}){
  const rows=await sb<Array<{id:string}>>('/rest/v1/cmg_linkedin_jobs',{method:'POST',body:JSON.stringify({user_id:userId,operation,payload}),prefer:'return=representation'});
@@ -65,6 +65,16 @@ export async function purgeExpiredLinkedIn(){
   for(let i=0;i<stale.length;i+=100){await sb('/storage/v1/object/'+REPORT_BUCKET,{method:'DELETE',body:JSON.stringify({prefixes:stale.slice(i,i+100)})}).catch(()=>{});out.reports+=Math.min(100,stale.length-i);}
  }
  return out;
+}
+/** Adds (or replaces) the assistant's analysis in one of this user's reports; the 24-hour limit is unchanged. */
+export async function saveReportAnalysis(userId:string,reportUrl:string,analysis:Record<string,unknown>,agent:string){
+ const m=String(reportUrl||'').match(/\/api\/linkedin\/report\/([0-9a-f-]{36})\.([0-9a-f-]{36})/i);
+ if(!m||m[1].toLowerCase()!==userId.toLowerCase())return {error:'unknown_report' as const};
+ const r=await loadReport(m[1],m[2]);
+ if(!r)return {error:'expired_report' as const};
+ r.analysis=cleanAnalysis(analysis,agent);
+ await sb('/storage/v1/object/'+REPORT_BUCKET+'/'+m[1]+'/reports/'+m[2]+'.json',{method:'PUT',body:JSON.stringify(r)});
+ return {ok:true as const,reportUrl:reportUrl.split('?')[0]};
 }
 /** A stored report, or null when missing or older than 24 hours. */
 export async function loadReport(userId:string,id:string):Promise<Record<string,unknown>|null>{
