@@ -76,6 +76,20 @@ export async function saveReportAnalysis(userId:string,reportUrl:string,analysis
  await sb('/storage/v1/object/'+REPORT_BUCKET+'/'+m[1]+'/reports/'+m[2]+'.json',{method:'PUT',body:JSON.stringify(r)});
  return {ok:true as const,reportUrl:reportUrl.split('?')[0]};
 }
+/**
+ * Photos as MCP image blocks (64 px JPEG, a few KB each), for chat apps that show images a tool returns but
+ * not external links (ChatGPT). Report order: post author, comment authors, then reacting people. At most 30.
+ */
+export async function inlineImages(data:unknown,max=30):Promise<Array<{type:'image';data:string;mimeType:'image/jpeg'}>>{
+ if(!data||typeof data!=='object')return [];
+ const root=data as Record<string,unknown>;
+ if(!root.reactions&&!root.comments&&!root.people)return [];
+ const ids=[...new Set([...JSON.stringify({p:root.post,c:root.comments,r:root.reactions??root.people}).matchAll(/\/api\/linkedin\/thumb\/([0-9a-f-]{36})\.jpg/gi)].map(x=>x[1]))].slice(0,max);
+ if(!ids.length)return [];
+ const rows=await sb<Array<{id:string;jpeg_b64:string}>>('/rest/v1/cmg_linkedin_thumbs?id=in.('+ids.join(',')+')&select=id,jpeg_b64').catch(()=>[]);
+ const byId=new Map(rows.map(r=>[r.id,r.jpeg_b64]));
+ return ids.map(id=>byId.get(id)).filter((b):b is string=>!!b).map(b=>({type:'image' as const,data:b,mimeType:'image/jpeg' as const}));
+}
 /** A stored report, or null when missing or older than 24 hours. */
 export async function loadReport(userId:string,id:string):Promise<Record<string,unknown>|null>{
  if(!/^[0-9a-f-]{36}$/i.test(userId)||!/^[0-9a-f-]{36}$/i.test(id))return null;
