@@ -49,6 +49,23 @@ export async function deleteReport(userId:string,id:string){
  await sb('/storage/v1/object/'+REPORT_BUCKET,{method:'DELETE',body:JSON.stringify({prefixes:[userId+'/reports/'+id+'.json']})});
  return true;
 }
+/**
+ * Daily purge, whatever users do: LinkedIn results older than 15 minutes, thumbnails and reports older than
+ * 24 hours, for every user. Nothing LinkedIn-related is kept longer.
+ */
+export async function purgeExpiredLinkedIn(){
+ const out={results:0,thumbs:0,reports:0};
+ await sb('/rest/v1/cmg_linkedin_jobs?result=not.is.null&completed_at=lt.'+encodeURIComponent(new Date(Date.now()-RESULT_TTL_MS).toISOString()),{method:'PATCH',body:JSON.stringify({result:null})}).then(()=>{out.results=1;}).catch(()=>{});
+ await sb('/rest/v1/cmg_linkedin_thumbs?created_at=lt.'+encodeURIComponent(new Date(Date.now()-THUMB_TTL_MS).toISOString()),{method:'DELETE'}).then(()=>{out.thumbs=1;}).catch(()=>{});
+ const users=await sb<Array<{name:string;id:string|null}>>('/storage/v1/object/list/'+REPORT_BUCKET,{method:'POST',body:JSON.stringify({prefix:'',limit:1000})}).catch(()=>[]);
+ for(const u of users||[]){
+  if(!/^[0-9a-f-]{36}$/i.test(u.name))continue;
+  const files=await sb<Array<{name:string;created_at?:string}>>('/storage/v1/object/list/'+REPORT_BUCKET,{method:'POST',body:JSON.stringify({prefix:u.name+'/reports',limit:1000})}).catch(()=>[]);
+  const stale=(files||[]).filter(f=>/\.json$/.test(f.name)&&(!f.created_at||Date.now()-Date.parse(f.created_at)>THUMB_TTL_MS)).map(f=>u.name+'/reports/'+f.name);
+  for(let i=0;i<stale.length;i+=100){await sb('/storage/v1/object/'+REPORT_BUCKET,{method:'DELETE',body:JSON.stringify({prefixes:stale.slice(i,i+100)})}).catch(()=>{});out.reports+=Math.min(100,stale.length-i);}
+ }
+ return out;
+}
 /** A stored report, or null when missing or older than 24 hours. */
 export async function loadReport(userId:string,id:string):Promise<Record<string,unknown>|null>{
  if(!/^[0-9a-f-]{36}$/i.test(userId)||!/^[0-9a-f-]{36}$/i.test(id))return null;
