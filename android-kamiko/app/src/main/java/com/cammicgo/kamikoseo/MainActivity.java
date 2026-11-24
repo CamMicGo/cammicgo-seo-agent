@@ -1243,7 +1243,8 @@ public class MainActivity extends Activity {
             }
             return;
           }
-          extractRenderedLinkedInComments(id, action, job, attempt);
+          String openComments = "(function(){const vis=e=>!!e.getClientRects().length;const text=e=>((e.innerText||'')+' '+(e.getAttribute('aria-label')||'')).trim();const buttons=[...document.querySelectorAll('button,[role=button],a')].filter(vis);const count=buttons.find(e=>/^\\d+\\s*(commentaires?|comments?)\\b/i.test(text(e)));const button=buttons.find(e=>/^(commenter|comment|commentaires|comments)(\\s|$)/i.test(text(e)));const existing=document.querySelector('[class*=\"comments-comment-item__main-content\"],[class*=\"comment__main-content\"],[data-testid*=\"comment-text\"]');if(existing&&vis(existing))return 'already_open';const target=count||button;if(!target)return 'missing';target.scrollIntoView({block:'center'});target.click();return 'clicked';})()";
+          linkedinWeb.evaluateJavascript(openComments, opened -> ui.postDelayed(() -> extractRenderedLinkedInComments(id, action, job, attempt), 1800));
         } catch (Exception e) { finishLinkedInJob(id, null, "LinkedIn page readiness check failed: " + e.getMessage()); }
       });
       return;
@@ -1263,7 +1264,7 @@ public class MainActivity extends Activity {
           if (batch != null) for (int i=0; i<batch.length(); i++) {
             JSONObject c=batch.optJSONObject(i); if(c==null)continue;
             String key=c.optString("commentId");
-            if(key.isEmpty())key=c.optString("author")+":"+c.optString("text");
+            if(key.isEmpty() || "null".equals(key))key="text:"+c.optString("text");
             linkedinCommentSeen.put(key,c);
           }
           int limit=Math.min(100,Math.max(1,job.optInt("limit",40)));
