@@ -1,0 +1,57 @@
+<!doctype html><html lang="en"><head><title>Post | LinkedIn</title></head><body>
+<!-- Fictional data. Desktop post page, comments inline, legacy class names, overflow menus on every comment. -->
+<header><nav><a href="https://www.linkedin.com/in/me-user/">Me</a></nav></header>
+<main>
+<div class="feed-shared-update-v2" data-urn="urn:li:activity:7322222222222222222">
+ <div class="update-components-actor"><a href="https://www.linkedin.com/in/alice-martin-123/"><img src="https://media.licdn.com/dms/image/v2/alice/profile-displayphoto/0.jpg" alt="View Alice Martin’s profile"></a>
+  <div><a href="https://www.linkedin.com/in/alice-martin-123/"><span class="update-components-actor__title"><span dir="ltr">Alice Martin</span></span></a><div>3D engine developer</div><div>3d •</div></div>
+  <button class="feed-shared-control-menu__trigger" aria-label="Open control menu for post by Alice Martin" onclick="window.__overflowClicked=true">…</button></div>
+ <div class="update-components-text"><span dir="ltr">Can we talk about real-time graphics for two minutes? Ray tracing and PBR everywhere.</span></div>
+ <div class="social-details-social-counts"><button class="social-details-social-counts__reactions-count" aria-label="9 reactions">9</button><button aria-label="7 comments on Alice Martin’s post">7 comments</button></div>
+ <div><button aria-label="React Like" aria-pressed="false" onclick="window.__likeClicked=true">Like</button><button aria-label="Comment">Comment</button><button aria-label="Repost">Repost</button><button aria-label="Send in a private message">Send</button></div>
+ <div class="comments-comments-list">
+  <article class="comments-comment-entity" data-id="urn:li:comment:(activity:7322222222222222222,7400000000000000001)">
+   <a class="comments-comment-meta__image-link" href="https://www.linkedin.com/in/tom-ricard/"><img src="https://media.licdn.com/dms/image/v2/tom/profile-displayphoto/0.jpg" alt="View Tom Ricard’s profile"></a>
+   <div class="comments-comment-meta"><a href="https://www.linkedin.com/in/tom-ricard/"><span class="comments-comment-meta__description-title">Tom Ricard</span></a><div class="comments-comment-meta__description-subtitle">Lead developer</div><time>2h</time>
+    <button class="comment-options-trigger" aria-label="See more options for comment by Tom Ricard" onclick="window.__overflowClicked=true"><svg data-test-icon="overflow-web-ios-small"></svg></button></div>
+   <div class="comments-comment-item__main-content" dir="ltr">Great breakdown, the PBR part is spot on.</div>
+   <div><button aria-label="React Like to Tom Ricard’s comment" onclick="window.__likeClicked=true">Like</button><button aria-label="2 Reactions on Tom Ricard’s comment">2</button><button aria-label="Reply to Tom Ricard’s comment">Reply</button></div>
+  </article>
+  <article class="comments-comment-entity" data-id="urn:li:comment:(activity:7322222222222222222,7400000000000000002)">
+   <a href="https://www.linkedin.com/in/sara-benali/"><img src="https://media.licdn.com/dms/image/v2/sara/profile-displayphoto/0.jpg" alt="View Sara Benali’s profile"></a>
+   <div class="comments-comment-meta"><a href="https://www.linkedin.com/in/sara-benali/"><span class="comments-comment-meta__description-title">Sara Benali</span></a><div>Graphics performance engineer</div><time>1d</time>
+    <button class="comment-options-trigger" onclick="window.__overflowClicked=true">More options for comment</button></div>
+   <div class="comments-comment-item__main-content" dir="ltr">Graphics APIs already struggle with 2 MB constant buffers, curious how <a href="https://www.linkedin.com/in/alice-martin-123/">Alice Martin</a> handles it.</div>
+   <div><button aria-label="React Like to Sara Benali’s comment">Like</button><button aria-label="Reply to Sara Benali’s comment">Reply</button></div>
+   <div class="comments-replies-list"><ul>
+    <li><article class="comments-comment-entity comments-comment-entity--reply" data-id="urn:li:comment:(activity:7322222222222222222,7400000000000000003)">
+     <a href="https://www.linkedin.com/in/alice-martin-123/"><img src="https://media.licdn.com/dms/image/v2/alice/profile-displayphoto/0.jpg" alt="View Alice Martin’s profile"></a>
+     <div class="comments-comment-meta"><a href="https://www.linkedin.com/in/alice-martin-123/"><span class="comments-comment-meta__description-title">Alice Martin</span></a><span class="comments-comment-meta__badge">Author</span><div>3D engine developer</div><time>20h</time>
+      <button aria-label="See more options for comment by Alice Martin" aria-haspopup="true" onclick="window.__overflowClicked=true">…</button></div>
+     <div class="comments-comment-item__main-content" dir="ltr">We stream them in smaller chunks, more soon!</div>
+     <div><button aria-label="React Like to Alice Martin’s comment">Like</button><button aria-label="1 Reaction on Alice Martin’s comment">1</button><button aria-label="Reply to Alice Martin’s comment">Reply</button></div>
+    </article></li></ul></div>
+  </article>
+  <article class="comments-comment-entity" data-id="urn:li:comment:(activity:7322222222222222222,7400000000000000004)">
+   <a href="https://www.linkedin.com/in/jules-moreau/"><img src="https://media.licdn.com/dms/image/v2/jules/profile-displayphoto/0.jpg" alt="View Jules Moreau’s profile"></a>
+   <div class="comments-comment-meta"><a href="https://www.linkedin.com/in/jules-moreau/"><span class="comments-comment-meta__description-title">Jules Moreau</span></a><div>Technical artist</div><time>1d</time></div>
+   <div class="comments-comment-item__main-content" dir="ltr">Which upscaler did you test?</div>
+   <div><button aria-label="React Like to Jules Moreau’s comment">Like</button><button aria-label="Reply to Jules Moreau’s comment">Reply</button></div>
+   <button id="show-replies" onclick="document.getElementById('nina').hidden=false;this.remove()">View 1 reply</button>
+   <div class="comments-replies-list"><ul><li id="nina" hidden><article class="comments-comment-entity" data-id="urn:li:comment:(activity:7322222222222222222,7400000000000000005)">
+     <a href="https://www.linkedin.com/in/nina-perez/"><img src="https://media.licdn.com/dms/image/v2/nina/profile-displayphoto/0.jpg" alt="View Nina Perez’s profile"></a>
+     <div class="comments-comment-meta"><a href="https://www.linkedin.com/in/nina-perez/"><span>Nina Perez</span></a><div>Rendering engineer</div><time>12h</time></div>
+     <div class="comments-comment-item__main-content" dir="ltr">Probably a temporal one given the 30 FPS target.</div>
+     <div><button aria-label="React Like to Nina Perez’s comment">Like</button><button aria-label="Reply to Nina Perez’s comment">Reply</button></div>
+   </article></li></ul></div>
+  </article>
+  <div id="more-slot"></div>
+  <button id="load-more" class="comments-comments-list__load-more-comments-button" onclick="loadMore(this)">Load more comments</button>
+ </div>
+</div>
+</main>
+<script>
+function comment(id,slug,name,head,text){return '<article class="comments-comment-entity" data-id="urn:li:comment:(activity:7322222222222222222,'+id+')"><a href="https://www.linkedin.com/in/'+slug+'/"><img src="https://media.licdn.com/dms/image/v2/'+slug+'/profile-displayphoto/0.jpg" alt="View '+name+'’s profile"></a><div class="comments-comment-meta"><a href="https://www.linkedin.com/in/'+slug+'/"><span>'+name+'</span></a><div>'+head+'</div><time>3h</time><button aria-label="See more options for comment by '+name+'" onclick="window.__overflowClicked=true">…</button></div><div class="comments-comment-item__main-content" dir="ltr">'+text+'</div><div><button aria-label="React Like to '+name+'’s comment">Like</button><button aria-label="Reply to '+name+'’s comment">Reply</button></div></article>';}
+function loadMore(b){document.getElementById('more-slot').outerHTML=comment('7400000000000000006','marc-olivier','Marc Olivier','Game designer','Love the comparison screenshots.')+comment('7400000000000000007','lea-fontaine','Léa Fontaine','Student','Thanks for sharing this!');b.remove();}
+</script>
+</body></html>

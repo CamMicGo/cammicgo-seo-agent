@@ -1,0 +1,40 @@
+<!doctype html><html lang="fr"><head><title>Publication | LinkedIn</title></head><body>
+<!-- Fictional data. Post page; the reaction COUNT opens a dialog with 6 category tabs and lazy loading. -->
+<header><nav><a href="https://www.linkedin.com/in/me-user/">Vous</a></nav></header>
+<main>
+<div class="p1" componentkey="urn:li:activity:7333333333333333333">
+ <div><a href="https://www.linkedin.com/in/alice-martin-123/"><img src="https://media.licdn.com/dms/image/v2/alice/profile-displayphoto/0.jpg" alt="Voir le profil de Alice Martin"></a><div><a href="https://www.linkedin.com/in/alice-martin-123/">Alice Martin</a></div><div>Développeuse moteur 3D</div><div>3 j</div></div>
+ <div><span dir="ltr">Les graphismes temps réel, parlons-en deux minutes : ray tracing, PBR, upscaling.</span></div>
+ <div><button id="counter" class="x7" aria-label="Tom Ricard et 13 autres personnes"><img alt="like" src="https://static.licdn.com/aero-v1/sc/h/8ekq8gho1ruaf8i7f86vd1ftt" width="16"><img alt="celebrate" src="https://static.licdn.com/aero-v1/sc/h/b1dl5jk88euc7e9ri50xy5qo8" width="16"><span>Tom Ricard et 13 autres</span></button><button>3 commentaires</button></div>
+ <div><button aria-label="Réagir avec J’aime" aria-pressed="false" onclick="window.__likeClicked=true">J’aime</button><button aria-label="Commenter">Commenter</button><button>Republier</button><button>Envoyer</button></div>
+</div>
+</main>
+<script>
+var TYPES={like:{n:'J’aime',icon:'<img alt="like" src="https://static.licdn.com/aero-v1/sc/h/8ekq8gho1ruaf8i7f86vd1ftt" width="16">'},
+ celebrate:{n:'Bravo',icon:'<svg data-test-icon="praise-consumption-small" width="16"></svg>'},
+ support:{n:'Soutien',icon:'<svg data-test-icon="appreciation-consumption-small" width="16"></svg>'},
+ love:{n:'J’adore',icon:'<svg data-test-icon="empathy-consumption-small" width="16"></svg>'},
+ insightful:{n:'Instructif',icon:'<svg data-test-icon="interest-consumption-small" width="16"></svg>'},
+ funny:{n:'Drôle',icon:'<svg data-test-icon="entertainment-consumption-small" width="16"></svg>'}};
+var PEOPLE=[];
+var plan=[['like',8],['celebrate',2],['support',1],['love',1],['insightful',1],['funny',1]];
+var i=0;plan.forEach(function(p){for(var k=0;k<p[1];k++){i++;PEOPLE.push({slug:'person-'+i,name:'Personne '+i,head:'Métier numéro '+i,type:p[0]});}});
+var HIDDEN=window.__hiddenReactors||0; // reactions LinkedIn counts but never lists
+function row(p){return '<li><a href="https://www.linkedin.com/in/'+p.slug+'/?lipi=x"><div class="av"><img src="https://media.licdn.com/dms/image/v2/'+p.slug+'/profile-displayphoto-shrink_100_100/0.jpg" alt="Voir le profil de '+p.name+'"></div><div><div><span>'+p.name+'</span></div><div>• 2e</div><div>'+p.head+'</div></div></a><span class="ri">'+TYPES[p.type].icon+'</span><button>Se connecter</button></li>';}
+var state={tab:'all',shown:10};
+function list(){var ps=PEOPLE.filter(function(p){return state.tab==='all'||p.type===state.tab;});return ps.slice(0,state.shown);}
+function render(){var d=document.getElementById('rx');var ps=PEOPLE.filter(function(p){return state.tab==='all'||p.type===state.tab;});
+ d.querySelector('ul').innerHTML=list().map(row).join('');
+ d.querySelector('#more').hidden=state.shown>=ps.length;
+ d.querySelectorAll('[role=tab]').forEach(function(t){t.setAttribute('aria-selected',t.dataset.t===state.tab?'true':'false');});}
+function count(t){return PEOPLE.filter(function(p){return t==='all'||p.type===t;}).length;}
+document.getElementById('counter').onclick=function(){
+ var tabs='<button role="tab" data-t="all">Tous '+(count('all')+HIDDEN)+'</button>'+plan.map(function(p){return '<button role="tab" data-t="'+p[0]+'" aria-label="'+TYPES[p[0]].n+' '+(count(p[0])+(p[0]==='like'?HIDDEN:0))+'">'+TYPES[p[0]].icon+'<span>'+(count(p[0])+(p[0]==='like'?HIDDEN:0))+'</span></button>';}).join('');
+ var d=document.createElement('div');d.id='rx';d.setAttribute('role','dialog');d.setAttribute('aria-labelledby','rxh');
+ d.innerHTML='<h2 id="rxh">Réactions</h2><button aria-label="Fermer" onclick="this.parentNode.remove()">×</button><div role="tablist">'+tabs+'</div><div class="scroll"><ul></ul><button id="more">Afficher plus de résultats</button></div>';
+ document.body.appendChild(d);
+ d.querySelectorAll('[role=tab]').forEach(function(t){t.onclick=function(){state.tab=t.dataset.t;state.shown=10;render();};});
+ d.querySelector('#more').onclick=function(){state.shown+=10;render();};
+ render();};
+</script>
+</body></html>
