@@ -40,6 +40,15 @@ async function saveReport(userId:string,root:Record<string,unknown>,base:string)
   root.reportUrl=base+'/api/linkedin/report/'+userId+'.'+id;
  }catch{/* the Markdown report stays available */}
 }
+/** Deletes a report and the hosted photos it references (they belong to this user only). */
+export async function deleteReport(userId:string,id:string){
+ const r=await loadReport(userId,id);
+ if(!r)return false;
+ const ids=[...new Set([...JSON.stringify(r).matchAll(/\/api\/linkedin\/thumb\/([0-9a-f-]{36})\.jpg/gi)].map(x=>x[1]))];
+ for(let i=0;i<ids.length;i+=80)await sb('/rest/v1/cmg_linkedin_thumbs?user_id=eq.'+userId+'&id=in.('+ids.slice(i,i+80).join(',')+')',{method:'DELETE'}).catch(()=>{});
+ await sb('/storage/v1/object/'+REPORT_BUCKET,{method:'DELETE',body:JSON.stringify({prefixes:[userId+'/reports/'+id+'.json']})});
+ return true;
+}
 /** A stored report, or null when missing or older than 24 hours. */
 export async function loadReport(userId:string,id:string):Promise<Record<string,unknown>|null>{
  if(!/^[0-9a-f-]{36}$/i.test(userId)||!/^[0-9a-f-]{36}$/i.test(id))return null;

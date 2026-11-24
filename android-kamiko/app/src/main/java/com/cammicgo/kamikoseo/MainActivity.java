@@ -3529,10 +3529,19 @@ public class MainActivity extends Activity {
         row.addView(new View(this), new LinearLayout.LayoutParams(dp(40), dp(40)));
       }
       final CheckBox rowBox = box;
-      TextView icon = text(null, ok ? "✓" : pending ? "…" : "✕", 14, Color.WHITE, true);
-      icon.setGravity(Gravity.CENTER);
-      icon.setBackground(dot(ok ? GREEN : pending ? AMBER : RED));
-      row.addView(icon, new LinearLayout.LayoutParams(dp(24), dp(24)));
+      if (pending) {
+        // Work in progress: a spinner, never a cross, until the final result arrives.
+        android.widget.ProgressBar spin = new android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleSmall);
+        spin.setIndeterminate(true);
+        spin.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(Color.rgb(10, 102, 194)));
+        spin.setContentDescription(fr() ? "En cours" : "In progress");
+        row.addView(spin, new LinearLayout.LayoutParams(dp(24), dp(24)));
+      } else {
+        TextView icon = text(null, ok ? "✓" : "✕", 14, Color.WHITE, true);
+        icon.setGravity(Gravity.CENTER);
+        icon.setBackground(dot(ok ? GREEN : RED));
+        row.addView(icon, new LinearLayout.LayoutParams(dp(24), dp(24)));
+      }
       LinearLayout texts = new LinearLayout(this);
       texts.setOrientation(LinearLayout.VERTICAL);
       texts.setPadding(dp(10), 0, 0, 0);
