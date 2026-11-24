@@ -89,11 +89,27 @@ test('AI analysis: cleaned, escaped, rendered above comments and labelled as wri
   const payload=reportPayload({uiLang:'fr',postUrl:'https://www.linkedin.com/feed/update/urn:li:activity:1234567890123/',post:{author:'Alice',text:'x'},comments:{comments:[{author:'Bob',text:'Bravo'}]},reactions:{byType:{like:1},people:[{name:'Eve',reaction:'like',headline:'Dev'}]}},B)!;
   payload.analysis=cleanAnalysis({title:'Graphismes de <GTA VI>',postSummary:'Résumé',commentsSummary:'Avis',sentiment:{positive:2,neutral:1,negative:0},opinions:['Très clair','x'.repeat(900)],audience:[{domain:'Géomatique',count:6},{domain:'',count:3}],takeaways:['Publier des visuels']},'ChatGPT');
   const html=reportHtml(payload,B);
-  assert.match(html,/<h2>Publication — Graphismes de &lt;GTA VI&gt;<\/h2>/);
+  assert.match(html,/<h2 class="sec">Post analysé<\/h2><p class="lead">Graphismes de &lt;GTA VI&gt;<\/p>/);
   assert.match(html,/Rédigé par l’assistant IA \(ChatGPT\)/);
-  assert.match(html,/Positif 66\.7 %/);
+  assert.match(html,/<span>Positif<\/span><em>2 commentaire\(s\)<\/em><b>66,7 %<\/b>/);
   assert.match(html,/Géomatique/);
-  assert.ok(html.indexOf('Principaux avis')<html.indexOf('<h2>Commentaires'),'analysis before the raw comments');
+  assert.ok(html.indexOf('Principaux avis')<html.indexOf('<div class="cm'),'analysis before the raw comments');
   assert.equal((payload.analysis as {opinions:string[]}).opinions[1].length,400,'long items are cut');
   assert.equal((payload.analysis as {audience:unknown[]}).audience.length,1,'empty domains dropped');
+});
+
+test('report charts: audience donut, companies share, comment themes, reaction bars with localized LinkedIn names and pictures', ()=>{
+  const B='https://seo.cammicgo.com';
+  const p=reportPayload({uiLang:'en',postUrl:'https://www.linkedin.com/feed/update/urn:li:activity:1234567890123/',post:{author:'A',text:'x'},comments:{comments:[{author:'B',text:'c'}]},
+    reactions:{byType:{like:3,funny:1},people:[{name:'P1',reaction:'like'},{name:'P2',reaction:'like'},{name:'P3',reaction:'like'},{name:'P4',reaction:'funny'}]}},B)!;
+  p.analysis=cleanAnalysis({title:'T',audience:[{domain:'GIS',count:3},{domain:'Sales',count:1}],companies:[{label:'Atos',count:2}],themes:[{label:'Optimisation',count:3}],audienceGroups:[{label:'Tech',count:3}]},'Claude');
+  const html=reportHtml(p,B,{reactionImg:t=>'data:image/png;base64,'+t.toUpperCase()});
+  assert.match(html,/<svg class="donut"/);
+  assert.match(html,/<span>GIS<\/span><b>75 %<\/b>/);
+  assert.match(html,/Companies represented/);
+  assert.match(html,/2 of 4 profiles/);
+  assert.match(html,/Main comment themes/);
+  assert.match(html,/<svg class="rc"[\s\S]*<image href="data:image\/png;base64,FUNNY"[\s\S]*class="bl">Funny<\/text>/);
+  assert.match(html,/class="bl">Like<\/text>/);
+  for(const sec of ['Post analysed','Summary','Audience','Comments','Reactions'])assert.ok(html.includes(sec),sec);
 });
