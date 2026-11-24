@@ -35,7 +35,30 @@ let W=REPORT_WORDS.fr;
 const setReportLang=(v:unknown)=>{W=REPORT_WORDS[reportLang(v)];};
 const LBL=(t:string)=>(W as unknown as Record<string,string>)[t]||'';
 /** LinkedIn's six reaction pictures, served by CamMicGo: reactionIconUrl on each person, reactionIcons per type. */
+/**
+ * When the reaction list holds more people than LinkedIn's own counter, the extra rows are profile links the
+ * reader picked up outside the reaction list (the comments behind it): same link as a comment author, no
+ * headline. Those rows are removed (never more than the surplus) and the counts are recomputed.
+ */
+export function reconcileReactions(data:unknown){
+ if(!data||typeof data!=='object'||Array.isArray(data))return data;
+ const root=data as Obj;
+ const rx=root.reactions&&typeof root.reactions==='object'?root.reactions as Obj:null;
+ const cx=root.comments&&typeof root.comments==='object'&&!Array.isArray(root.comments)?root.comments as Obj:null;
+ if(!rx||!Array.isArray(rx.people)||typeof rx.expectedTotal!=='number')return data;
+ const people=rx.people as Obj[];
+ let surplus=people.length-rx.expectedTotal;
+ if(surplus<=0)return data;
+ const commenters=new Set((cx&&Array.isArray(cx.comments)?cx.comments as Obj[]:[]).map(c=>personKey(str(c.authorProfileUrl))).filter(k=>!k.startsWith('name:')));
+ const kept=people.filter(p=>{if(surplus>0&&!str(p.headline)&&commenters.has(personKey(str(p.profileUrl)))){surplus--;return false;}return true;});
+ if(kept.length===people.length)return data;
+ rx.people=kept;rx.droppedOutsideList=people.length-kept.length;
+ const by:Record<string,number>={};for(const p of kept){const k=str(p.reaction)||'unknown';by[k]=(by[k]||0)+1;}
+ rx.byType=by;if(typeof rx.retrieved==='number')rx.retrieved=kept.length;
+ return data;
+}
 export function decorateReactions(data:unknown,base=process.env.APP_BASE_URL||'https://seo.cammicgo.com'){
+ reconcileReactions(data);
  setReportLang(data&&typeof data==='object'?(data as Record<string,unknown>).uiLang:null);
  const icon=(t:string)=>base+'/linkedin/reactions/'+t+'.png';
  const isType=(t:unknown):t is string=>typeof t==='string'&&(REACTION_TYPES as readonly string[]).includes(t);
