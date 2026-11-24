@@ -1143,6 +1143,16 @@ public class MainActivity extends Activity {
       if (!jobId.matches("\\d{5,20}")) { finishLinkedInJob(id, null, "Invalid LinkedIn job ID"); return; }
       linkedinWeb.loadUrl("https://www.linkedin.com/jobs/view/" + jobId + "/");
       ui.postDelayed(() -> extractLinkedInJobDetails(id, jobId, 0), 3500);
+    } else if ("search".equals(op) && "posts".equals(job.optString("searchType"))) {
+      String keywords = job.optString("keywords", "").trim();
+      String author = job.optString("author", "").trim();
+      int limit = Math.min(50, Math.max(1, job.optInt("limit", 20)));
+      if (keywords.length() < 2 || keywords.length() > 250 || author.length() > 150) { finishLinkedInJob(id, null, "Invalid post search"); return; }
+      try {
+        String url = "https://www.linkedin.com/search/results/content/?keywords=" + java.net.URLEncoder.encode(keywords, "UTF-8");
+        linkedinWeb.loadUrl(url);
+        ui.postDelayed(() -> extractLinkedInPostSearch(id, author, limit, 0, new java.util.LinkedHashMap<>()), 4200);
+      } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
     } else if ("search".equals(op)) {
       String keywords = job.optString("keywords", "").trim();
       int requested = job.optBoolean("all", false) ? Integer.MAX_VALUE : job.optInt("limit", 50);
@@ -1233,7 +1243,8 @@ public class MainActivity extends Activity {
             }
             return;
           }
-          extractRenderedLinkedInComments(id, action, job, attempt);
+          String openComments = "(function(){const vis=e=>!!e.getClientRects().length;const text=e=>((e.innerText||'')+' '+(e.getAttribute('aria-label')||'')).trim();const buttons=[...document.querySelectorAll('button,[role=button],a')].filter(vis);const count=buttons.find(e=>/^\\d+\\s*(commentaires?|comments?)\\b/i.test(text(e)));const button=buttons.find(e=>/^(commenter|comment|commentaires|comments)(\\s|$)/i.test(text(e)));const existing=document.querySelector('[class*=\"comments-comment-item__main-content\"],[class*=\"comment__main-content\"],[data-testid*=\"comment-text\"]');if(existing&&vis(existing))return 'already_open';const target=count||button;if(!target)return 'missing';target.scrollIntoView({block:'center'});target.click();return 'clicked';})()";
+          linkedinWeb.evaluateJavascript(openComments, opened -> ui.postDelayed(() -> extractRenderedLinkedInComments(id, action, job, attempt), 1800));
         } catch (Exception e) { finishLinkedInJob(id, null, "LinkedIn page readiness check failed: " + e.getMessage()); }
       });
       return;
@@ -1253,7 +1264,7 @@ public class MainActivity extends Activity {
           if (batch != null) for (int i=0; i<batch.length(); i++) {
             JSONObject c=batch.optJSONObject(i); if(c==null)continue;
             String key=c.optString("commentId");
-            if(key.isEmpty())key=c.optString("author")+":"+c.optString("text");
+            if(key.isEmpty() || "null".equals(key))key="text:"+c.optString("text");
             linkedinCommentSeen.put(key,c);
           }
           int limit=Math.min(100,Math.max(1,job.optInt("limit",40)));
@@ -1300,6 +1311,37 @@ public class MainActivity extends Activity {
    * Reads feed posts. LinkedIn renders the feed late and in several layouts (desktop, mobile web), so
    * this tries several post containers, scrolls to load more and looks again for about 15 s.
    */
+  private void extractLinkedInPostSearch(String id, String author, int limit, int attempt, java.util.LinkedHashMap<String, JSONObject> found) {
+    if (!linkedinMcpEnabled || linkedinWeb == null) { finishLinkedInJob(id, null, "LinkedIn navigation disabled"); return; }
+    dismissLinkedInAppPrompt();
+    String js = "(function(){const out=[],seen=new Set();const visible=e=>!!(e.offsetWidth||e.offsetHeight||e.getClientRects().length);const norm=s=>(s||'').trim();const canonical=v=>{const m=(v||'').match(/urn:li:(activity|share|ugcPost):(\\d+)/);if(m)return 'https://www.linkedin.com/feed/update/urn:li:'+m[1]+':'+m[2]+'/';const p=(v||'').match(/https:\\/\\/(?:www\\.)?linkedin\\.com\\/posts\\/[A-Za-z0-9_%.-]+/);return p?p[0]+'/':'';};const roots=[...document.querySelectorAll('[data-urn],[data-id],[data-entity-urn],article,[role=\"article\"],[class*=\"feed-shared-update\"],[data-view-name*=\"feed-update\"],[class*=\"search-results__result\"]')].filter(visible);for(const a of document.querySelectorAll('a[href*=\"/feed/update/\"],a[href*=\"/posts/\"]')){if(visible(a))roots.push(a.closest('article,[role=\"article\"],[data-urn],[class*=\"feed-shared-update\"],li')||a.parentElement);}for(const n of roots){const t=norm(n.innerText);if(t.length<35||t.length>16000)continue;const urls=new Set();for(const e of [n,...n.querySelectorAll('[data-urn],[data-id],[data-entity-urn],a[href*=\"/feed/update/\"],a[href*=\"/posts/\"]')]){for(const v of [e.getAttribute('data-urn'),e.getAttribute('data-id'),e.getAttribute('data-entity-urn'),e.href]){const u=canonical(v);if(u)urls.add(u);}}if(urls.size!==1)continue;const url=[...urls][0];const a=n.querySelector('[class*=\"actor__title\"],[class*=\"actor-name\"],[class*=\"actor__name\"],a[href*=\"/in/\"],a[href*=\"/company/\"]');const author=norm(a?.innerText).split('\\n')[0];const key=url+'|'+author;if(seen.has(key))continue;seen.add(key);out.push({postUrl:url,author,text:t.slice(0,5000)});}return JSON.stringify({posts:out,signedOut:!!document.querySelector('input[name=\"session_key\"]')||/authwall|checkpoint|login/.test(location.pathname),path:location.pathname,candidates:roots.length});})()";
+    linkedinWeb.evaluateJavascript(js, raw -> {
+      try {
+        JSONObject r = new JSONObject(new JSONArray("[" + raw + "]").getString(0));
+        if (r.optBoolean("signedOut")) { finishLinkedInJob(id, null, "LinkedIn not signed in"); return; }
+        JSONArray posts = r.optJSONArray("posts");
+        for (int i=0; posts != null && i<posts.length(); i++) {
+          JSONObject p=posts.getJSONObject(i);
+          String name=p.optString("author").trim();
+          if (!author.isEmpty() && !name.toLowerCase(java.util.Locale.ROOT).contains(author.toLowerCase(java.util.Locale.ROOT))) continue;
+          String url=p.optString("postUrl");
+          if (!url.isEmpty() && (found.containsKey(url) || found.size()<limit)) {
+            JSONObject old=found.get(url);
+            if (old==null || p.optString("text").length()>old.optString("text").length()) found.put(url,p);
+          }
+        }
+        if (attempt>=7 || found.size()>=limit) {
+          JSONObject result=new JSONObject();
+          result.put("posts",new JSONArray(found.values())); result.put("retrieved",found.size());
+          result.put("partial",true); result.put("searchType","posts"); result.put("diagnostics",r);
+          finishLinkedInJob(id,result,null); return;
+        }
+        linkedinWeb.evaluateJavascript("window.scrollBy(0,Math.round(window.innerHeight*1.3));", v -> {});
+        ui.postDelayed(() -> extractLinkedInPostSearch(id,author,limit,attempt+1,found),2200);
+      } catch (Exception e) { finishLinkedInJob(id,null,e.getMessage()); }
+    });
+  }
+
   private void extractLinkedInFeed(String id, int limit, int attempt, JSONObject best) {
     if (!linkedinMcpEnabled) { finishLinkedInJob(id, null, "LinkedIn navigation disabled"); return; }
     dismissLinkedInAppPrompt();
