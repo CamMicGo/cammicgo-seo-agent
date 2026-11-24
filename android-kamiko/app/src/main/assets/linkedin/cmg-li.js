@@ -186,7 +186,7 @@
     var m = String(href || '').match(/^(?:https?:\/\/(?:[a-z]{2,3}\.|www\.)?linkedin\.com)?\/(in|company|school|showcase)\/([^/?#]+)/i);
     return m ? 'https://www.linkedin.com/' + m[1].toLowerCase() + '/' + m[2] + '/' : '';
   }
-  var BADGE_RX = /^(auteur|author|autor|autore|verfasser|•|·|\W?\s*(1er|2e|3e|1st|2nd|3rd|3e\+|3rd\+|\d(er|e|nd|rd|th)\+?)|premium|verified|v[eé]rifi[eé]e?|follow(ing)?|suivi|abonn[eé]e?|relation de (1er|2e|3e) niveau|(1st|2nd|3rd)[- ]degree connection|(1er|2e|3e) et \+|3rd\+|out of network|hors r[eé]seau|she\/her|he\/him|elle|il|they\/them|creator|cr[eé]ateur|top voice|statut vérifié|has a verified status|a un statut v[eé]rifi[eé]|view my (newsletter|services)|open to work)$/i;
+  var BADGE_RX = /^(auteur|author|autor|autore|verfasser|•|·|\W?\s*(1er|2e|3e|1st|2nd|3rd|3e\+|3rd\+|\d(er|e|nd|rd|th)\+?)|premium|verified|v[eé]rifi[eé]e?|follow(ing)?|suivi|abonn[eé]e?|relation de (1er|2e|3e) niveau|(1st|2nd|3rd)[- ]degree connection|(1er|2e|3e) et \+|3rd\+|out of network|hors r[eé]seau|she\/her|he\/him|elle|il|they\/them|creator|cr[eé]ateur|top voice|statut vérifié|has a verified status|a un statut v[eé]rifi[eé]|view my (newsletter|services)|open to work|vous|you|t[uú])$/i;
   var TIME_RX = /^(\d+\s*(s|sec|secs|min|mins|mn|h|hr|hrs|hour|hours|heure|heures|j|d|day|days|jour|jours|sem|w|wk|wks|week|weeks|semaine|semaines|mo|mos|month|months|mois|an|ans|y|yr|yrs|year|years|année|années))(\s*[•·].*)?$|^(now|maintenant|à l.instant|just now)$/i;
   var ACTION_LINE_RX = /^(like|j.aime|reply|r[eé]pondre|comment|commenter|repost|republier|send|envoyer|share|partager|see more|voir plus|…\s*(plus|more)|load more.*|afficher.*|voir.*|show.*|view.*|translate.*|traduire.*|voir la traduction|see translation|\d+\s*(reactions?|r[eé]actions?|replies|r[eé]ponses?|comments?|commentaires?)|\|)$/i;
   function cleanName(s) {
@@ -867,7 +867,21 @@
     var ls = nameLines(r.row).filter(function (x) { return x !== info.name; });
     var icon = qsa(r.row, 'img,svg,li-icon,[data-test-icon]').filter(function (i) { return isReactionIcon(i) || (!!classifyReaction(iconMeta(i)) && !/dms\/image|profile-displayphoto/.test(attr(i, 'src'))); });
     var fromIcon = icon.map(function (i) { return classifyReaction(iconMeta(i) + ' ' + label(i)); }).filter(Boolean)[0] || null;
-    return { name: info.name || null, profileUrl: r.href, photoUrl: info.photoUrl || null, headline: (ls[0] || '').slice(0, 200) || null, reaction: typeHint || fromIcon, reactionFromIcon: fromIcon };
+    return { name: info.name || null, profileUrl: r.href, photoUrl: info.photoUrl || null, headline: (ls[0] || '').slice(0, 200) || null, reaction: typeHint || fromIcon, reactionFromIcon: fromIcon, reactionIconUrl: iconUrl(icon[0]) };
+  }
+  /** LinkedIn's own reaction picture: an <img> URL, or the SVG itself as a data URL (no external fetch). */
+  function iconUrl(i) {
+    if (!i) return null;
+    var img = i.tagName === 'IMG' ? i : i.querySelector && i.querySelector('img');
+    var src = img ? (img.currentSrc || attr(img, 'src')) : '';
+    if (/^https:\/\/[a-z0-9.-]*licdn\.com\//i.test(src)) return src.slice(0, 400);
+    var svg = i.tagName && i.tagName.toLowerCase() === 'svg' ? i : i.querySelector && i.querySelector('svg');
+    if (svg && svg.outerHTML && svg.outerHTML.length < 6000 && svg.querySelector('path,circle,g')) {
+      var x = svg.cloneNode(true);
+      if (!x.getAttribute('xmlns')) x.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(x.outerHTML)));
+    }
+    return null;
   }
   async function collectPeople(root, typeHint, expected, into, progress) {
     var stable = 0, rounds = 0, last = -1, seenHere = {};
@@ -877,7 +891,7 @@
         seenHere[p.profileUrl] = 1;
         var old = into[p.profileUrl];
         if (!old) into[p.profileUrl] = p;
-        else { if (typeHint) old.reaction = typeHint; if (!old.photoUrl && p.photoUrl) old.photoUrl = p.photoUrl; if (!old.headline && p.headline) old.headline = p.headline; if (!old.reaction && p.reaction) old.reaction = p.reaction; }
+        else { if (typeHint) old.reaction = typeHint; if (!old.reactionIconUrl && p.reactionIconUrl) old.reactionIconUrl = p.reactionIconUrl; if (!old.photoUrl && p.photoUrl) old.photoUrl = p.photoUrl; if (!old.headline && p.headline) old.headline = p.headline; if (!old.reaction && p.reaction) old.reaction = p.reaction; }
       });
       var n = Object.keys(seenHere).length;
       if (progress) progress({ reactionsRead: Object.keys(into).length, tab: typeHint || 'all' });
@@ -933,8 +947,9 @@
       perTab.push({ tab: t.type, expected: t.count, read: read });
     }
     var list = Object.keys(people).map(function (k) { return people[k]; });
-    var byType = {};
-    list.forEach(function (p) { var k = p.reaction || 'unknown'; byType[k] = (byType[k] || 0) + 1; });
+    var byType = {}, icons = {};
+    list.forEach(function (p) { var k = p.reaction || 'unknown'; byType[k] = (byType[k] || 0) + 1; if (p.reaction && p.reactionIconUrl && !icons[p.reaction] && p.reactionFromIcon === p.reaction) icons[p.reaction] = p.reactionIconUrl; });
+    tabs.forEach(function (t) { if (t.type && !icons[t.type]) { var u = iconUrl(qsa(t.el, 'img,svg')[0]); if (u) icons[t.type] = u; } });
     var missing = perTab.filter(function (x) { return x.expected != null && x.read < x.expected; }).map(function (x) { return { tab: x.tab, expected: x.expected, read: x.read, missing: x.expected - x.read }; });
     var anonymous = qsa(root, 'li,[role=listitem]').filter(function (li) { return vis(li) && !qsa(li, PROFILE_LINK).length && /linkedin member|membre de linkedin|miembro de linkedin/i.test(txt(li)); }).length;
     var complete = expectedTotal != null && list.length + anonymous >= expectedTotal && !missing.length;
@@ -949,6 +964,7 @@
       anonymousRows: anonymous,
       expectedTotal: expectedTotal,
       byType: byType,
+      reactionIcons: icons,
       categories: tabs.map(function (t) { return { label: t.label, type: t.all ? 'all' : t.type, count: t.count }; }),
       perCategory: perTab,
       missing: missing,
@@ -995,6 +1011,7 @@
     res.truncated = true;
     ['people', 'comments', 'posts'].forEach(function (k) { (res[k] || []).forEach(function (p) { if (p.text && p.text.length > 1200) p.text = p.text.slice(0, 1200) + '…'; }); });
     if (res.diagnostics) delete res.diagnostics.dom;
+    (res.people || (res.reactions && res.reactions.people) || []).forEach(function (p) { if (p.reactionIconUrl && /^data:/.test(p.reactionIconUrl)) delete p.reactionIconUrl; });
     if (JSON.stringify(res).length <= max) return res;
     ['people', 'comments', 'posts'].forEach(function (k) { (res[k] || []).forEach(function (p) { delete p.photoUrl; delete p.authorPhotoUrl; delete p.images; }); });
     res.photosDropped = true;

@@ -202,6 +202,8 @@ test('fixture: reactions — count control (not Like), 6 categories, lazy loadin
   assert.equal(p.headline,'Métier numéro 9');
   assert.equal(p.reaction,'celebrate');
   assert.equal(p.reactionFromIcon,'celebrate','SVG trait classification agrees with the tab');
+  assert.equal(r.people.find((x:Li)=>x.name==='Personne 1').reactionIconUrl,'https://static.licdn.com/aero-v1/sc/h/8ekq8gho1ruaf8i7f86vd1ftt','LinkedIn reaction picture kept');
+  assert.equal(r.reactionIcons.like,'https://static.licdn.com/aero-v1/sc/h/8ekq8gho1ruaf8i7f86vd1ftt');
   assert.equal(r.categories.length,7);
   noForbiddenClicks(w);
 });
