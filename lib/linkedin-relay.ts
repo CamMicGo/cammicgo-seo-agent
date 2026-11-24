@@ -1,4 +1,5 @@
 import {sb} from '@/lib/device-relay';
+import {decorateReactions} from '@/lib/linkedin-reactions';
 export type LinkedInOperation='inbox'|'open'|'thread'|'back'|'feed'|'search'|'send'|'company_search'|'network_suggestions'|'invite'|'attach'|'job_search'|'job_details'|'recommended_jobs'|'company_profile'|'company_posts'|'person_profile'|'post_comments'|'comment_post'|'reply_comment';
 export async function enqueueLinkedIn(userId:string,operation:LinkedInOperation,payload:Record<string,string>={}){
  const rows=await sb<Array<{id:string}>>('/rest/v1/cmg_linkedin_jobs',{method:'POST',body:JSON.stringify({user_id:userId,operation,payload}),prefer:'return=representation'});
@@ -25,10 +26,12 @@ export async function hostThumbnails(userId:string,data:unknown,base=process.env
  await sb('/rest/v1/cmg_linkedin_thumbs?created_at=lt.'+encodeURIComponent(new Date(Date.now()-THUMB_TTL_MS).toISOString()),{method:'DELETE'}).catch(()=>{});
  if(!data||typeof data!=='object')return data;
  const root=data as Record<string,unknown>;
+ decorateReactions(root,base);
  const cards:Array<Record<string,unknown>>=[];
- for(const key of ['profiles','people','companies','jobs','posts'])if(Array.isArray(root[key]))for(const c of root[key] as unknown[])if(c&&typeof c==='object')cards.push(c as Record<string,unknown>);
- cards.push(root);
- const withThumb=cards.filter(c=>typeof c.imageDataUrl==='string'&&(c.imageDataUrl as string).startsWith(THUMB_PREFIX)&&(c.imageDataUrl as string).length<=16000+THUMB_PREFIX.length).slice(0,40);
+ // Cards anywhere in the result (search lists, comments, reaction people, full extraction), a few levels deep.
+ const walk=(node:unknown,depth:number)=>{if(depth>5||!node||typeof node!=='object')return;if(Array.isArray(node)){for(const c of node)walk(c,depth+1);return;}const o=node as Record<string,unknown>;cards.push(o);for(const key of ['profiles','people','companies','jobs','posts','comments','reactions','post','candidates'])walk(o[key],depth+1);};
+ walk(root,0);
+ const withThumb=cards.filter(c=>typeof c.imageDataUrl==='string'&&(c.imageDataUrl as string).startsWith(THUMB_PREFIX)&&(c.imageDataUrl as string).length<=16000+THUMB_PREFIX.length).slice(0,150);
  if(!withThumb.length)return data;
  try{
   const rows=await sb<Array<{id:string}>>('/rest/v1/cmg_linkedin_thumbs',{method:'POST',body:JSON.stringify(withThumb.map(c=>({user_id:userId,jpeg_b64:(c.imageDataUrl as string).slice(THUMB_PREFIX.length)}))),prefer:'return=representation'});

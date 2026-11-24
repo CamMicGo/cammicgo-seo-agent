@@ -1238,7 +1238,7 @@ public class MainActivity extends Activity {
     } else if ("search".equals(op) && "posts".equals(job.optString("searchType"))) {
       String keywords = job.optString("keywords", "").trim(), author = job.optString("author", "").trim();
       if ((keywords.length() < 2 && author.length() < 2) || keywords.length() > 250 || author.length() > 150) { finishLinkedInJob(id, null, "Invalid post search"); return; }
-      liSearchPosts(id, job, 0, new JSONArray(), null, (r, err) -> finishLinkedInJob(id, r, err));
+      liSearchPosts(id, job, 0, new JSONArray(), null, (r, err) -> finishLiWithThumbs(id, r, err));
     } else if ("search".equals(op) && "profile_posts".equals(job.optString("searchType"))) {
       String slug = job.optString("profile", "").trim();
       if (!slug.matches("[A-Za-z0-9%._-]{1,150}")) { finishLinkedInJob(id, null, "Invalid profile"); return; }
@@ -1480,7 +1480,7 @@ public class MainActivity extends Activity {
         liLoad(id, r.optString("url"), () -> liReadReactions(id, opts, hops + 1));
         return;
       }
-      finishLinkedInJob(id, r, liError(r, err));
+      finishLiWithThumbs(id, r, liError(r, err));
     });
   }
 
@@ -1489,7 +1489,7 @@ public class MainActivity extends Activity {
     JSONObject opts = liOpts(job);
     String postUrl = opts.optString("postUrl", "");
     if (navigate && !isLinkedInPostUrl(postUrl)) { finishLinkedInJob(id, null, "Invalid LinkedIn post URL"); return; }
-    Runnable read = () -> liCommentsStep(id, "readComments", opts, 0, (r, err) -> finishLinkedInJob(id, r, liError(r, err)));
+    Runnable read = () -> liCommentsStep(id, "readComments", opts, 0, (r, err) -> finishLiWithThumbs(id, r, liError(r, err)));
     if (!navigate) { read.run(); return; }
     runLi(id, "targetOpen", opts, 8000, (t, e) -> { if (t != null && t.optBoolean("open")) read.run(); else liLoad(id, postUrl, read); });
   }
@@ -1605,11 +1605,11 @@ public class MainActivity extends Activity {
             boolean rOk = rr != null && "ok".equals(rr.optString("status"));
             r.put("status", cOk && rOk ? "ok" : (cOk || rOk ? "partial" : "failed"));
           } catch (Exception ignored) {}
-          finishLinkedInJob(id, r, null);
+          finishLiWithThumbs(id, r, null);
         }));
         return;
       }
-      finishLinkedInJob(id, r, r == null ? (err == null ? "Full extraction failed" : err) : ("failed".equals(r.optString("status")) ? "Neither comments nor reactions could be read; see details" : null));
+      finishLiWithThumbs(id, r, r == null ? (err == null ? "Full extraction failed" : err) : ("failed".equals(r.optString("status")) ? "Neither comments nor reactions could be read; see details" : null));
     };
     if (!postUrl.isEmpty()) {
       if (!isLinkedInPostUrl(postUrl)) { finishLinkedInJob(id, null, "Invalid LinkedIn post URL"); return; }
@@ -2476,6 +2476,53 @@ public class MainActivity extends Activity {
     });
   }
 
+  /**
+   * Reader results (posts, comments, reactions, full extraction): every person gets imageUrl (LinkedIn's
+   * link) and a 64 px thumbnail the server serves for 24 h, fetched in parallel within a size budget.
+   */
+  private void finishLiWithThumbs(String id, JSONObject data, String error) {
+    if (data == null || error != null) { finishLinkedInJob(id, data, error); return; }
+    final String agent = linkedinWeb == null ? "" : linkedinWeb.getSettings().getUserAgentString();
+    final String cookie = CookieManager.getInstance().getCookie("https://www.linkedin.com/");
+    worker.execute(() -> {
+      try {
+        java.util.List<JSONObject> cards = new java.util.ArrayList<>();
+        collectLiCards(data, cards, 0);
+        java.util.LinkedHashMap<String, java.util.List<JSONObject>> byUrl = new java.util.LinkedHashMap<>();
+        for (JSONObject card : cards) {
+          String url = card.optString("photoUrl", card.optString("authorPhotoUrl", ""));
+          if (!url.startsWith("https://") || !(url.contains(".licdn.com/") || url.contains(".linkedin.com/"))) continue;
+          card.put("imageUrl", url);
+          byUrl.computeIfAbsent(url, k -> new java.util.ArrayList<>()).add(card);
+        }
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(6);
+        java.util.Map<String, java.util.concurrent.Future<String>> jobs = new java.util.LinkedHashMap<>();
+        int n = 0;
+        for (String url : byUrl.keySet()) { if (n++ >= 120) break; jobs.put(url, pool.submit(() -> linkedInThumbnail(url, cookie, agent))); }
+        int bytes = 0;
+        for (java.util.Map.Entry<String, java.util.concurrent.Future<String>> en : jobs.entrySet()) {
+          String b64 = null;
+          try { b64 = en.getValue().get(10, java.util.concurrent.TimeUnit.SECONDS); } catch (Exception ignored) {}
+          if (b64 == null || bytes + b64.length() > 150_000) continue;
+          bytes += b64.length();
+          for (JSONObject card : byUrl.get(en.getKey())) card.put("imageDataUrl", "data:image/jpeg;base64," + b64);
+        }
+        pool.shutdownNow();
+      } catch (Exception e) { android.util.Log.w("CamMicGoLinkedIn", "Reader thumbnails", e); }
+      ui.post(() -> finishLinkedInJob(id, data, null));
+    });
+  }
+
+  /** People-like objects anywhere in a reader result (posts, comments, reaction people), a few levels deep. */
+  private static void collectLiCards(Object node, java.util.List<JSONObject> out, int depth) {
+    if (depth > 4 || node == null) return;
+    if (node instanceof JSONArray) { JSONArray a = (JSONArray) node; for (int i = 0; i < a.length(); i++) collectLiCards(a.opt(i), out, depth + 1); return; }
+    if (!(node instanceof JSONObject)) return;
+    JSONObject o = (JSONObject) node;
+    if (o.has("photoUrl") || o.has("authorPhotoUrl")) out.add(o);
+    for (String k : new String[]{"posts", "people", "comments", "reactions", "post", "candidates"}) collectLiCards(o.opt(k), out, depth + 1);
+  }
+
   /** 64 px JPEG of a LinkedIn image (licdn.com only), base64, or null. */
   private static String linkedInThumbnail(String url, String cookie, String agent) {
     java.net.HttpURLConnection conn = null;
@@ -2550,7 +2597,11 @@ public class MainActivity extends Activity {
     } catch (Exception ignored) {}
   }
   /** Current step of a running job, shown live in the activity list. */
-  private void liStep(String id, String step) { recordLinkedInActivity(id, "", step, "", ""); }
+  private void liStep(String id, String step) {
+    // Progress is shown as a step of a running job; only finishLinkedInJob decides done or failed.
+    String known = step != null && step.matches("[a-z_]{3,20}") ? step : "running";
+    recordLinkedInActivity(id, "", known, "", "");
+  }
 
   /** Only operation metadata is retained, never LinkedIn messages or credentials. */
   private void recordLinkedInActivity(String id, String operation, String status, String error, String agentName) {
@@ -3451,7 +3502,9 @@ public class MainActivity extends Activity {
       if (e == null) continue;
       String state = e.optString("status");
       boolean ok = "done".equals(state);
-      boolean pending = java.util.Arrays.asList("pending", "received", "queued", "running", "in_progress", "waiting", "opening", "downloading", "attaching", "verifying", "writing", "sending").contains(state);
+      boolean failedState = java.util.Arrays.asList("failed", "error", "expired", "cancelled", "canceled", "timeout").contains(state);
+      boolean pending = !ok && (java.util.Arrays.asList("pending", "received", "queued", "running", "in_progress", "waiting", "opening", "downloading", "attaching", "verifying", "writing", "sending").contains(state)
+          || ("linkedin_mcp".equals(e.optString("type")) && !failedState));
       boolean notebookEntry = "notebooklm".equals(e.optString("type"));
       boolean mcpDebugEntry = "mcp_debug".equals(e.optString("type"));
       boolean linkedinEntry = "linkedin_mcp".equals(e.optString("type"));

@@ -482,7 +482,8 @@
       });
       if (progress) progress({ posts: order.length });
       if (order.length >= (o.enough || limit) || noResults()) break;
-      if (i < rounds) { scrollMore(); invalidate(); await waitFor(function () { return countNew(byKey) > 0; }, 2500, 600); }
+      if (o.stopWhen && order.some(function (k) { return o.stopWhen(byKey[k]); })) break;
+      if (i < rounds) { scrollMore(); invalidate(); await waitFor(function () { return countNew(byKey) > 0; }, 1800, 500); }
     }
     var posts = order.map(function (k) { return byKey[k]; });
     var page = pageState(), status;
@@ -501,8 +502,10 @@
   async function searchPosts(o, progress) {
     o = o || {};
     if (/\/search\/results\//.test(location.pathname) && !/\/content\//.test(location.pathname)) ensurePostsFilter();
-    var r = await collectPosts({ limit: Math.max(o.limit || 20, 10), scrolls: o.scrolls == null ? 6 : o.scrolls, enough: o.author ? 40 : o.limit || 20, mark: true }, progress);
     var want = { keywords: o.keywords, author: o.author, authorProfileUrl: o.authorProfileUrl, urn: urnFromString(o.postUrl || '') };
+    // Stop scrolling as soon as a post matches the author and every keyword: the usual "find this post" case.
+    var strong = function (p) { var m = matchScore(p, want); return (want.author || want.authorProfileUrl ? m.authorMatch : true) && (m.keywordTotal ? m.keywordHits === m.keywordTotal : !!(want.author || want.authorProfileUrl)) && !!(want.keywords || want.author || want.authorProfileUrl); };
+    var r = await collectPosts({ limit: Math.max(o.limit || 20, 10), scrolls: o.scrolls == null ? 5 : o.scrolls, enough: o.limit || 20, mark: true, stopWhen: o.exhaustive ? null : strong }, progress);
     r.posts.forEach(function (p) { p.match = matchScore(p, want); });
     var kept = r.posts.filter(function (p) { return want.author || want.authorProfileUrl ? p.match.authorMatch : true; });
     kept.sort(function (a, b) { return b.match.score - a.match.score; });
@@ -708,7 +711,7 @@
     }).filter(function (x) { return x.s > 0 && !refusal(x.e, 'open_comments'); }).sort(function (a, b) { return b.s - a.s; });
     return ranked[0] || null;
   }
-  async function expandComments(scope, maxRounds, progress) {
+  async function expandComments(scope, maxRounds, progress, expected) {
     var done = typeof WeakSet !== 'undefined' ? new WeakSet() : { has: function () { return false; }, add: function () {} };
     var clicks = 0, stable = 0, last = -1;
     for (var round = 0; round < maxRounds; round++) {
@@ -719,6 +722,7 @@
       });
       targets.forEach(function (e) { done.add(e); if (safeClick(clickable(e), 'expand_comments')) clicks++; });
       var nBefore = commentBlocks(scope).length;
+      if (!targets.length && expected != null && nBefore >= expected) break;
       if (!targets.length) {
         scrollers(scope).forEach(function (s) { s.scrollTop = s.scrollHeight; });
         if (scope === document.body || !scope.closest('[role=dialog]')) window.scrollBy(0, Math.round((window.innerHeight || 800) * 0.8));
@@ -779,7 +783,7 @@
       }, 9000, 350);
     }
     var limit = Math.max(1, Math.min(300, o.limit || 100));
-    var exp = await expandComments(scope, o.maxRounds || 25, progress);
+    var exp = await expandComments(scope, o.maxRounds || 25, progress, post.commentCount);
     var comments = readCommentsNow(scope).slice(0, limit);
     var expected = post.commentCount;
     var complete = expected != null ? comments.length >= expected : null;
