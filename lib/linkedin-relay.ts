@@ -84,7 +84,15 @@ export async function inlineImages(data:unknown,max=30):Promise<Array<{type:'ima
  if(!data||typeof data!=='object')return [];
  const root=data as Record<string,unknown>;
  if(!root.reactions&&!root.comments&&!root.people)return [];
- const ids=[...new Set([...JSON.stringify({p:root.post,c:root.comments,r:root.reactions??root.people}).matchAll(/\/api\/linkedin\/thumb\/([0-9a-f-]{36})\.jpg/gi)].map(x=>x[1]))].slice(0,max);
+ // One photo per person (same profile link = same person), in report order.
+ const seen=new Set<string>(),ids:string[]=[];
+ const visit=(n:unknown,d:number)=>{if(d>6||!n||typeof n!=='object')return;if(Array.isArray(n)){for(const c of n)visit(c,d+1);return;}const o=n as Record<string,unknown>;
+  const m=String(o.imageUrl||o.photoUrl||o.authorPhotoUrl||'').match(/\/api\/linkedin\/thumb\/([0-9a-f-]{36})\.jpg/i);
+  const who=String(o.profileUrl||o.authorProfileUrl||'').toLowerCase().replace(/\/$/,'')||(m?m[1]:'');
+  if(m&&who&&!seen.has(who)){seen.add(who);ids.push(m[1]);}
+  for(const k of ['post','comments','reactions','people'])if(o[k]&&typeof o[k]==='object')visit(o[k],d+1);};
+ visit({post:root.post,comments:root.comments,reactions:root.reactions??root.people},0);
+ ids.splice(max);
  if(!ids.length)return [];
  const rows=await sb<Array<{id:string;jpeg_b64:string}>>('/rest/v1/cmg_linkedin_thumbs?id=in.('+ids.join(',')+')&select=id,jpeg_b64').catch(()=>[]);
  const byId=new Map(rows.map(r=>[r.id,r.jpeg_b64]));
