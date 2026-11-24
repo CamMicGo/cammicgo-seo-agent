@@ -143,11 +143,11 @@ test('engagement figures are computed from the data: interactions, unique people
  assert.match(reportHtml(noComments,B),/non calculable/);
 });
 
-test('dashboard: reaction bars with real pictures, labels, counts and shares; bars are keyboard-clickable filters', ()=>{
+test('dashboard: reaction bars with real pictures, labels, counts and shares; bars are links to filters (no script needed)', ()=>{
  const html=reportHtml(built(),B,{reactionImg:t=>'data:image/png;base64,'+t.toUpperCase()});
  assert.match(html,/<section class="sec" id="engagement"><h2>Engagement<\/h2>/);
  for(const [t,label,n,pc] of [['like','J’aime',12,'75 %'],['love','J’adore',2,'12,5 %'],['insightful','Instructif',1,'6,3 %'],['funny','Drôle',1,'6,3 %']] as const){
-  const re=new RegExp(`<g class="bar" data-f="reaction" data-v="${t}" tabindex="0" role="button"[\\s\\S]*?class="bv">${n}</text><image href="data:image/png;base64,${t.toUpperCase()}"[\\s\\S]*?class="bl">${label}</text><text[^>]*class="bp">${pc}</text>`);
+  const re=new RegExp(`<a class="bar" href="#f-reaction-${t}" data-f="reaction" data-v="${t}"[\\s\\S]*?class="bv">${n}</text><image href="data:image/png;base64,${t.toUpperCase()}"[\\s\\S]*?class="bl">${label}</text><text[^>]*class="bp">${pc}</text>`);
   assert.match(html,re,t);
  }
  assert.match(html,/<b>19<\/b><span>Interactions totales<\/span>/);
@@ -175,8 +175,9 @@ test('comment tone: 3 legend lines even at 0, no red segment without negatives, 
  assert.match(tone,/<span>Neutre<\/span><b>1 · 33,3 %<\/b>/);
  assert.match(tone,/<span>Négatif<\/span><b>0 · 0 %<\/b>/,'negative shown at 0');
  assert.ok(!/stroke="#dc2626"/.test(html),'no red arc');
- assert.match(html,/data-sentiment="positive" data-theme=" 0 "/);
- assert.match(html,/data-sentiment="neutral" data-theme=" 0  1 "/,'a comment can belong to several themes');
+ assert.match(html,/data-sentiment="positive" data-theme="0"/);
+ assert.match(html,/data-sentiment="neutral" data-theme="0 1"/,'a comment can belong to several themes');
+ assert.match(html,/#f-theme-1:target~\.cards \.cm:not\(\[data-theme~="1"\]\)\{display:none\}/);
  assert.match(html,/<span class="badge">Auteur<\/span>/);
  assert.match(html,/class="cm reply"/);
 });
@@ -195,47 +196,50 @@ test('themes sorted by occurrences, arguments, takeaway cards with icons, recomm
  assert.deepEqual([...order].sort((a,b)=>a-b),order,'section order');
 });
 
-test('filters work in the browser: a bar shows its people, a segment its domain, a tone its comments, "show all" resets', ()=>{
- const html=reportHtml(built(),B,{nonce:'n1'});
- const dom=new JSDOM(html,{runScripts:'dangerously'});
- const d=dom.window.document;
- const visible=(sel:string)=>[...d.querySelectorAll(sel)].filter(e=>!(e as HTMLElement).hidden).length;
- (d.querySelector('[data-f="reaction"][data-v="love"]') as unknown as {dispatchEvent:(e:Event)=>void}).dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true}));
- assert.equal(visible('#pp-reaction .pc'),2);
- assert.equal(d.querySelector('#pp-reaction .pcount')!.textContent,'2 profil(s) affiché(s)');
- assert.ok(d.querySelector('[data-f="reaction"][data-v="love"]')!.classList.contains('on'),'selected bar highlighted');
- (d.querySelector('#pp-reaction .reset') as HTMLElement).click();
- assert.equal(visible('#pp-reaction .pc'),16);
- assert.equal(d.querySelector('#pp-domain')!.hasAttribute('data-empty'),true,'domain panel waits for a choice');
- (d.querySelector('button[data-f="domain"][data-v="0"]') as HTMLElement).click();
- assert.equal(visible('#pp-domain .pc'),5);
- (d.querySelector('button[data-f="company"][data-v="0"]') as HTMLElement).click();
- assert.equal(visible('#pp-company .pc'),3);
- (d.querySelector('button[data-f="sentiment"][data-v="neutral"]') as HTMLElement).click();
- assert.equal(visible('#cp .cm'),1);
- (d.querySelector('button[data-f="theme"][data-v="0"]') as HTMLElement).click();
- assert.equal(visible('#cp .cm'),2);
- d.querySelectorAll('details').forEach(x=>assert.equal((x as HTMLDetailsElement).open,false));
- dom.window.dispatchEvent(new dom.window.Event('beforeprint'));
- assert.equal(visible('.pc'),48,'print shows every card whatever the filters');
- assert.equal(visible('.cm'),3);
- d.querySelectorAll('details').forEach(x=>assert.equal((x as HTMLDetailsElement).open,true,'glossary expanded for the PDF'));
+// Real browser (Chromium via Playwright) when available: the filters are CSS, so they are checked as rendered.
+async function browser(){try{const {createRequire}=await import('node:module');const m=createRequire(import.meta.url)('playwright');return await m.chromium.launch();}catch{return null;}}
+const visibleCount=(sel:string)=>`[...document.querySelectorAll('${sel}')].filter(e=>getComputedStyle(e).display!=='none'&&e.closest('.cards')&&getComputedStyle(e.closest('.cards')).display!=='none').length`;
+test('filters work in a real browser with scripts OFF: bars, donut legend, companies, tone, themes, "show all", print', async t=>{
+ const b=await browser();if(!b){t.skip('playwright not installed');return;}
+ const {writeFileSync,mkdtempSync}=await import('node:fs');const {tmpdir}=await import('node:os');const {join}=await import('node:path');
+ const file=join(mkdtempSync(join(tmpdir(),'rep-')),'r.html');writeFileSync(file,reportHtml(built(),B,{nonce:'n1'}));
+ try{for(const size of [{width:1200,height:900},{width:390,height:800}]){
+  const p=await (await b.newContext({javaScriptEnabled:false,viewport:size})).newPage();p.setDefaultTimeout(5000);
+  await p.goto('file://'+file);
+  const n=(sel:string)=>p.evaluate(visibleCount(sel));
+  assert.equal(await n('#pp-reaction .pc'),16);assert.equal(await n('#pp-domain .pc'),0,'domain panel waits for a choice');
+  await p.click('a.bar[data-v="love"]');
+  assert.equal(await n('#pp-reaction .pc'),2,'love bar → 2 cards');
+  assert.equal(await p.evaluate(`getComputedStyle(document.querySelector('a.bar[data-v="love"] .bfill')).fill`),'rgb(0, 65, 130)','selected bar highlighted');
+  await p.click('a.bar[data-v="like"]');assert.equal(await n('#pp-reaction .pc'),12);
+  await p.click('#pp-reaction .reset');assert.equal(await n('#pp-reaction .pc'),16,'show all');
+  await p.click('a.lgb[data-f="domain"][data-v="0"]');assert.equal(await n('#pp-domain .pc'),5);
+  await p.click('a.hb[data-f="company"][data-v="0"]');assert.equal(await n('#pp-company .pc'),3);
+  await p.click('a.lgb[data-f="sentiment"][data-v="neutral"]');assert.equal(await n('#cp .cm'),1);
+  await p.click('a.hb[data-f="theme"][data-v="0"]');assert.equal(await n('#cp .cm'),2);
+  if(size.width<900)assert.ok(Math.abs(await p.evaluate(`document.querySelector('#cp').getBoundingClientRect().top`) as number)<40,'mobile: the list scrolls into view');
+  await p.click('a.bar[data-v="funny"]');
+  await p.emulateMedia({media:'print'});
+  assert.equal(await n('#pp-reaction .pc'),16,'print shows every card whatever the filter');
+  assert.equal(await n('#cp .cm'),3);
+  await p.emulateMedia({media:'screen'});
+  await p.context().close();
+ }}finally{await b.close();}
 });
 
-test('PDF print rules and self-contained interactive HTML export', ()=>{
+test('PDF print rules and self-contained HTML export', ()=>{
  const html=reportHtml(built(),B,{nonce:'n1'});
  const print=html.slice(html.indexOf('@media print'));
- assert.match(print,/\[hidden\]\{display:flex!important\}/);
- assert.match(print,/\.panel\[data-empty\] \.cards\{display:block!important\}/);
+ assert.match(print,/\.cards \.pc\{display:flex!important\}/);
+ assert.match(print,/\.wait \.cards\{display:block!important\}/);
  assert.match(print,/print-color-adjust:exact/);
+ assert.match(html,/\.panel \.pcount::before\{content:"" counter\(n\) " profil\(s\) affiché\(s\)"\}/,'visible count made by CSS counters');
  assert.match(print,/\.tools,\.reset,\.hint,\.phd\{display:none!important\}/);
+ assert.match(html,/addEventListener\('beforeprint',function\(\)\{document\.querySelectorAll\('details'\)/,'glossary opened for the PDF');
  const file=reportHtml(built(),B,{images:{[B+'/api/linkedin/thumb/0.jpg']:'data:image/jpeg;base64,AAA'},reactionImg:()=>'data:image/png;base64,BBB',interactive:true});
- assert.match(file,/<script>\(function\(\)\{/,'export keeps the filters');
+ assert.match(file,/<a class="bar" href="#f-reaction-funny"/,'export keeps the filters (CSS)');
  assert.ok(!file.includes('id="del"')&&!file.includes("method:'DELETE'"),'no delete in the export');
  assert.ok(file.includes('data:image/jpeg;base64,AAA'));
- const dom=new JSDOM(file,{runScripts:'dangerously'});
- (dom.window.document.querySelector('[data-f="reaction"][data-v="funny"]') as unknown as {dispatchEvent:(e:Event)=>void}).dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true}));
- assert.equal([...dom.window.document.querySelectorAll('#pp-reaction .pc')].filter(e=>!(e as HTMLElement).hidden).length,1);
 });
 
 test('incomplete or empty reports: no analysis, no comments, no reactions, partial extraction', ()=>{
