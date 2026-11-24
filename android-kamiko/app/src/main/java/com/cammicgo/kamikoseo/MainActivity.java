@@ -34,6 +34,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -171,6 +172,13 @@ public class MainActivity extends Activity {
   private String historyShown;
   private long lastMcpDebugFetch = 0L;
   private Button clearHistory;
+  /** Mail-style selection in the activity list: keys of the checked rows, and the rows' checkboxes. */
+  private final java.util.LinkedHashSet<String> historySelected = new java.util.LinkedHashSet<>();
+  private final java.util.LinkedHashMap<String, CheckBox> historyBoxes = new java.util.LinkedHashMap<>();
+  private CheckBox selectAllBox;
+  private TextView selectionCount;
+  private LinearLayout selectionBar;
+  private boolean syncingSelection;
   private View requestsTitle, requestsCard;
   // extract tab
   private EditText urlInput;
@@ -718,10 +726,30 @@ public class MainActivity extends Activity {
 
     section(root, t("sec_sent"));
     // One unified, scrollable activity feed for YouTube, NotebookLM and LinkedIn.
-    TextView hint = text(root, t("long_press"), 12, MUTED, false);
+    TextView hint = text(root, t("select_hint"), 12, MUTED, false);
     hint.setPadding(dp(4), 0, 0, dp(8));
     LinearLayout h = card(root);
     h.setPadding(dp(6), dp(6), dp(6), dp(6));
+    // "Select all" bar, as in a mailbox.
+    selectionBar = new LinearLayout(this);
+    selectionBar.setGravity(Gravity.CENTER_VERTICAL);
+    selectionBar.setPadding(dp(6), 0, dp(10), dp(2));
+    selectAllBox = new CheckBox(this);
+    selectAllBox.setText(t("select_all"));
+    selectAllBox.setTextColor(INK);
+    selectAllBox.setTextSize(14);
+    selectAllBox.setOnCheckedChangeListener((b, checked) -> {
+      if (syncingSelection) return;
+      syncingSelection = true;
+      historySelected.clear();
+      if (checked) historySelected.addAll(historyBoxes.keySet());
+      for (CheckBox cb : historyBoxes.values()) cb.setChecked(checked);
+      syncingSelection = false;
+      updateSelectionUi();
+    });
+    selectionBar.addView(selectAllBox, new LinearLayout.LayoutParams(0, dp(44), 1));
+    selectionCount = text(selectionBar, "", 13, MUTED, false);
+    h.addView(selectionBar, new LinearLayout.LayoutParams(-1, -2));
     historyList = new LinearLayout(this);
     historyList.setOrientation(LinearLayout.VERTICAL);
     android.widget.ScrollView activityScroll = new android.widget.ScrollView(this) {
@@ -760,21 +788,68 @@ public class MainActivity extends Activity {
       showDiagnostic(localizedMcpDiagnosticTitle(), report);
     });
     h.addView(diagnostics, new LinearLayout.LayoutParams(-1, -2));
-    clearHistory = withIcon(flat(t("clear_list"), RED), UiIcons.Kind.TRASH, RED);
-    clearHistory.setOnClickListener(v -> new AlertDialog.Builder(this)
-        .setTitle(t("clear_title"))
+    clearHistory = withIcon(flat(t("delete_selected", 0), RED), UiIcons.Kind.TRASH, RED);
+    clearHistory.setOnClickListener(v -> {
+      if (historySelected.isEmpty()) return;
+      int n = historySelected.size();
+      new AlertDialog.Builder(this)
+        .setTitle(t("delete_selected_q", n))
         .setMessage(t("clear_msg"))
-        .setPositiveButton(t("clear_ok"), (dlg, which) -> {
-          SharedPreferences prefs = RelayClient.prefs(this);
-          prefs.edit().putString("history", "[]").putString("assistantNotebookHistory", "[]").putString("linkedinAssistantHistory", "[]")
-              .putString("mcpDebugHistory", "[]").putLong("mcpDebugClearedAt", System.currentTimeMillis()).apply();
-          linkedinLastPollError = "";
-          historyShown = null;
-          refreshHistory(prefs);
-        })
+        .setPositiveButton(t("remove"), (dlg, which) -> deleteHistorySelection())
         .setNegativeButton(t("cancel"), null)
-        .show());
+        .show();
+    });
     h.addView(clearHistory, new LinearLayout.LayoutParams(-1, -2));
+  }
+
+  /** Checked count, "select all" state and the delete button, after any change of selection. */
+  private void updateSelectionUi() {
+    if (selectAllBox == null) return;
+    historySelected.retainAll(historyBoxes.keySet());
+    int n = historySelected.size(), total = historyBoxes.size();
+    syncingSelection = true;
+    selectAllBox.setChecked(total > 0 && n == total);
+    syncingSelection = false;
+    selectionCount.setText(n == 0 ? "" : t("selected_n", n));
+    selectionBar.setVisibility(total == 0 ? View.GONE : View.VISIBLE);
+    clearHistory.setText(t("delete_selected", n));
+    clearHistory.setEnabled(n > 0);
+    clearHistory.setAlpha(n > 0 ? 1f : 0.4f);
+    clearHistory.setVisibility(total == 0 ? View.GONE : View.VISIBLE);
+  }
+
+  /** Removes the checked rows from their local lists (YouTube, NotebookLM, LinkedIn, MCP requests). */
+  private void deleteHistorySelection() {
+    SharedPreferences p = RelayClient.prefs(this);
+    java.util.Set<String> keys = new java.util.HashSet<>(historySelected);
+    boolean all = keys.size() == historyBoxes.size();
+    SharedPreferences.Editor ed = p.edit();
+    ed.putString("history", filterHistory(p.getString("history", "[]"), o -> keys.contains("yt:" + o.optString("videoId") + ":" + o.optLong("at"))));
+    ed.putString("assistantNotebookHistory", filterHistory(p.getString("assistantNotebookHistory", "[]"), o -> keys.contains("nb:" + o.optString("jobId") + ":" + o.optLong("at"))));
+    ed.putString("linkedinAssistantHistory", filterHistory(p.getString("linkedinAssistantHistory", "[]"), o -> keys.contains("li:" + o.optString("id"))));
+    ed.putString("mcpDebugHistory", filterHistory(p.getString("mcpDebugHistory", "[]"), o -> keys.contains("mcp:" + o.optString("at"))));
+    // The server keeps recent MCP calls: hide the removed ones so the next sync does not bring them back.
+    try {
+      JSONArray hidden = new JSONArray(p.getString("mcpDebugHidden", "[]"));
+      for (String k : keys) if (k.startsWith("mcp:")) hidden.put(k.substring(4));
+      while (hidden.length() > 200) hidden.remove(0);
+      ed.putString("mcpDebugHidden", hidden.toString());
+    } catch (Exception ignored) {}
+    if (all) { ed.putLong("mcpDebugClearedAt", System.currentTimeMillis()); linkedinLastPollError = ""; }
+    ed.apply();
+    historySelected.clear();
+    historyShown = null;
+    refreshHistory(p);
+  }
+
+  private interface EntryTest { boolean test(JSONObject o); }
+  private static String filterHistory(String raw, EntryTest remove) {
+    JSONArray out = new JSONArray();
+    try {
+      JSONArray old = new JSONArray(raw);
+      for (int i = 0; i < old.length(); i++) { JSONObject o = old.optJSONObject(i); if (o != null && !remove.test(o)) out.put(o); }
+    } catch (Exception e) { return raw; }
+    return out.toString();
   }
 
   /** Removes one entry (videoId + time) or, with videoId null, the whole list. */
@@ -2987,7 +3062,7 @@ public class MainActivity extends Activity {
           JSONObject c = all.optJSONObject(i);
           if (c == null) continue;
           long at; try { at = Instant.parse(c.optString("at")).toEpochMilli(); } catch (Exception e) { at = Long.MAX_VALUE; }
-          if (at > clearedAt) calls.put(c);
+          if (at > clearedAt && !RelayClient.prefs(this).getString("mcpDebugHidden", "[]").contains("\"" + c.optString("at") + "\"")) calls.put(c);
         }
         RelayClient.prefs(this).edit().putString("mcpDebugHistory", calls.toString()).apply();
         ui.post(() -> { historyShown = null; refreshHistory(RelayClient.prefs(this)); });
@@ -3279,6 +3354,7 @@ public class MainActivity extends Activity {
     if (key.equals(historyShown)) return;
     historyShown = key;
     historyList.removeAllViews();
+    historyBoxes.clear();
     JSONArray h;
     try { h = new JSONArray(raw); } catch (Exception e) { h = new JSONArray(); }
     // Unified assistant activity: NotebookLM jobs (sources, Studio audio/video/quiz,
@@ -3290,6 +3366,7 @@ public class MainActivity extends Activity {
         if (n == null) continue;
         JSONObject entry = new JSONObject();
         entry.put("type", "notebooklm");
+        entry.put("key", "nb:" + n.optString("jobId") + ":" + n.optLong("at"));
         entry.put("title", n.optString("label", "NotebookLM"));
         entry.put("agentName", n.optString("agentName", ""));
         entry.put("status", "done".equals(n.optString("status")) ? "done" : n.optString("status"));
@@ -3303,6 +3380,7 @@ public class MainActivity extends Activity {
         if (job == null) continue;
         JSONObject entry = new JSONObject();
         entry.put("type", "linkedin_mcp");
+        entry.put("key", "li:" + job.optString("id", ""));
         String target = job.optString("target", "");
         entry.put("title", "LinkedIn · " + job.optString("operation", "demande") + (target.isEmpty() ? "" : " · " + target));
         entry.put("file", job.optString("file", ""));
@@ -3319,6 +3397,7 @@ public class MainActivity extends Activity {
         if (c == null) continue;
         JSONObject entry = new JSONObject();
         entry.put("type", "mcp_debug");
+        entry.put("key", "mcp:" + c.optString("at"));
         entry.put("title", c.optString("tool", "MCP request"));
         entry.put("agentName", c.optString("agentName", ""));
         entry.put("status", c.optBoolean("ok", false) ? "done" : "failed");
@@ -3360,8 +3439,8 @@ public class MainActivity extends Activity {
       for (int i = 0; i < h.length(); i++) merged.put(h.get(i));
       h = merged;
     } catch (Exception ignored) {}
-    clearHistory.setVisibility(h.length() == 0 ? View.GONE : View.VISIBLE);
     if (h.length() == 0) {
+      updateSelectionUi();
       TextView empty = text(historyList, t("history_empty"), 13, MUTED, false);
       empty.setPadding(dp(12), dp(10), dp(12), dp(10));
       return;
@@ -3379,7 +3458,24 @@ public class MainActivity extends Activity {
       boolean waitingEntry = "transcript_waiting".equals(e.optString("type"));
       LinearLayout row = new LinearLayout(this);
       row.setGravity(Gravity.CENTER_VERTICAL);
-      row.setPadding(dp(10), dp(9), dp(10), dp(9));
+      row.setPadding(dp(2), dp(9), dp(10), dp(9));
+      final String rowKey = waitingEntry ? null : (e.has("key") ? e.optString("key") : "yt:" + e.optString("videoId") + ":" + e.optLong("at"));
+      CheckBox box = null;
+      if (rowKey != null) {
+        box = new CheckBox(this);
+        box.setChecked(historySelected.contains(rowKey));
+        box.setContentDescription(t("select_all"));
+        box.setOnCheckedChangeListener((b, checked) -> {
+          if (syncingSelection) return;
+          if (checked) historySelected.add(rowKey); else historySelected.remove(rowKey);
+          updateSelectionUi();
+        });
+        historyBoxes.put(rowKey, box);
+        row.addView(box, new LinearLayout.LayoutParams(dp(40), dp(40)));
+      } else {
+        row.addView(new View(this), new LinearLayout.LayoutParams(dp(40), dp(40)));
+      }
+      final CheckBox rowBox = box;
       TextView icon = text(null, ok ? "✓" : pending ? "…" : "✕", 14, Color.WHITE, true);
       icon.setGravity(Gravity.CENTER);
       icon.setBackground(dot(ok ? GREEN : pending ? AMBER : RED));
@@ -3429,25 +3525,22 @@ public class MainActivity extends Activity {
         // Live server state, not local history: nothing to remove.
         historyList.addView(row);
         View sep = new View(this); sep.setBackgroundColor(LINE);
-        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-1, dp(1)); sl.leftMargin = dp(44);
+        LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-1, dp(1)); sl.leftMargin = dp(82);
         historyList.addView(sep, sl);
         continue;
       }
-      row.setOnLongClickListener(v -> {
-        new AlertDialog.Builder(this).setMessage(t("remove_q"))
-            .setPositiveButton(t("remove"), (dlg, which) -> editHistory(vid, at))
-            .setNegativeButton(t("cancel"), null).show();
-        return true;
-      });
+      // Long press checks or unchecks the row, as in a mailbox.
+      row.setOnLongClickListener(v -> { if (rowBox != null) rowBox.toggle(); return true; });
       historyList.addView(row);
       if (i < max - 1) {
         View sep = new View(this);
         sep.setBackgroundColor(LINE);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(1));
-        lp.leftMargin = dp(44);
+        lp.leftMargin = dp(82);
         historyList.addView(sep, lp);
       }
     }
+    updateSelectionUi();
   }
 
   private boolean fr() { return "fr".equals(I18n.code(this)); }

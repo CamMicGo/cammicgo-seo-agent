@@ -259,6 +259,18 @@ test('fixture: comment list nested far away from the post card on a post page is
   noForbiddenClicks(w);
 });
 
+test('fixture: on a post page, comments are found even when something else between looks like a post', async ()=>{
+  const deep=(html:string,n:number)=>'<div>'.repeat(n)+html+'</div>'.repeat(n);
+  const card=(slug:string,name:string,text:string,n:string)=>'<div class="card"><div><a href="https://www.linkedin.com/in/'+slug+'/">'+name+'</a><div>Titre</div></div><p>'+text+'</p><div><button aria-label="'+n+' commentaires sur le post de '+name+'">'+n+' commentaires</button></div><div><button>J’aime</button><button>Commenter</button><button>Republier</button><button>Envoyer</button></div></div>';
+  const cm='<article><div><a href="https://www.linkedin.com/in/tom-ricard/">Tom Ricard</a><div>2 h</div></div><p>Très clair, merci.</p><div><button>J’aime</button><button>Répondre</button></div></article>';
+  // A "more posts" strip between the post and its comments.
+  const html='<html><body><main>'+deep(deep(card('alice-martin-123','Alice Martin','La publication principale avec assez de texte pour compter.','1'),4)+deep(card('bruno-lefevre','Bruno Lefèvre','Une autre publication suggérée au milieu de la page.','0'),2)+deep(cm,5),2)+'</main></body></html>';
+  const {li}=page('','https://www.linkedin.com/feed/update/urn:li:activity:7530000000000000009/',{html});
+  const r=await li.readComments({postUrl:'https://www.linkedin.com/feed/update/urn:li:activity:7530000000000000009/'});
+  assert.equal(r.status,'ok',JSON.stringify(r.diagnostics));
+  assert.deepEqual(plain(r.comments.map((c:Li)=>c.author)),['Tom Ricard']);
+});
+
 // ------------------------------------------------------------------ people search (Java string, unchanged code path)
 test('fixture: profile search script shipped in MainActivity reads people cards', ()=>{
   const java=readFileSync(new URL('../android-kamiko/app/src/main/java/com/cammicgo/kamikoseo/MainActivity.java',import.meta.url),'utf8');

@@ -735,11 +735,19 @@
   /** Comments rendered next to the post card instead of inside it: widen while no other post is included. */
   function widenForComments(scope) {
     if (commentBlocks(scope).length) return scope;
-    var all = findPosts().posts;
+    // Posts found inside comments (a comment's own controls) are not other posts.
+    var docBlocks = commentBlocks(document);
+    var all = findPosts().posts.filter(function (x) { return !docBlocks.some(function (b) { return b.block.contains(x.el); }); });
     // Climb as high as needed (LinkedIn nests the comment list far from the post card), never over a second post.
     for (var p = scope.parentElement; p && p !== document.documentElement; p = p.parentElement) {
       if (all.filter(function (x) { return p.contains(x.el); }).length > 1) break;
       if (commentBlocks(p).length) return p;
+    }
+    // On a single post's page every comment belongs to that post.
+    if (/\/(feed\/update|posts)\//.test(location.pathname) && docBlocks.length) {
+      var top = scope;
+      docBlocks.forEach(function (b) { top = lca(top, b.block) || top; });
+      return top;
     }
     return scope;
   }
@@ -791,7 +799,7 @@
       expandClicks: exp.clicks,
       note: expected != null && comments.length < expected ? 'LinkedIn shows ' + expected + ' comments but only ' + comments.length + ' could be loaded (hidden, deleted or still collapsed).' : (expected == null ? 'LinkedIn shows no comment counter here: completeness cannot be checked.' : 'All comments shown by LinkedIn were read.'),
     };
-    if (res.status !== 'ok' || o.diagnose) res.diagnostics = { page: pageState(), dom: domShape({ commentBlocks: commentBlocks(scope).length, replyControls: replyButtons(scope).length, documentCommentBlocks: commentBlocks(document).length, replySamples: replyButtons(document).slice(0, 3).map(function (r) { var path = []; for (var q = r; q && q !== document.body && path.length < 14; q = q.parentElement) path.push(q.tagName.toLowerCase() + (attr(q, 'role') ? '[' + attr(q, 'role') + ']' : '') + (q === scope ? '*' : '')); return { label: (label(r) || ownText(r)).slice(0, 40), inScope: scope.contains(r), path: path.join('<') }; }) }) };
+    if (res.status !== 'ok' || o.diagnose) res.diagnostics = { page: pageState(), dom: domShape({ commentBlocks: commentBlocks(scope).length, replyControls: replyButtons(scope).length, documentCommentBlocks: commentBlocks(document).length, postsOnPage: findPosts().posts.length, replySamples: replyButtons(document).slice(0, 3).map(function (r) { var path = []; for (var q = r; q && q !== document.body && path.length < 14; q = q.parentElement) path.push(q.tagName.toLowerCase() + (attr(q, 'role') ? '[' + attr(q, 'role') + ']' : '') + (q === scope ? '*' : '')); return { label: (label(r) || ownText(r)).slice(0, 40), inScope: scope.contains(r), path: path.join('<') }; }) }) };
     else res.diagnostics = { clicks: clickLog.slice(-20) };
     return res;
   }
