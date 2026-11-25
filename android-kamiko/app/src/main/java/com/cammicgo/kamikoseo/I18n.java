@@ -35,6 +35,10 @@ public final class I18n {
   }
 
   static {
+    m.put("li_stop_report", new String[]{"Stop and build the report", "Arrêter et générer le rapport", "Detener y generar el informe", "Stoppen und Bericht erstellen", "Parar e gerar o relatório", "Ferma e genera il report", "Остановить и создать отчёт", "停止并生成报告", "停止してレポートを作成", "중지하고 보고서 만들기", "إيقاف وإنشاء التقرير"});
+    m.put("li_stopping", new String[]{"Stopping… building the report", "Arrêt… génération du rapport", "Deteniendo… generando el informe", "Wird gestoppt… Bericht wird erstellt", "Parando… gerando o relatório", "Arresto… generazione del report", "Остановка… создание отчёта", "正在停止…生成报告", "停止中…レポート作成中", "중지 중… 보고서 생성 중", "جارٍ الإيقاف… إنشاء التقرير"});
+    m.put("li_reactions_count", new String[]{"reactions %d / %s", "réactions %d / %s", "reacciones %d / %s", "Reaktionen %d / %s", "reações %d / %s", "reazioni %d / %s", "реакции %d / %s", "回应 %d / %s", "リアクション %d / %s", "반응 %d / %s", "التفاعلات %d / %s"});
+    m.put("li_comments_count", new String[]{"comments %d", "commentaires %d", "comentarios %d", "Kommentare %d", "comentários %d", "commenti %d", "комментарии %d", "评论 %d", "コメント %d", "댓글 %d", "التعليقات %d"});
     m.put("linkedin_messages", new String[]{"Messages", "Messages", "Mensajes", "Nachrichten", "Mensagens", "Messaggi", "Сообщения", "消息", "メッセージ", "메시지", "الرسائل"});
     m.put("linkedin_network", new String[]{"Network", "Réseau", "Red", "Netzwerk", "Rede", "Rete", "Сеть", "人脉", "ネットワーク", "네트워크", "الشبكة"});
     m.put("linkedin_search", new String[]{"Search", "Recherche", "Buscar", "Suche", "Pesquisar", "Cerca", "Поиск", "搜索", "検索", "검색", "بحث"});

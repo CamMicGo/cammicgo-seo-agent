@@ -51,7 +51,7 @@ test('report page: blue header with title and post id, PDF button with nonce, se
   const payload=reportPayload({postUrl:'https://www.linkedin.com/feed/update/urn:li:activity:7530372844606803968/',post:{author:'Alice',text:'x'},
     reactions:{byType:{like:1},people:[{name:'Eve',profileUrl:'https://www.linkedin.com/in/eve/',photoUrl:B+'/api/linkedin/thumb/11111111-1111-1111-1111-111111111111.jpg',reaction:'like'}]}},B)!;
   const page=reportHtml(payload,B,{logo:'data:image/png;base64,LOGO',brandLogo:'data:image/png;base64,CMG',nonce:'abc',downloadUrl:'/api/linkedin/report/x?download=html'});
-  assert.match(page,/<h1>Rapport de post LinkedIn<\/h1>/);
+  assert.match(page,/<h1>Rapport de post LinkedIn <span class="stp (complete|partial)">/);
   assert.match(page,/Identifiant du post : urn:li:activity:7530372844606803968/);
   assert.match(page,/<script nonce="abc">/);
   assert.match(page,/Exporter en HTML/);
@@ -74,7 +74,7 @@ test('report language follows the app language (English, Arabic right-to-left), 
   assert.match(en.reportMarkdown,/### Reactions — 2/);
   const pageEn=reportHtml(reportPayload(en,B)!,B,{nonce:'n'});
   assert.match(pageEn,/<html lang="en">/);
-  assert.match(pageEn,/<h1>LinkedIn post report<\/h1>/);
+  assert.match(pageEn,/<h1>LinkedIn post report <span class="stp/);
   assert.match(pageEn,/Export PDF/);
   assert.ok(!pageEn.includes('Exporter'));
   const ar=JSON.parse(JSON.stringify({...base,uiLang:'ar'}));
@@ -245,7 +245,7 @@ test('PDF print rules and self-contained HTML export', ()=>{
 test('incomplete or empty reports: no analysis, no comments, no reactions, partial extraction', ()=>{
  const p=reportPayload({...fixture(),reactions:{...fixture().reactions,complete:false}},B)!;
  const html=reportHtml(p,B);
- assert.match(html,/<b>partielle<\/b><span>Extraction<\/span>/);
+ assert.match(html,/<b>Partiel<\/b><span>Statut · Extraction<\/span>/);
  assert.ok(!html.includes('id="audience"'),'no audience section without analysis');
  assert.ok(!html.includes('id="glossary"'));
  const onlyComments=reportPayload({postUrl:fixture().postUrl,comments:{comments:[]}},B)!;
@@ -316,4 +316,19 @@ test('large posts: the assistant gets a compact answer (ids, names, headlines, t
  assert.equal(v.comments.comments[0].commentId,'urn:li:comment:(1,10)');
  assert.ok(!('reportMarkdown' in v));
  assert.ok(JSON.stringify(v).length<70000,'compact size');
+});
+
+import {reportStatus} from '../lib/linkedin-reactions.ts';
+test('status Complete / Partial / Failed are distinct; a stop on request shows reactions read / shown by LinkedIn', ()=>{
+ const full=built();assert.equal(reportStatus(full),'complete');
+ const f=fixture() as Record<string,unknown>;f.status='partial';f.stoppedByUser=true;
+ const rx=f.reactions as {people:unknown[];complete:boolean;expectedTotal:number};rx.people=rx.people.slice(0,5);rx.complete=false;rx.expectedTotal=3400;
+ const p=reportPayload(f,B)!;assert.equal(reportStatus(p),'partial');
+ const html=reportHtml(p,B);
+ assert.match(html,/<span class="stp partial">Partiel<\/span>/);
+ assert.match(html,/Arrêté à la demande : 5 réactions lues sur 3400/);
+ assert.match(html,/<b>5 \/ 3400<\/b><span>Réactions<\/span>/);
+ const none=reportPayload({...fixture(),status:'failed',comments:{comments:[]},reactions:{people:[],expectedTotal:16}},B)!;
+ assert.equal(reportStatus(none),'failed');
+ assert.match(reportHtml(none,B),/<span class="stp failed">Échec<\/span>/);
 });

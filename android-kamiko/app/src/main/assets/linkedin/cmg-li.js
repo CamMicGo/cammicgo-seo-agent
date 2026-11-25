@@ -711,10 +711,13 @@
     }).filter(function (x) { return x.s > 0 && !refusal(x.e, 'open_comments'); }).sort(function (a, b) { return b.s - a.s; });
     return ranked[0] || null;
   }
+  /** Set by the app (window.__cmgLiStop) when the user or the assistant asks to stop and keep what was read. */
+  function stopRequested() { return !!window.__cmgLiStop; }
   async function expandComments(scope, maxRounds, progress, expected) {
     var done = typeof WeakSet !== 'undefined' ? new WeakSet() : { has: function () { return false; }, add: function () {} };
     var clicks = 0, stable = 0, last = -1;
     for (var round = 0; round < maxRounds; round++) {
+      if (stopRequested()) break;  // "Stop and build the report" on the phone or linkedin_job_stop
       var targets = controls(scope).filter(function (e) {
         if (done.has(e) || isOverflow(e)) return false;
         var s = (ownText(e) || label(e)).trim();
@@ -890,6 +893,7 @@
   async function collectPeople(root, typeHint, expected, into, progress) {
     var stable = 0, rounds = 0, last = -1, seenHere = {};
     for (; rounds < 600; rounds++) {
+      if (stopRequested()) break;
       personRows(root).forEach(function (r) {
         var p = readPerson(r, typeHint);
         seenHere[p.profileUrl] = 1;
@@ -898,7 +902,7 @@
         else { if (typeHint) old.reaction = typeHint; if (!old.reactionIconUrl && p.reactionIconUrl) old.reactionIconUrl = p.reactionIconUrl; if (!old.photoUrl && p.photoUrl) old.photoUrl = p.photoUrl; if (!old.headline && p.headline) old.headline = p.headline; if (!old.reaction && p.reaction) old.reaction = p.reaction; }
       });
       var n = Object.keys(seenHere).length;
-      if (progress) progress({ reactionsRead: Object.keys(into).length, tab: typeHint || 'all' }, Object.keys(into).map(function (k) { return into[k]; }));
+      if (progress) progress({ reactionsRead: Object.keys(into).length, expectedTotal: window.__cmgLiExpected == null ? null : window.__cmgLiExpected, tab: typeHint || 'all' }, Object.keys(into).map(function (k) { return into[k]; }));
       if (expected != null && n >= expected) break;
       var more = controls(root).find(function (b) { return /^(show more|load more|afficher plus|voir plus|charger plus|mostrar m[aá]s|mehr anzeigen)/i.test((ownText(b) || label(b)).trim()) && !isOverflow(b); });
       if (more) safeClick(more, 'more_reactions');
@@ -937,11 +941,13 @@
     var allTab = tabs.find(function (t) { return t.all; });
     var expectedTotal = allTab && allTab.count != null ? allTab.count : (counter ? counter.total : (o.expectedTotal || null));
     var people = {}, perTab = [];
+    window.__cmgLiExpected = expectedTotal;
     if (allTab) { safeClick(allTab.el, 'tab'); await sleep(600); }
     var readAll = await collectPeople(root, null, expectedTotal, people, progress);
     perTab.push({ tab: 'all', expected: expectedTotal, read: readAll });
     var cats = tabs.filter(function (t) { return !t.all && t.type; });
     for (var i = 0; i < cats.length; i++) {
+      if (stopRequested()) break;
       var t = reactionTabs(root).find(function (x) { return x.type === cats[i].type && !x.all; }) || cats[i];
       var firstBefore = personRows(root)[0];
       if (!safeClick(t.el, 'tab')) { perTab.push({ tab: t.type, expected: t.count, read: 0, error: 'tab_refused' }); continue; }
@@ -972,8 +978,9 @@
       categories: tabs.map(function (t) { return { label: t.label, type: t.all ? 'all' : t.type, count: t.count }; }),
       perCategory: perTab,
       missing: missing,
-      complete: complete,
-      partial: !complete,
+      complete: complete && !stopRequested(),
+      partial: !complete || stopRequested(),
+      stopped: stopRequested(),
       untyped: list.filter(function (p) { return !p.reaction; }).length,
       note: complete ? 'Every reaction counted by LinkedIn was read.' : (expectedTotal == null ? 'LinkedIn shows no total here: completeness cannot be checked.' : 'Read ' + list.length + (anonymous ? ' (+' + anonymous + ' private members)' : '') + ' of ' + expectedTotal + ' reactions; the rest was not loaded by LinkedIn.'),
     };
@@ -1064,10 +1071,13 @@
     try { c = await readComments(o, progress); } catch (e) { c = { status: 'error', error: String(e && e.message || e), comments: [] }; }
     if (c.status === 'navigate') return { status: 'navigate', stage: 'comments', url: c.url };
     if (progress) progress({ stage: 'reactions', commentsRead: (c.comments || []).length }, { status: 'partial', post: c.post || null, postUrl: c.postUrl || null, comments: c, reactions: { people: [], complete: false, partial: true } });
-    try { r = await readReactions(Object.assign({}, o, { postUrl: o.postUrl || c.postUrl || '' }), function (p, people) { if (progress) progress(p, { status: 'partial', post: c.post || null, postUrl: c.postUrl || null, comments: c, reactions: { people: people || [], retrieved: (people || []).length, complete: false, partial: true } }); }); } catch (e2) { r = { status: 'error', error: String(e2 && e2.message || e2), people: [] }; }
+    if (stopRequested()) r = { status: 'stopped', stopped: true, people: [], retrieved: 0, complete: false, partial: true, missing: [], note: 'Stopped on request before the reactions were read.' };
+    else try { r = await readReactions(Object.assign({}, o, { postUrl: o.postUrl || c.postUrl || '' }), function (p, people) { if (progress) progress(p, { status: 'partial', post: c.post || null, postUrl: c.postUrl || null, comments: c, reactions: { people: people || [], retrieved: (people || []).length, complete: false, partial: true } }); }); } catch (e2) { r = { status: 'error', error: String(e2 && e2.message || e2), people: [] }; }
     var post = c.post || null;
     var out = {
-      status: c.status === 'ok' && r.status === 'ok' ? 'ok' : (c.status === 'ok' || r.status === 'ok' ? 'partial' : 'failed'),
+      // ok = complete; partial = something read but not everything (or stopped on request); failed = nothing.
+      status: c.status !== 'ok' && r.status !== 'ok' && !(r.people || []).length ? 'failed' : (c.status === 'ok' && r.status === 'ok' && c.complete !== false && r.complete === true && !stopRequested() ? 'ok' : 'partial'),
+      stoppedByUser: stopRequested(),
       post: post,
       postUrl: c.postUrl || (post && post.postUrl) || null,
       comments: c,
