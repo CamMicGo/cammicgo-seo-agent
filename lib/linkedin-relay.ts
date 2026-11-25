@@ -204,3 +204,44 @@ export async function setLinkedInFollowUp(userId:string,id:string,next:string,ne
  if(!/^[0-9a-f-]{36}$/i.test(id))return;
  await sb('/rest/v1/cmg_linkedin_jobs?id=eq.'+id+'&user_id=eq.'+userId,{method:'PATCH',body:JSON.stringify({payload:{next,nextJobId}})}).catch(()=>{});
 }
+
+/**
+ * Progressive save of a running post extraction (every 50 people): the phone sends what it has read so far,
+ * kept in the job while it runs. The answer tells the phone whether the assistant asked to stop.
+ */
+export async function saveLinkedInProgress(deviceId:string,id:string,result:unknown){
+ if(!/^[0-9a-f-]{36}$/i.test(id))return {ok:false,stop:false};
+ const q='/rest/v1/cmg_linkedin_jobs?id=eq.'+id+'&device_id=eq.'+deviceId+'&status=eq.claimed';
+ const rows=result&&typeof result==='object'
+  ?await sb<Array<{payload:Record<string,string>|null}>>(q+'&select=payload',{method:'PATCH',body:JSON.stringify({result}),prefer:'return=representation'})
+  :await sb<Array<{payload:Record<string,string>|null}>>(q+'&select=payload');
+ return {ok:rows.length>0,stop:rows[0]?.payload?.stop==='1'};
+}
+/** linkedin_job_stop: asks the phone to stop (it builds the report from what it read). */
+export async function requestLinkedInStop(userId:string,id:string){
+ if(!/^[0-9a-f-]{36}$/i.test(id))return false;
+ const cur=await sb<Array<{payload:Record<string,string>|null;status:string}>>('/rest/v1/cmg_linkedin_jobs?id=eq.'+id+'&user_id=eq.'+userId+'&select=payload,status');
+ if(!cur[0])return false;
+ await sb('/rest/v1/cmg_linkedin_jobs?id=eq.'+id+'&user_id=eq.'+userId+'&status=eq.claimed',{method:'PATCH',body:JSON.stringify({payload:{...(cur[0].payload||{}),stop:'1'}})});
+ return true;
+}
+/** A queued job that the phone has not picked up yet is cancelled (nothing was read). */
+export async function cancelQueuedLinkedIn(userId:string,id:string){
+ if(!/^[0-9a-f-]{36}$/i.test(id))return false;
+ const rows=await sb<Array<{id:string}>>('/rest/v1/cmg_linkedin_jobs?id=eq.'+id+'&user_id=eq.'+userId+'&status=eq.pending',{method:'PATCH',body:JSON.stringify({status:'error',error:'cancelled: stopped on request before the phone started. Nothing was read.',payload:{},completed_at:new Date().toISOString()}),prefer:'return=representation'});
+ return rows.length>0;
+}
+/**
+ * The phone did not answer the stop request (app closed, page frozen): the server ends the job with the
+ * last progress the phone saved, marked partial. Without saved progress the job fails (nothing to keep).
+ */
+export async function finalizeLinkedInPartial(userId:string,id:string,keep:boolean){
+ if(!/^[0-9a-f-]{36}$/i.test(id))return false;
+ const cur=await sb<Array<{result:unknown}>>('/rest/v1/cmg_linkedin_jobs?id=eq.'+id+'&user_id=eq.'+userId+'&status=eq.claimed&select=result');
+ if(!cur[0])return false;
+ const saved=cur[0].result&&typeof cur[0].result==='object'?cur[0].result as Record<string,unknown>:null;
+ const body=keep&&saved?{status:'done',result:{...saved,status:'partial',inProgress:false,stoppedByUser:true,savedByServer:true},payload:{},completed_at:new Date().toISOString()}
+  :{status:'error',error:keep?'stopped: the phone saved nothing before stopping.':'stopped on request; partial results discarded.',result:null,payload:{},completed_at:new Date().toISOString()};
+ const rows=await sb<Array<{id:string}>>('/rest/v1/cmg_linkedin_jobs?id=eq.'+id+'&user_id=eq.'+userId+'&status=eq.claimed',{method:'PATCH',body:JSON.stringify(body),prefer:'return=representation'});
+ return rows.length>0;
+}

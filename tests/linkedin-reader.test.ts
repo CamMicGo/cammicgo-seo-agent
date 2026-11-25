@@ -248,6 +248,27 @@ test('fixture: full extraction on a post page returns comments, reactions and th
   noForbiddenClicks(w);
 });
 
+test('fixture: stop on request keeps what was read, marks it partial and stopped (never complete)', async ()=>{
+  const {w,li}=page('post-reactions-fr.html','https://www.linkedin.com/feed/update/urn:li:activity:7333333333333333333/');
+  let calls=0;
+  const r=await li.readReactions({},(p:Li)=>{calls++;if(p.reactionsRead>=1)w.__cmgLiStop=true;});
+  assert.ok(calls>0);
+  assert.equal(r.stopped,true);assert.equal(r.complete,false);assert.equal(r.partial,true);
+  assert.ok(r.retrieved>=1&&r.retrieved<=14);
+  assert.equal(r.expectedTotal,14,'the counter LinkedIn shows is kept for "read / shown"');
+  const html=fixture('post-reactions-fr.html').replace('<button>3 commentaires</button>','<button>1 commentaire</button>')
+    .replace('</main>','<div class="cm"><div><a href="https://www.linkedin.com/in/tom-ricard/"><img src="https://media.licdn.com/dms/image/v2/tom/profile-displayphoto/0.jpg" alt="Tom Ricard"></a><a href="https://www.linkedin.com/in/tom-ricard/">Tom Ricard</a><div>Lead</div><div>2 h</div></div><p>Bravo pour l’analyse.</p><div><button>J’aime</button><button>Répondre</button></div></div></main>');
+  const p2=page('','https://www.linkedin.com/feed/update/urn:li:activity:7333333333333333333/',{html});
+  // Stopped once the comments are read: the comments are kept, the reactions are skipped, status partial.
+  const full=await p2.li.readPostFull({postUrl:'https://www.linkedin.com/feed/update/urn:li:activity:7333333333333333333/'},(p:Li)=>{if(p.stage==='reactions')p2.w.__cmgLiStop=true;});
+  assert.equal(full.status,'partial');assert.equal(full.stoppedByUser,true);assert.equal(full.reactions.stopped,true);
+  assert.equal(full.comments.comments.length,1);
+  const p3=page('post-reactions-fr.html','https://www.linkedin.com/feed/update/urn:li:activity:7333333333333333333/');
+  p3.w.__cmgLiStop=true;
+  const none=await p3.li.readPostFull({});
+  assert.equal(none.status,'failed','stopped before anything was read: nothing to keep');
+  noForbiddenClicks(w);
+});
 test('fixture: comment list nested far away from the post card on a post page is still read', async ()=>{
   const deep=(html:string,n:number)=>'<div>'.repeat(n)+html+'</div>'.repeat(n);
   const post='<div class="card">'+deep('<a href="https://www.linkedin.com/in/alice-martin-123/">Alice Martin</a><div>Dev</div><div>1 j</div>',3)+deep('<p>Les graphismes temps réel, parlons-en deux minutes avec ray tracing.</p>',2)+deep('<button aria-label="14 réactions">14</button><button aria-label="2 commentaires sur le post de Alice Martin">2 commentaires</button>',2)+deep('<button>J’aime</button><button>Commenter</button><button>Republier</button><button>Envoyer</button>',2)+'</div>';

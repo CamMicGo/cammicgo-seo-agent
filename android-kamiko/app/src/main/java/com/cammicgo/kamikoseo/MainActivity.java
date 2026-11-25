@@ -129,7 +129,8 @@ public class MainActivity extends Activity {
       linkedinControlOn = linkedinMcpEnabled;
       if (!linkedinMcpEnabled || linkedinWeb == null) return;
       // Watchdog: a job that never reports back (page frozen, callback lost) must not block the queue forever.
-      if (linkedinPollBusy && linkedinBusyJob != null && System.currentTimeMillis() - linkedinBusySince > 240_000) {
+      // A post extraction counts from its last progress (it may legitimately run for many minutes).
+      if (linkedinPollBusy && linkedinBusyJob != null && System.currentTimeMillis() - linkedinBusySince > (linkedinBusyJob.equals(liProgressJob) ? 600_000 : 240_000)) {
         String stuck = linkedinBusyJob;
         liDeleteJobFiles(stuck);
         finishLinkedInJob(stuck, null, "Interrupted on the phone: no confirmed result. Check the LinkedIn conversation before trying again.");
@@ -1054,6 +1055,13 @@ public class MainActivity extends Activity {
     toolsRow.addView(exportJson, toolLp(-2, 0, true));
     root.addView(toolsRow, new LinearLayout.LayoutParams(-1, -2));
     exportJson.setOnClickListener(v -> exportLinkedInThreadJson());
+    // Shown while a post extraction runs: stops reading and builds the report from what was read.
+    linkedinStopButton = toolButton(I18n.t(this, "li_stop_report"), UiIcons.Kind.DOC);
+    linkedinStopButton.setVisibility(View.GONE);
+    linkedinStopButton.setOnClickListener(v -> { liStopRequested = true; v.setEnabled(false); ((Button) v).setText(I18n.t(this, "li_stopping")); });
+    LinearLayout stopRow = toolbarRow();
+    stopRow.addView(linkedinStopButton, toolLp(0, 1, true));
+    root.addView(stopRow, new LinearLayout.LayoutParams(-1, -2));
     linkedinWeb.setWebChromeClient(new WebChromeClient() {
       @Override public boolean onShowFileChooser(WebView view, android.webkit.ValueCallback<Uri[]> callback, FileChooserParams params) {
         if (linkedinPendingAttachment != null && linkedinPendingAttachmentJob != null) {
@@ -1150,6 +1158,9 @@ public class MainActivity extends Activity {
     cleanLinkedInAttachmentCache(false);
     String id = job.optString("id");
     String op = job.optString("operation");
+    liStopRequested = false; liStopAt = 0; liUploadedPeople = -1; liLastUpload = 0;
+    liProgressJob = "post_comments".equals(op) ? id : null;
+    if (linkedinStopButton != null) { linkedinStopButton.setVisibility("post_comments".equals(op) ? View.VISIBLE : View.GONE); linkedinStopButton.setEnabled(true); linkedinStopButton.setText(I18n.t(this, "li_stop_report")); }
     if (!linkedinMcpEnabled || linkedinWeb == null || id.isEmpty()) {
       linkedinPollBusy = false;
       return;
@@ -1364,6 +1375,14 @@ public class MainActivity extends Activity {
   private String liLibrary;
   private String lastLiProgress = "";
   private String lastLiHeartbeat = "";
+  // "Stop and build the report": asked on the phone (button) or by the assistant (linkedin_job_stop).
+  private volatile boolean liStopRequested = false;
+  private long liStopAt = 0;
+  private String liProgressJob = null;
+  private int liUploadedPeople = -1;
+  private long liLastUpload = 0;
+  private boolean liUploadBusy = false;
+  private Button linkedinStopButton;
 
   /** The read-only reader shipped as an asset (also run by the Node fixture tests). */
   private String liLib() {
@@ -1387,7 +1406,7 @@ public class MainActivity extends Activity {
     lastLiHeartbeat = "";
     String key = "k" + System.nanoTime();
     String q = JSONObject.quote(key);
-    String js = lib + "\n;(function(){var R=window.__cmgLiRuns=window.__cmgLiRuns||{};var k=" + q + ";R[k]={done:false};"
+    String js = lib + "\n;window.__cmgLiStop=" + (liStopRequested ? "true" : "false") + ";(function(){var R=window.__cmgLiRuns=window.__cmgLiRuns||{};var k=" + q + ";R[k]={done:false};"
       + "Promise.resolve().then(function(){return window.__cmgLi." + fn + "(" + opts.toString() + ",function(p,snapshot){var v=R[k];if(v&&!v.done){v.partial=p;if(snapshot)v.snapshot=snapshot;}});})"
       + ".then(function(v){R[k]={done:true,result:(v&&typeof v==='object'&&window.__cmgLi.fit)?window.__cmgLi.fit(v):v};},function(e){R[k]={done:true,error:String(e&&e.message||e)};});return 'started';})()";
     linkedinWeb.evaluateJavascript(js, started -> pollLi(id, key, System.currentTimeMillis() + timeoutMs, System.currentTimeMillis() + (timeoutMs >= 120000 ? 3600000 : timeoutMs), cb));
@@ -1408,7 +1427,23 @@ public class MainActivity extends Activity {
             return;
           }
           JSONObject prog = v.optJSONObject("partial");
-          if (prog != null && !prog.toString().equals(lastLiProgress)) { lastLiProgress = prog.toString(); liStep(id, lastLiProgress.length() > 70 ? lastLiProgress.substring(0, 70) : lastLiProgress); }
+          if (prog != null && !prog.toString().equals(lastLiProgress)) {
+            lastLiProgress = prog.toString(); liStep(id, lastLiProgress.length() > 70 ? lastLiProgress.substring(0, 70) : lastLiProgress);
+            linkedinBusySince = System.currentTimeMillis();  // progress keeps the watchdog away from long extractions
+            liShowProgress(prog);
+          }
+          liUploadProgress(id, v.optJSONObject("snapshot"), prog);
+          if (liStopRequested && liStopAt == 0) { liStopAt = System.currentTimeMillis(); linkedinWeb.evaluateJavascript("window.__cmgLiStop=true", null); }
+          if (liStopRequested && liStopAt > 0 && System.currentTimeMillis() - liStopAt > 25000) {
+            // The reader did not wind down in time: keep what it had read.
+            JSONObject partial = v.optJSONObject("snapshot");
+            if (partial == null) partial = new JSONObject();
+            partial.put("status", "partial"); partial.put("stoppedByUser", true);
+            if (prog != null) partial.put("progress", prog);
+            linkedinWeb.evaluateJavascript("delete window.__cmgLiRuns[" + q + "]", null);
+            cb.done(partial, null);
+            return;
+          }
           long nextDeadline = deadline;
           if (prog != null && !prog.toString().equals(lastLiHeartbeat)) { lastLiHeartbeat = prog.toString(); nextDeadline = Math.min(hardDeadline, System.currentTimeMillis() + 200000); }
           if (System.currentTimeMillis() > Math.min(nextDeadline, hardDeadline)) {
@@ -2568,6 +2603,71 @@ public class MainActivity extends Activity {
     } finally { if (conn != null) conn.disconnect(); }
   }
 
+  /** Counter on the stop button: reactions read / LinkedIn's total (or comments read). */
+  private void liShowProgress(JSONObject prog) {
+    if (linkedinStopButton == null || linkedinStopButton.getVisibility() != View.VISIBLE || liStopRequested) return;
+    String count = prog.has("reactionsRead") ? I18n.t(this, "li_reactions_count", prog.optInt("reactionsRead"), prog.isNull("expectedTotal") || !prog.has("expectedTotal") ? "?" : String.valueOf(prog.optInt("expectedTotal")))
+      : prog.has("commentsRead") ? I18n.t(this, "li_comments_count", prog.optInt("commentsRead")) : "";
+    linkedinStopButton.setText(I18n.t(this, "li_stop_report") + (count.isEmpty() ? "" : " · " + count));
+  }
+
+  /**
+   * Progressive save of a post extraction: every 50 more people (and at least every 15 s) the work read so
+   * far goes to the server, which keeps it in the job; its answer says whether the assistant asked to stop.
+   */
+  private void liUploadProgress(String id, JSONObject snapshot, JSONObject prog) {
+    if (id == null || !id.equals(liProgressJob) || liUploadBusy) return;
+    long now = System.currentTimeMillis();
+    int people = 0;
+    JSONObject rx = snapshot == null ? null : snapshot.optJSONObject("reactions");
+    if (rx != null && rx.optJSONArray("people") != null) people = rx.optJSONArray("people").length();
+    boolean batch = snapshot != null && (liUploadedPeople < 0 || people >= liUploadedPeople + 50);
+    if (!batch && now - liLastUpload < 15000) return;
+    liUploadBusy = true; liLastUpload = now;
+    final int sent = people;
+    JSONObject body = new JSONObject();
+    try {
+      body.put("id", id); body.put("progress", true);
+      if (prog != null) body.put("counts", prog);
+      if (batch) body.put("result", compactSnapshot(snapshot));
+    } catch (Exception ignored) {}
+    worker.execute(() -> {
+      boolean stop = false;
+      try {
+        JSONObject res = new JSONObject(RelayClient.request("POST", "/api/devices/linkedin", RelayClient.token(this), body.toString()));
+        stop = res.optBoolean("stop");
+      } catch (Exception e) { android.util.Log.w("CamMicGoLinkedIn", "Progress upload failed", e); }
+      boolean s2 = stop;
+      ui.post(() -> {
+        liUploadBusy = false;
+        if (batch) liUploadedPeople = sent;
+        if (s2 && !liStopRequested) { liStopRequested = true; if (linkedinStopButton != null) { linkedinStopButton.setEnabled(false); linkedinStopButton.setText(I18n.t(this, "li_stopping")); } }
+      });
+    });
+  }
+
+  /** The snapshot without duplicate image links, kept under the relay size limit (people trimmed last). */
+  private static JSONObject compactSnapshot(JSONObject snap) {
+    try {
+      JSONObject out = new JSONObject(snap.toString());
+      out.put("status", "partial"); out.put("inProgress", true);
+      JSONObject rx = out.optJSONObject("reactions");
+      JSONArray people = rx == null ? null : rx.optJSONArray("people");
+      if (people != null) {
+        JSONArray slim = new JSONArray();
+        for (int i = 0; i < people.length(); i++) {
+          JSONObject p = people.optJSONObject(i); if (p == null) continue;
+          JSONObject q = new JSONObject();
+          for (String k : new String[]{"name", "profileUrl", "headline", "reaction", "photoUrl"}) if (p.has(k) && !p.isNull(k)) q.put(k, p.opt(k));
+          slim.put(q);
+        }
+        rx.put("people", slim);
+        while (out.toString().length() > 230000 && slim.length() > 0) { slim.remove(slim.length() - 1); rx.put("truncated", true); }
+      }
+      return out;
+    } catch (Exception e) { return new JSONObject(); }
+  }
+
   private void finishLinkedInJs(String id, String raw) {
     try {
       String decoded = new JSONArray("[" + raw + "]").getString(0);
@@ -2576,6 +2676,9 @@ public class MainActivity extends Activity {
   }
 
   private void finishLinkedInJob(String id, JSONObject result, String error) {
+    if (liStopRequested && result != null) { try { result.put("stoppedByUser", true); if ("ok".equals(result.optString("status"))) result.put("status", "partial"); } catch (Exception ignored) {} }
+    liStopRequested = false; liStopAt = 0; liProgressJob = null; liUploadedPeople = -1; liLastUpload = 0;
+    if (linkedinStopButton != null) linkedinStopButton.setVisibility(View.GONE);
     String extractionStatus = result == null ? "" : result.optString("status");
     recordLinkedInActivity(id, "", error != null || "timeout".equals(extractionStatus) || "failed".equals(extractionStatus) ? "failed" : "partial".equals(extractionStatus) ? "partial" : "done", error == null ? "" : error, "");
     if (id != null && id.equals(linkedinBusyJob)) linkedinBusyJob = null;
