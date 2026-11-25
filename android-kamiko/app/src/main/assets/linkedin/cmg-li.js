@@ -782,7 +782,7 @@
         return commentBlocks(scope).length || (post.commentCount === 0);
       }, 9000, 350);
     }
-    var limit = Math.max(1, Math.min(300, o.limit || 100));
+    var limit = Math.max(1, Math.min(2000, o.limit || 100));
     var exp = await expandComments(scope, o.maxRounds || 25, progress, post.commentCount);
     var comments = readCommentsNow(scope).slice(0, limit);
     var expected = post.commentCount;
@@ -889,7 +889,7 @@
   }
   async function collectPeople(root, typeHint, expected, into, progress) {
     var stable = 0, rounds = 0, last = -1, seenHere = {};
-    for (; rounds < 80; rounds++) {
+    for (; rounds < 600; rounds++) {
       personRows(root).forEach(function (r) {
         var p = readPerson(r, typeHint);
         seenHere[p.profileUrl] = 1;
@@ -898,7 +898,7 @@
         else { if (typeHint) old.reaction = typeHint; if (!old.reactionIconUrl && p.reactionIconUrl) old.reactionIconUrl = p.reactionIconUrl; if (!old.photoUrl && p.photoUrl) old.photoUrl = p.photoUrl; if (!old.headline && p.headline) old.headline = p.headline; if (!old.reaction && p.reaction) old.reaction = p.reaction; }
       });
       var n = Object.keys(seenHere).length;
-      if (progress) progress({ reactionsRead: Object.keys(into).length, tab: typeHint || 'all' });
+      if (progress) progress({ reactionsRead: Object.keys(into).length, tab: typeHint || 'all' }, Object.keys(into).map(function (k) { return into[k]; }));
       if (expected != null && n >= expected) break;
       var more = controls(root).find(function (b) { return /^(show more|load more|afficher plus|voir plus|charger plus|mostrar m[aá]s|mehr anzeigen)/i.test((ownText(b) || label(b)).trim()) && !isOverflow(b); });
       if (more) safeClick(more, 'more_reactions');
@@ -1063,7 +1063,8 @@
     var c, r;
     try { c = await readComments(o, progress); } catch (e) { c = { status: 'error', error: String(e && e.message || e), comments: [] }; }
     if (c.status === 'navigate') return { status: 'navigate', stage: 'comments', url: c.url };
-    try { r = await readReactions(Object.assign({}, o, { postUrl: o.postUrl || c.postUrl || '' }), progress); } catch (e2) { r = { status: 'error', error: String(e2 && e2.message || e2), people: [] }; }
+    if (progress) progress({ stage: 'reactions', commentsRead: (c.comments || []).length }, { status: 'partial', post: c.post || null, postUrl: c.postUrl || null, comments: c, reactions: { people: [], complete: false, partial: true } });
+    try { r = await readReactions(Object.assign({}, o, { postUrl: o.postUrl || c.postUrl || '' }), function (p, people) { if (progress) progress(p, { status: 'partial', post: c.post || null, postUrl: c.postUrl || null, comments: c, reactions: { people: people || [], retrieved: (people || []).length, complete: false, partial: true } }); }); } catch (e2) { r = { status: 'error', error: String(e2 && e2.message || e2), people: [] }; }
     var post = c.post || null;
     var out = {
       status: c.status === 'ok' && r.status === 'ok' ? 'ok' : (c.status === 'ok' || r.status === 'ok' ? 'partial' : 'failed'),

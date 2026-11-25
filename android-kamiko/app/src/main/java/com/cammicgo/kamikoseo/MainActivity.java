@@ -1363,6 +1363,7 @@ public class MainActivity extends Activity {
   private interface LiDone { void done(JSONObject result, String error); }
   private String liLibrary;
   private String lastLiProgress = "";
+  private String lastLiHeartbeat = "";
 
   /** The read-only reader shipped as an asset (also run by the Node fixture tests). */
   private String liLib() {
@@ -1383,15 +1384,16 @@ public class MainActivity extends Activity {
     String lib = liLib();
     if (lib.isEmpty()) { cb.done(null, "LinkedIn reader missing from the app"); return; }
     if (!fn.matches("[A-Za-z]{2,40}")) { cb.done(null, "Invalid reader call"); return; }
+    lastLiHeartbeat = "";
     String key = "k" + System.nanoTime();
     String q = JSONObject.quote(key);
     String js = lib + "\n;(function(){var R=window.__cmgLiRuns=window.__cmgLiRuns||{};var k=" + q + ";R[k]={done:false};"
-      + "Promise.resolve().then(function(){return window.__cmgLi." + fn + "(" + opts.toString() + ",function(p){var v=R[k];if(v&&!v.done)v.partial=p;});})"
+      + "Promise.resolve().then(function(){return window.__cmgLi." + fn + "(" + opts.toString() + ",function(p,snapshot){var v=R[k];if(v&&!v.done){v.partial=p;if(snapshot)v.snapshot=snapshot;}});})"
       + ".then(function(v){R[k]={done:true,result:(v&&typeof v==='object'&&window.__cmgLi.fit)?window.__cmgLi.fit(v):v};},function(e){R[k]={done:true,error:String(e&&e.message||e)};});return 'started';})()";
-    linkedinWeb.evaluateJavascript(js, started -> pollLi(id, key, System.currentTimeMillis() + timeoutMs, cb));
+    linkedinWeb.evaluateJavascript(js, started -> pollLi(id, key, System.currentTimeMillis() + timeoutMs, System.currentTimeMillis() + (timeoutMs >= 120000 ? 3600000 : timeoutMs), cb));
   }
 
-  private void pollLi(String id, String key, long deadline, LiDone cb) {
+  private void pollLi(String id, String key, long deadline, long hardDeadline, LiDone cb) {
     ui.postDelayed(() -> {
       if (linkedinWeb == null) { cb.done(null, "LinkedIn page unavailable"); return; }
       String q = JSONObject.quote(key);
@@ -1407,14 +1409,20 @@ public class MainActivity extends Activity {
           }
           JSONObject prog = v.optJSONObject("partial");
           if (prog != null && !prog.toString().equals(lastLiProgress)) { lastLiProgress = prog.toString(); liStep(id, lastLiProgress.length() > 70 ? lastLiProgress.substring(0, 70) : lastLiProgress); }
-          if (System.currentTimeMillis() > deadline) {
-            JSONObject partial = new JSONObject();
-            partial.put("status", "timeout");
+          long nextDeadline = deadline;
+          if (prog != null && !prog.toString().equals(lastLiHeartbeat)) { lastLiHeartbeat = prog.toString(); nextDeadline = Math.min(hardDeadline, System.currentTimeMillis() + 200000); }
+          if (System.currentTimeMillis() > Math.min(nextDeadline, hardDeadline)) {
+            JSONObject partial = v.optJSONObject("snapshot");
+            boolean hasSnapshot = partial != null;
+            if (!hasSnapshot) partial = new JSONObject();
+            partial.put("status", hasSnapshot ? "partial" : "timeout");
+            partial.put("timedOut", true);
             if (prog != null) partial.put("progress", prog);
-            cb.done(partial, "LinkedIn read timed out");
+            linkedinWeb.evaluateJavascript("delete window.__cmgLiRuns[" + q + "]", null);
+            cb.done(partial, hasSnapshot ? null : "LinkedIn read timed out");
             return;
           }
-          pollLi(id, key, deadline, cb);
+          pollLi(id, key, nextDeadline, hardDeadline, cb);
         } catch (Exception e) { cb.done(null, "LinkedIn reader: " + e.getMessage()); }
       });
     }, 800);
@@ -1447,7 +1455,7 @@ public class MainActivity extends Activity {
         String v = job.optString(k, "").trim();
         if (!v.isEmpty()) o.put(k, v.length() > 300 ? v.substring(0, 300) : v);
       }
-      o.put("limit", Math.min(300, Math.max(1, job.optInt("limit", 100))));
+      o.put("limit", Math.min(2000, Math.max(1, job.optInt("limit", 100))));
     } catch (Exception ignored) {}
     return o;
   }
@@ -1609,7 +1617,7 @@ public class MainActivity extends Activity {
         }));
         return;
       }
-      finishLiWithThumbs(id, r, r == null ? (err == null ? "Full extraction failed" : err) : ("failed".equals(r.optString("status")) ? "Neither comments nor reactions could be read; see details" : null));
+      finishLiWithThumbs(id, r, r == null ? (err == null ? "Full extraction failed" : err) : ("failed".equals(r.optString("status")) ? "Neither comments nor reactions could be read; see details" : "timeout".equals(r.optString("status")) ? "LinkedIn read timed out" : null));
     };
     if (!postUrl.isEmpty()) {
       if (!isLinkedInPostUrl(postUrl)) { finishLinkedInJob(id, null, "Invalid LinkedIn post URL"); return; }
@@ -2568,7 +2576,8 @@ public class MainActivity extends Activity {
   }
 
   private void finishLinkedInJob(String id, JSONObject result, String error) {
-    recordLinkedInActivity(id, "", error == null ? "done" : "failed", error == null ? "" : error, "");
+    String extractionStatus = result == null ? "" : result.optString("status");
+    recordLinkedInActivity(id, "", error != null || "timeout".equals(extractionStatus) || "failed".equals(extractionStatus) ? "failed" : "partial".equals(extractionStatus) ? "partial" : "done", error == null ? "" : error, "");
     if (id != null && id.equals(linkedinBusyJob)) linkedinBusyJob = null;
     linkedinPollBusy = false;
     worker.execute(() -> {
@@ -3387,6 +3396,7 @@ public class MainActivity extends Activity {
       {"sending", "Sending the message", "Envoi du message", "Enviando el mensaje", "Nachricht wird gesendet", "Enviando a mensagem", "Invio del messaggio", "Отправка сообщения", "正在发送消息", "送信中", "메시지 전송 중", "إرسال الرسالة"},
       {"expired", "Expired (never picked up)", "Expirée (jamais récupérée)", "Caducada (no recogida)", "Abgelaufen (nie abgeholt)", "Expirada (não recebida)", "Scaduta (mai ricevuta)", "Истекло (не получено)", "已过期（未接收）", "期限切れ（未受信）", "만료됨(수신 안 됨)", "منتهية (لم تُستلم)"}};
     for (String[] row : steps) if (row[0].equals(status)) return row[1 + Math.max(0, Math.min(10, lang))];
+    if ("partial".equals(status)) return new String[]{"Partial","Partiel","Parcial","Teilweise","Parcial","Parziale","Частично","部分完成","一部完了","부분 완료","جزئي"}[lang];
     if ("done".equals(status) || "completed".equals(status)) return completed[lang];
     if ("failed".equals(status) || "error".equals(status)) return failed[lang];
     if ("pending".equals(status) || "queued".equals(status) || "received".equals(status)) return pending[lang];
