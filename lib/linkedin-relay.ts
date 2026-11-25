@@ -131,6 +131,8 @@ export async function hostThumbnails(userId:string,data:unknown,base=process.env
  await sb('/rest/v1/cmg_linkedin_thumbs?created_at=lt.'+encodeURIComponent(new Date(Date.now()-THUMB_TTL_MS).toISOString()),{method:'DELETE'}).catch(()=>{});
  if(!data||typeof data!=='object')return data;
  const root=data as Record<string,unknown>;
+ // Already delivered once (its report exists): checking the job again must not build a second report.
+ if(typeof root.reportUrl==='string'&&root.reportUrl.startsWith(base+'/api/linkedin/report/'))return data;
  decorateReactions(root,base);
  const cards:Array<Record<string,unknown>>=[];
  // Cards anywhere in the result (search lists, comments, reaction people, full extraction), a few levels deep.
@@ -287,4 +289,10 @@ async function takeSavedPeople(userId:string,id:string):Promise<Array<Record<str
  }
  if(names.length)await sb('/storage/v1/object/'+REPORT_BUCKET,{method:'DELETE',body:JSON.stringify({prefixes:names.map(n=>userId+'/reports/'+n)})}).catch(()=>{});
  return out;
+}
+
+/** The delivered result (hosted photos, report link) replaces the raw one, so a later check reuses it. */
+export async function keepDeliveredResult(userId:string,id:string,result:unknown){
+ if(!/^[0-9a-f-]{36}$/i.test(id)||!result||typeof result!=='object')return;
+ await sb('/rest/v1/cmg_linkedin_jobs?id=eq.'+id+'&user_id=eq.'+userId+'&status=eq.done',{method:'PATCH',body:JSON.stringify({result})}).catch(()=>{});
 }
