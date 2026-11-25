@@ -9,12 +9,14 @@ export async function enqueueLinkedIn(userId:string,operation:LinkedInOperation,
 /** Results hold other people's names, headlines and image links: they are kept only until delivered to the
  * assistant, and never more than 15 minutes (conversation threads included). */
 export const RESULT_TTL_MS=15*60_000;
+export const POST_RESULT_TTL_MS=24*60*60_000;
 export async function purgeLinkedInResult(userId:string,id:string){
  if(!/^[0-9a-f-]{36}$/i.test(id))return;
  await sb('/rest/v1/cmg_linkedin_jobs?id=eq.'+id+'&user_id=eq.'+userId+'&status=in.(done,error)',{method:'PATCH',body:JSON.stringify({result:null})}).catch(()=>{});
 }
 export async function sweepLinkedInResults(userId:string){
- await sb('/rest/v1/cmg_linkedin_jobs?user_id=eq.'+userId+'&result=not.is.null&completed_at=lt.'+encodeURIComponent(new Date(Date.now()-RESULT_TTL_MS).toISOString()),{method:'PATCH',body:JSON.stringify({result:null})}).catch(()=>{});
+ await sb('/rest/v1/cmg_linkedin_jobs?user_id=eq.'+userId+'&operation=eq.post_comments&result=not.is.null&completed_at=lt.'+encodeURIComponent(new Date(Date.now()-POST_RESULT_TTL_MS).toISOString()),{method:'PATCH',body:JSON.stringify({result:null})}).catch(()=>{});
+ await sb('/rest/v1/cmg_linkedin_jobs?user_id=eq.'+userId+'&operation=neq.post_comments&result=not.is.null&completed_at=lt.'+encodeURIComponent(new Date(Date.now()-RESULT_TTL_MS).toISOString()),{method:'PATCH',body:JSON.stringify({result:null})}).catch(()=>{});
 }
 export const THUMB_TTL_MS=24*60*60_000;
 const THUMB_PREFIX='data:image/jpeg;base64,';
@@ -72,7 +74,8 @@ export async function deleteReport(userId:string,id:string){
  */
 export async function purgeExpiredLinkedIn(){
  const out={results:0,thumbs:0,reports:0};
- await sb('/rest/v1/cmg_linkedin_jobs?result=not.is.null&completed_at=lt.'+encodeURIComponent(new Date(Date.now()-RESULT_TTL_MS).toISOString()),{method:'PATCH',body:JSON.stringify({result:null})}).then(()=>{out.results=1;}).catch(()=>{});
+ await sb('/rest/v1/cmg_linkedin_jobs?operation=neq.post_comments&result=not.is.null&completed_at=lt.'+encodeURIComponent(new Date(Date.now()-RESULT_TTL_MS).toISOString()),{method:'PATCH',body:JSON.stringify({result:null})}).then(()=>{out.results=1;}).catch(()=>{});
+ await sb('/rest/v1/cmg_linkedin_jobs?operation=eq.post_comments&result=not.is.null&completed_at=lt.'+encodeURIComponent(new Date(Date.now()-POST_RESULT_TTL_MS).toISOString()),{method:'PATCH',body:JSON.stringify({result:null})}).then(()=>{out.results=1;}).catch(()=>{});
  await sb('/rest/v1/cmg_linkedin_thumbs?created_at=lt.'+encodeURIComponent(new Date(Date.now()-THUMB_TTL_MS).toISOString()),{method:'DELETE'}).then(()=>{out.thumbs=1;}).catch(()=>{});
  const users=await sb<Array<{name:string;id:string|null}>>('/storage/v1/object/list/'+REPORT_BUCKET,{method:'POST',body:JSON.stringify({prefix:'',limit:1000})}).catch(()=>[]);
  for(const u of users||[]){
