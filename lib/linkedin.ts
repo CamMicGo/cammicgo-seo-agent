@@ -132,7 +132,7 @@ export const daysLeft=(expiresAt:number,now=Date.now())=>Math.max(0,Math.floor((
 /** Plain state for assistants and the app: queued, running (picked up by the phone), stalled, done, error, expired. */
 export function jobState(j:{status:string;error:string|null;claimed_at:string|null},now=Date.now()){
  if(j.status==='pending')return 'queued';
- if(j.status==='claimed')return j.claimed_at&&now-Date.parse(j.claimed_at)>4*60_000?'stalled':'running';
+ if(j.status==='claimed')return j.claimed_at&&now-Date.parse(j.claimed_at)>65*60_000?'stalled':'running';
  if(j.status==='error'&&/^expired/.test(j.error??''))return 'expired';
  return j.status;
 }
