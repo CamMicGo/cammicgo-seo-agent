@@ -152,12 +152,15 @@ export async function expireLinkedIn(userId:string){
  await sb('/rest/v1/cmg_linkedin_jobs?user_id=eq.'+userId+'&status=eq.pending&expires_at=lt.'+encodeURIComponent(new Date().toISOString()),{method:'PATCH',
   body:JSON.stringify({status:'error',error:'expired: the phone never picked up this command (CamMicGo app not open with LinkedIn control enabled). Nothing was done.',payload:{},completed_at:new Date().toISOString()})}).catch(()=>{});
 }
-export type LinkedInJobRow={id:string;operation:string;status:string;result:unknown;error:string|null;created_at:string;claimed_at:string|null;completed_at:string|null;expires_at:string};
+export type LinkedInJobRow={id:string;operation:string;status:string;result:unknown;error:string|null;created_at:string;claimed_at:string|null;completed_at:string|null;expires_at:string;payload?:Record<string,string>|null};
 export async function getLinkedIn(userId:string,id:string):Promise<LinkedInJobRow|null>{
  if(!/^[0-9a-f-]{36}$/i.test(id))return null;
  await expireLinkedIn(userId);
- const rows=await sb<LinkedInJobRow[]>('/rest/v1/cmg_linkedin_jobs?id=eq.'+id+'&user_id=eq.'+userId+'&select=id,operation,status,result,error,created_at,claimed_at,completed_at,expires_at');
- return rows[0]??null;
+ const rows=await sb<LinkedInJobRow[]>('/rest/v1/cmg_linkedin_jobs?id=eq.'+id+'&user_id=eq.'+userId+'&select=id,operation,status,result,error,created_at,claimed_at,completed_at,expires_at,payload');
+ const row=rows[0]??null;
+ // Only the server's own follow-up fields are returned (the rest of the payload stays private).
+ if(row)row.payload=row.payload&&typeof row.payload==='object'?Object.fromEntries(Object.entries(row.payload).filter(([k])=>k==='next'||k==='nextJobId')):null;
+ return row;
 }
 export {jobState} from '@/lib/linkedin';
 /** Is the phone's LinkedIn control polling right now (app open, control allowed)? */
@@ -174,10 +177,13 @@ export async function claimLinkedIn(userId:string,deviceId:string){
  const rows=await sb<Array<{id:string;operation:LinkedInOperation;payload:Record<string,string>}>>('/rest/v1/rpc/cmg_claim_linkedin_job',{method:'POST',body:JSON.stringify({p_user_id:userId,p_device_id:deviceId})});
  return rows[0]??null;
 }
-/** Ends a job; its payload (which may hold a temporary file link) is cleared at the same time. */
+/** Ends a job; its payload (which may hold a temporary file link) is cleared at the same time, except a server follow-up step. */
 export async function finishLinkedIn(deviceId:string,id:string,result:unknown,error?:string){
  if(!/^[0-9a-f-]{36}$/i.test(id))return false;
- const rows=await sb<Array<{id:string}>>('/rest/v1/cmg_linkedin_jobs?id=eq.'+id+'&device_id=eq.'+deviceId+'&status=eq.claimed',{method:'PATCH',body:JSON.stringify(error?{status:'error',error:error.slice(0,1500),result:result??null,payload:{},completed_at:new Date().toISOString()}:{status:'done',result,payload:{},completed_at:new Date().toISOString()}),prefer:'return=representation'});
+ // A server follow-up step ("next": read the chosen post after a company page) survives; the rest is cleared.
+ const cur=await sb<Array<{payload:Record<string,string>|null}>>('/rest/v1/cmg_linkedin_jobs?id=eq.'+id+'&device_id=eq.'+deviceId+'&select=payload').catch(()=>[]);
+ const keep=cur[0]?.payload&&typeof cur[0].payload.next==='string'?{next:cur[0].payload.next}:{};
+ const rows=await sb<Array<{id:string}>>('/rest/v1/cmg_linkedin_jobs?id=eq.'+id+'&device_id=eq.'+deviceId+'&status=eq.claimed',{method:'PATCH',body:JSON.stringify(error?{status:'error',error:error.slice(0,1500),result:result??null,payload:keep,completed_at:new Date().toISOString()}:{status:'done',result,payload:keep,completed_at:new Date().toISOString()}),prefer:'return=representation'});
  return rows.length>0;
 }
 
@@ -192,3 +198,9 @@ export async function signedLinkedInImage(userId:string,jobId:string,storagePath
 }
 
 
+
+/** Records the follow-up job started after a company page was read (so polling the first job finds it). */
+export async function setLinkedInFollowUp(userId:string,id:string,next:string,nextJobId:string){
+ if(!/^[0-9a-f-]{36}$/i.test(id))return;
+ await sb('/rest/v1/cmg_linkedin_jobs?id=eq.'+id+'&user_id=eq.'+userId,{method:'PATCH',body:JSON.stringify({payload:{next,nextJobId}})}).catch(()=>{});
+}
