@@ -153,7 +153,7 @@ test('dashboard: reaction bars with real pictures, labels, counts and shares; ba
  assert.match(html,/<b>19<\/b><span>Interactions totales<\/span>/);
  assert.match(html,/<b>17<\/b><span>Participants uniques<\/span>/);
  assert.match(html,/<b>50 %<\/b><span>Taux de réponse de l’auteur \(1\/2\)<\/span>/);
- assert.equal((html.match(/<article class="pc" data-reaction="like"/g)||[]).length,12*3,'12 like cards in each people panel');
+ assert.equal((html.match(/<article class="pc" data-reaction="like"/g)||[]).length,12+12+3,'12 like cards in the reaction panel, the classified ones in the domain panel, the 3 Atos ones in the company panel');
 });
 
 test('audience: domain donut (total in the centre, %), Atos bars, target note, cards carry company and domain', ()=>{

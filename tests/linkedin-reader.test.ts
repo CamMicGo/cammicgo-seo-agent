@@ -269,6 +269,19 @@ test('fixture: stop on request keeps what was read, marks it partial and stopped
   assert.equal(none.status,'failed','stopped before anything was read: nothing to keep');
   noForbiddenClicks(w);
 });
+test('fixture: comments switched to "Most recent" through the sort dropdown (never a menu); reaction tabs not re-read when the pictures already give every type', async ()=>{
+  const html=fixture('post-reactions-fr.html').replace('<button>3 commentaires</button>','<button>1 commentaire</button>')
+    .replace('</main>','<div class="cm"><div><a href="https://www.linkedin.com/in/tom-ricard/"><img src="https://media.licdn.com/dms/image/v2/tom/profile-displayphoto/0.jpg" alt="Tom Ricard"></a><a href="https://www.linkedin.com/in/tom-ricard/">Tom Ricard</a><div>Lead</div><div>2 h</div></div><p>Bravo pour l’analyse.</p><div><button>J’aime</button><button>Répondre</button></div></div></main>');
+  const sortUi='<button id="srt" aria-haspopup="true">Les plus pertinents</button><ul id="mnu" style="display:none"><li role="option">Les plus pertinents</li><li role="option" id="rec">Les plus récents</li></ul>';
+  const {w,li}=page('','https://www.linkedin.com/feed/update/urn:li:activity:7333333333333333333/',{html:html.replace('</main>',sortUi+'</main>')});
+  w.document.getElementById('srt').addEventListener('click',()=>{w.document.getElementById('mnu').setAttribute('style','');});
+  w.document.getElementById('rec').addEventListener('click',()=>{w.__sortedRecent=true;w.document.getElementById('srt').textContent='Les plus récents';});
+  const r=await li.readPostFull({postUrl:'https://www.linkedin.com/feed/update/urn:li:activity:7333333333333333333/'});
+  assert.equal(w.__sortedRecent,true,'"Les plus récents" was chosen: '+JSON.stringify({sort:r.comments.post&&r.comments.post.commentSort,clicks:r.comments.diagnostics}).slice(0,1500));
+  assert.equal(r.comments.comments.length,1);
+  assert.equal(r.reactions.retrieved,14);
+  noForbiddenClicks(w);
+});
 test('fixture: comment list nested far away from the post card on a post page is still read', async ()=>{
   const deep=(html:string,n:number)=>'<div>'.repeat(n)+html+'</div>'.repeat(n);
   const post='<div class="card">'+deep('<a href="https://www.linkedin.com/in/alice-martin-123/">Alice Martin</a><div>Dev</div><div>1 j</div>',3)+deep('<p>Les graphismes temps réel, parlons-en deux minutes avec ray tracing.</p>',2)+deep('<button aria-label="14 réactions">14</button><button aria-label="2 commentaires sur le post de Alice Martin">2 commentaires</button>',2)+deep('<button>J’aime</button><button>Commenter</button><button>Republier</button><button>Envoyer</button>',2)+'</div>';

@@ -1,5 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {sb} from '@/lib/device-relay';
+import {proxyMissingPhotos} from '@/lib/linkedin-photo';
+import {mergeReactionPeople} from '@/lib/linkedin-merge';
 import {addReport,cleanAnalysis,decorateReactions,preferHostedPhotos,reportPayload} from '@/lib/linkedin-reactions';
 export type LinkedInOperation='inbox'|'open'|'thread'|'back'|'feed'|'search'|'send'|'company_search'|'network_suggestions'|'invite'|'attach'|'job_search'|'job_details'|'recommended_jobs'|'company_profile'|'company_posts'|'person_profile'|'post_comments'|'comment_post'|'reply_comment';
 export async function enqueueLinkedIn(userId:string,operation:LinkedInOperation,payload:Record<string,string>={}){
@@ -135,12 +137,15 @@ export async function hostThumbnails(userId:string,data:unknown,base=process.env
  const walk=(node:unknown,depth:number)=>{if(depth>5||!node||typeof node!=='object')return;if(Array.isArray(node)){for(const c of node)walk(c,depth+1);return;}const o=node as Record<string,unknown>;cards.push(o);for(const key of ['profiles','people','companies','jobs','posts','comments','reactions','post','candidates'])walk(o[key],depth+1);};
  walk(root,0);
  const withThumb=cards.filter(c=>typeof c.imageDataUrl==='string'&&(c.imageDataUrl as string).startsWith(THUMB_PREFIX)&&(c.imageDataUrl as string).length<=16000+THUMB_PREFIX.length).slice(0,150);
- if(!withThumb.length){for(const c of cards)delete c.imageDataUrl;preferHostedPhotos(root,base);addReport(root,base);await saveReport(userId,root,base);return data;}
+ if(!withThumb.length){for(const c of cards)delete c.imageDataUrl;proxyMissingPhotos(cards,base);preferHostedPhotos(root,base);addReport(root,base);await saveReport(userId,root,base);return data;}
  try{
   const rows=await sb<Array<{id:string}>>('/rest/v1/cmg_linkedin_thumbs',{method:'POST',body:JSON.stringify(withThumb.map(c=>({user_id:userId,jpeg_b64:(c.imageDataUrl as string).slice(THUMB_PREFIX.length)}))),prefer:'return=representation'});
   withThumb.forEach((c,i)=>{if(!rows[i])return;if(typeof c.imageUrl==='string')c.linkedinImageUrl=c.imageUrl;c.imageUrl=base+'/api/linkedin/thumb/'+rows[i].id+'.jpg';delete c.imageDataUrl;});
  }catch{/* keep the data: URLs if storage is unavailable */}
  for(const c of cards)delete c.imageDataUrl;
+ // Photos without a phone thumbnail (at most 120 are made; none when the result was too big) are shown
+ // through the server's photo proxy.
+ proxyMissingPhotos(cards,base);
  preferHostedPhotos(root,base);
  addReport(root,base);
  await saveReport(userId,root,base);
@@ -181,8 +186,9 @@ export async function claimLinkedIn(userId:string,deviceId:string){
 export async function finishLinkedIn(deviceId:string,id:string,result:unknown,error?:string){
  if(!/^[0-9a-f-]{36}$/i.test(id))return false;
  // A server follow-up step ("next": read the chosen post after a company page) survives; the rest is cleared.
- const cur=await sb<Array<{payload:Record<string,string>|null}>>('/rest/v1/cmg_linkedin_jobs?id=eq.'+id+'&device_id=eq.'+deviceId+'&select=payload').catch(()=>[]);
+ const cur=await sb<Array<{payload:Record<string,string>|null;user_id:string;operation:string}>>('/rest/v1/cmg_linkedin_jobs?id=eq.'+id+'&device_id=eq.'+deviceId+'&status=eq.claimed&select=payload,user_id,operation').catch(()=>[]);
  const keep=cur[0]?.payload&&typeof cur[0].payload.next==='string'?{next:cur[0].payload.next}:{};
+ if(cur[0]&&cur[0].operation==='post_comments'&&result&&typeof result==='object')result=mergeReactionPeople(result,await takeSavedPeople(cur[0].user_id,id));
  const rows=await sb<Array<{id:string}>>('/rest/v1/cmg_linkedin_jobs?id=eq.'+id+'&device_id=eq.'+deviceId+'&status=eq.claimed',{method:'PATCH',body:JSON.stringify(error?{status:'error',error:error.slice(0,1500),result:result??null,payload:keep,completed_at:new Date().toISOString()}:{status:'done',result,payload:keep,completed_at:new Date().toISOString()}),prefer:'return=representation'});
  return rows.length>0;
 }
@@ -215,7 +221,18 @@ export async function saveLinkedInProgress(deviceId:string,id:string,result:unkn
  const rows=result&&typeof result==='object'
   ?await sb<Array<{payload:Record<string,string>|null}>>(q+'&select=payload',{method:'PATCH',body:JSON.stringify({result}),prefer:'return=representation'})
   :await sb<Array<{payload:Record<string,string>|null}>>(q+'&select=payload');
- return {ok:rows.length>0,stop:rows[0]?.payload?.stop==='1'};
+ await sb('/rest/v1/cmg_devices?id=eq.'+deviceId,{method:'PATCH',body:JSON.stringify({linkedin_seen_at:new Date().toISOString()})}).catch(()=>{});
+ // Not claimed any more (ended elsewhere): the phone must stop reading, its work can no longer be delivered.
+ return {ok:rows.length>0,stop:rows.length===0||rows[0]?.payload?.stop==='1',ended:rows.length===0};
+}
+/** True when the phone running this job reported within `ms` (progress uploads refresh it every ≤15 s). */
+export async function linkedInPhoneAlive(userId:string,id:string,ms=60000){
+ if(!/^[0-9a-f-]{36}$/i.test(id))return false;
+ const job=await sb<Array<{device_id:string|null}>>('/rest/v1/cmg_linkedin_jobs?id=eq.'+id+'&user_id=eq.'+userId+'&select=device_id').catch(()=>[]);
+ const dev=job[0]?.device_id;if(!dev)return false;
+ const d=await sb<Array<{linkedin_seen_at:string|null}>>('/rest/v1/cmg_devices?id=eq.'+dev+'&select=linkedin_seen_at').catch(()=>[]);
+ const t=d[0]?.linkedin_seen_at?Date.parse(d[0].linkedin_seen_at):0;
+ return t>0&&Date.now()-t<ms;
 }
 /** linkedin_job_stop: asks the phone to stop (it builds the report from what it read). */
 export async function requestLinkedInStop(userId:string,id:string){
@@ -239,9 +256,35 @@ export async function finalizeLinkedInPartial(userId:string,id:string,keep:boole
  if(!/^[0-9a-f-]{36}$/i.test(id))return false;
  const cur=await sb<Array<{result:unknown}>>('/rest/v1/cmg_linkedin_jobs?id=eq.'+id+'&user_id=eq.'+userId+'&status=eq.claimed&select=result');
  if(!cur[0])return false;
- const saved=cur[0].result&&typeof cur[0].result==='object'?cur[0].result as Record<string,unknown>:null;
+ let saved=cur[0].result&&typeof cur[0].result==='object'?cur[0].result as Record<string,unknown>:null;
+ if(keep&&saved)saved=mergeReactionPeople(saved,await takeSavedPeople(userId,id)) as Record<string,unknown>;
+ else await takeSavedPeople(userId,id);
  const body=keep&&saved?{status:'done',result:{...saved,status:'partial',inProgress:false,stoppedByUser:true,savedByServer:true},payload:{},completed_at:new Date().toISOString()}
   :{status:'error',error:keep?'stopped: the phone saved nothing before stopping.':'stopped on request; partial results discarded.',result:null,payload:{},completed_at:new Date().toISOString()};
  const rows=await sb<Array<{id:string}>>('/rest/v1/cmg_linkedin_jobs?id=eq.'+id+'&user_id=eq.'+userId+'&status=eq.claimed',{method:'PATCH',body:JSON.stringify(body),prefer:'return=representation'});
  return rows.length>0;
+}
+
+/** A batch of (at most 100) people read so far, saved next to the user's reports and deleted with them. */
+export async function saveLinkedInBatch(deviceId:string,id:string,seq:number,people:unknown){
+ if(!/^[0-9a-f-]{36}$/i.test(id)||!Number.isInteger(seq)||seq<0||seq>2000||!Array.isArray(people)||people.length>100)return false;
+ const job=await sb<Array<{user_id:string}>>('/rest/v1/cmg_linkedin_jobs?id=eq.'+id+'&device_id=eq.'+deviceId+'&status=eq.claimed&select=user_id').catch(()=>[]);
+ if(!job[0])return false;
+ const keepKeys=['name','profileUrl','headline','reaction','photoUrl'];
+ const rows=people.filter(p=>p&&typeof p==='object').map(p=>Object.fromEntries(keepKeys.filter(k=>typeof (p as Record<string,unknown>)[k]==='string').map(k=>[k,String((p as Record<string,unknown>)[k]).slice(0,1200)])));
+ const path='/storage/v1/object/'+REPORT_BUCKET+'/'+job[0].user_id+'/reports/job-'+id+'-'+String(seq).padStart(4,'0')+'.json';
+ await sb(path,{method:'POST',body:JSON.stringify(rows)}).catch(()=>sb(path,{method:'PUT',body:JSON.stringify(rows)}));
+ return true;
+}
+/** Reads then deletes every saved batch of a job. */
+async function takeSavedPeople(userId:string,id:string):Promise<Array<Record<string,unknown>>>{
+ const files=await sb<Array<{name:string}>>('/storage/v1/object/list/'+REPORT_BUCKET,{method:'POST',body:JSON.stringify({prefix:userId+'/reports',search:'job-'+id+'-',limit:1000})}).catch(()=>[]);
+ const names=files.map(f=>f.name).filter(n=>n.startsWith('job-'+id+'-')&&n.endsWith('.json')).sort();
+ const out:Array<Record<string,unknown>>=[];
+ for(let i=0;i<names.length;i+=8){
+  const parts=await Promise.all(names.slice(i,i+8).map(n=>sb<unknown>('/storage/v1/object/'+REPORT_BUCKET+'/'+userId+'/reports/'+n).catch(()=>null)));
+  for(const p of parts)if(Array.isArray(p))out.push(...(p as Array<Record<string,unknown>>));
+ }
+ if(names.length)await sb('/storage/v1/object/'+REPORT_BUCKET,{method:'DELETE',body:JSON.stringify({prefixes:names.map(n=>userId+'/reports/'+n)})}).catch(()=>{});
+ return out;
 }
