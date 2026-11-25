@@ -1,5 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {sb} from '@/lib/device-relay';
+import {copyCdnPhotos} from '@/lib/linkedin-cdn-photos';
 import {addReport,cleanAnalysis,decorateReactions,preferHostedPhotos,reportPayload} from '@/lib/linkedin-reactions';
 export type LinkedInOperation='inbox'|'open'|'thread'|'back'|'feed'|'search'|'send'|'company_search'|'network_suggestions'|'invite'|'attach'|'job_search'|'job_details'|'recommended_jobs'|'company_profile'|'company_posts'|'person_profile'|'post_comments'|'comment_post'|'reply_comment';
 export async function enqueueLinkedIn(userId:string,operation:LinkedInOperation,payload:Record<string,string>={}){
@@ -141,10 +142,15 @@ export async function hostThumbnails(userId:string,data:unknown,base=process.env
   withThumb.forEach((c,i)=>{if(!rows[i])return;if(typeof c.imageUrl==='string')c.linkedinImageUrl=c.imageUrl;c.imageUrl=base+'/api/linkedin/thumb/'+rows[i].id+'.jpg';delete c.imageDataUrl;});
  }catch{/* keep the data: URLs if storage is unavailable */}
  for(const c of cards)delete c.imageDataUrl;
+ await hostCdnPhotos(userId,cards,base);
  preferHostedPhotos(root,base);
  addReport(root,base);
  await saveReport(userId,root,base);
  return data;
+}
+/** Photos the phone did not make into thumbnails are copied by the server (see lib/linkedin-cdn-photos). */
+export async function hostCdnPhotos(userId:string,cards:Array<Record<string,unknown>>,base:string,max=600){
+ return copyCdnPhotos(cards,base,async b64s=>{const rows=await sb<Array<{id:string}>>('/rest/v1/cmg_linkedin_thumbs',{method:'POST',body:JSON.stringify(b64s.map(b=>({user_id:userId,jpeg_b64:b}))),prefer:'return=representation'}).catch(()=>[] as Array<{id:string}>);return rows.map(r=>r.id);},fetch,max);
 }
 /** Jobs the phone never picked up before their deadline become explicit errors (never run later). */
 export async function expireLinkedIn(userId:string){
@@ -215,7 +221,18 @@ export async function saveLinkedInProgress(deviceId:string,id:string,result:unkn
  const rows=result&&typeof result==='object'
   ?await sb<Array<{payload:Record<string,string>|null}>>(q+'&select=payload',{method:'PATCH',body:JSON.stringify({result}),prefer:'return=representation'})
   :await sb<Array<{payload:Record<string,string>|null}>>(q+'&select=payload');
- return {ok:rows.length>0,stop:rows[0]?.payload?.stop==='1'};
+ await sb('/rest/v1/cmg_devices?id=eq.'+deviceId,{method:'PATCH',body:JSON.stringify({linkedin_seen_at:new Date().toISOString()})}).catch(()=>{});
+ // Not claimed any more (ended elsewhere): the phone must stop reading, its work can no longer be delivered.
+ return {ok:rows.length>0,stop:rows.length===0||rows[0]?.payload?.stop==='1',ended:rows.length===0};
+}
+/** True when the phone running this job reported within `ms` (progress uploads refresh it every ≤15 s). */
+export async function linkedInPhoneAlive(userId:string,id:string,ms=60000){
+ if(!/^[0-9a-f-]{36}$/i.test(id))return false;
+ const job=await sb<Array<{device_id:string|null}>>('/rest/v1/cmg_linkedin_jobs?id=eq.'+id+'&user_id=eq.'+userId+'&select=device_id').catch(()=>[]);
+ const dev=job[0]?.device_id;if(!dev)return false;
+ const d=await sb<Array<{linkedin_seen_at:string|null}>>('/rest/v1/cmg_devices?id=eq.'+dev+'&select=linkedin_seen_at').catch(()=>[]);
+ const t=d[0]?.linkedin_seen_at?Date.parse(d[0].linkedin_seen_at):0;
+ return t>0&&Date.now()-t<ms;
 }
 /** linkedin_job_stop: asks the phone to stop (it builds the report from what it read). */
 export async function requestLinkedInStop(userId:string,id:string){
