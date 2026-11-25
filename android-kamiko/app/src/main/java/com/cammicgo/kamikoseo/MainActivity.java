@@ -2580,6 +2580,10 @@ public class MainActivity extends Activity {
         for (int i = 0; i < people.length(); i++) { JSONObject p = people.optJSONObject(i); if (p != null && p.has("imageDataUrl")) keep.put(p); }
         rx.put("people", keep); rx.put("savedInBatches", true);
       }
+      // Reaction people's thumbnails go first (the server shows their photos from the batches); comment
+      // authors keep theirs.
+      JSONArray left = rx == null ? null : rx.optJSONArray("people");
+      for (int i = 0; left != null && i < left.length() && data.toString().length() > 240000; i++) { JSONObject p = left.optJSONObject(i); if (p != null) p.remove("imageDataUrl"); }
       for (JSONObject c : liAllCards(data)) { if (data.toString().length() <= 240000) break; c.remove("imageDataUrl"); }
       if (data.toString().length() > 240000 && people != null && batched) rx.put("people", new JSONArray());
     } catch (Exception ignored) {}
