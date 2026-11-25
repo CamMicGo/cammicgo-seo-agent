@@ -300,3 +300,20 @@ test('a person met twice (vanity link in comments, member link in reactions) cou
  const f=fixture();f.comments.comments[2].authorProfileUrl=LI+'vanity-p6/';
  assert.equal(engagementOf(reportPayload(f,B)!).participants,17);
 });
+
+import {assistantView} from '../lib/linkedin-reactions.ts';
+test('large posts: the assistant gets a compact answer (ids, names, headlines, texts), the report keeps everything', ()=>{
+ const small=fixture() as Record<string,unknown>;small.reportUrl=B+'/api/linkedin/report/x';
+ assert.equal(assistantView(small),small,'small results unchanged');
+ const big=fixture() as Record<string,unknown>;big.reportUrl=B+'/api/linkedin/report/x';big.reportMarkdown='x'.repeat(200000);
+ const r=big.reactions as {people:Record<string,unknown>[]};
+ r.people=Array.from({length:900},(_,i)=>({name:'N'+i,profileUrl:LI+'n'+i+'/',headline:'H'+i,reaction:'like',photoUrl:B+'/api/linkedin/thumb/'+i+'.jpg',linkedinPhotoUrl:'https://media.licdn.com/'+'y'.repeat(200)}));
+ type V={compact:boolean;reportUrl:string;note:string;reactions:{people:Record<string,unknown>[]};comments:{comments:Array<{commentId:string}>}};
+ const v=assistantView(big) as V;
+ assert.equal(v.compact,true);assert.equal(v.reportUrl,big.reportUrl);
+ assert.equal(v.reactions.people.length,300);assert.deepEqual(Object.keys(v.reactions.people[0]).sort(),['headline','name','profileUrl','reaction']);
+ assert.match(v.note,/300 of the 900/);
+ assert.equal(v.comments.comments[0].commentId,'urn:li:comment:(1,10)');
+ assert.ok(!('reportMarkdown' in v));
+ assert.ok(JSON.stringify(v).length<70000,'compact size');
+});

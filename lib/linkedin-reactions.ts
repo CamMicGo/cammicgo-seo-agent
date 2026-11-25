@@ -476,3 +476,29 @@ footer{color:var(--muted);font-size:12px;margin:24px 0}
 @media print{.tools,.reset,.hint,.phd{display:none!important}h2,h3,h4{break-after:avoid}body{background:#fff}main{max-width:none}.card,.kpi,.tk,.box,.pc,.cm{break-inside:avoid}.cards .pc{display:flex!important}.cards .cm{display:block!important}.wait .cards{display:block!important}.pcount{display:none!important}#pp-domain,#pp-company{display:none}.split .panel{max-height:none;overflow:visible}.gl details>*{display:block}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 </style></head><body><header class="hdr"><div class="in"><div class="top">${opt.logo?`<img class="logo" src="${h(opt.logo)}" alt="LinkedIn">`:''}<div class="grow"><h1>${h(W.title)}</h1>${pid?`<div class="pid">${h(W.postId)} : ${h(pid.urn)}</div>`:''}<div class="pid">${h(W.readBy)} · ${h(new Date(str(r.createdAt)||Date.now()).toLocaleString(lang==='zh'?'zh-CN':lang,{timeZone:'Europe/Paris',dateStyle:'medium',timeStyle:'short'}))}</div></div>${opt.brandLogo?`<img class="brand" src="${h(opt.brandLogo)}" alt="CamMicGo SEO MCP">`:''}</div>${tools}</div></header><main>${parts.join('')}<footer>${h(opt.images?W.exportFooter:W.footer)}</footer></main>${interactive?(opt.nonce?`<script nonce="${h(opt.nonce)}">${script}</script>`:`<script>${script}</script>`):''}</body></html>`;
 }
+
+/**
+ * What the assistant receives for a large extraction. Big posts (hundreds of reactions) gave answers of
+ * several hundred KB (every photo link twice, the full Markdown list): some chat apps never finished
+ * answering. Over `maxChars` the answer keeps only what the analysis needs (ids, names, headlines,
+ * reactions, comment texts), at most `maxPeople` reacting people; the report page keeps everything.
+ */
+export function assistantView(data:unknown,maxChars=60000,maxPeople=300):unknown{
+ if(!data||typeof data!=='object'||Array.isArray(data))return data;
+ const root=data as Obj;
+ if(!str(root.reportUrl)||JSON.stringify(root).length<=maxChars)return data;
+ const rx=root.reactions&&typeof root.reactions==='object'?root.reactions as Obj:null;
+ const cx=root.comments&&typeof root.comments==='object'&&!Array.isArray(root.comments)?root.comments as Obj:null;
+ const post=(root.post&&typeof root.post==='object'?root.post:cx&&cx.post) as Obj|undefined;
+ const people=rx&&Array.isArray(rx.people)?rx.people as Obj[]:[];
+ const comments=cx&&Array.isArray(cx.comments)?cx.comments as Obj[]:[];
+ const pick=(o:Obj,keys:string[])=>Object.fromEntries(keys.filter(k=>o[k]!=null&&o[k]!=='').map(k=>[k,o[k]]));
+ return {
+  compact:true,
+  note:`Large post: this answer is compact (no photo links, no Markdown list). Give the user reportUrl: the report page shows every person with photo and profile link.${people.length>maxPeople?` Only ${maxPeople} of the ${people.length} people who reacted are listed here: classify them as a sample and say so.`:''}`,
+  reportUrl:root.reportUrl,status:root.status,postUrl:root.postUrl,uiLang:root.uiLang,consistency:root.consistency,
+  post:post?pick(post,['author','authorProfileUrl','authorHeadline','time','text','reactionCount','commentCount','repostCount','imageCount']):null,
+  comments:cx?{...pick(cx,['status','complete','partial','displayedCount','retrieved','topLevel','replies','note']),comments:comments.map(c=>({...pick(c,['commentId','parentId','author','authorProfileUrl','authorHeadline','time','isReply','isPostAuthor','parentAuthor','reactionCount']),text:str(c.text).slice(0,800)}))}:null,
+  reactions:rx?{...pick(rx,['status','complete','partial','expectedTotal','retrieved','byType','missing','note']),listed:Math.min(people.length,maxPeople),people:people.slice(0,maxPeople).map(p=>pick(p,['profileUrl','name','headline','reaction']))}:null,
+ };
+}
