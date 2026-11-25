@@ -1010,21 +1010,47 @@
   /** Keeps a result under the relay's size limit: photos and long texts are cut first, never silently. */
   function fit(res, max) {
     max = max || 230000;
-    var s = JSON.stringify(res);
-    if (s.length <= max) return res;
+    function size() { return JSON.stringify(res).length; }
+    if (size() <= max) return res;
     res.truncated = true;
-    ['people', 'comments', 'posts'].forEach(function (k) { (res[k] || []).forEach(function (p) { if (p.text && p.text.length > 1200) p.text = p.text.slice(0, 1200) + '…'; }); });
-    if (res.diagnostics) delete res.diagnostics.dom;
-    (res.people || (res.reactions && res.reactions.people) || []).forEach(function (p) { if (p.reactionIconUrl && /^data:/.test(p.reactionIconUrl)) delete p.reactionIconUrl; });
-    if (JSON.stringify(res).length <= max) return res;
-    ['people', 'comments', 'posts'].forEach(function (k) { (res[k] || []).forEach(function (p) { delete p.photoUrl; delete p.authorPhotoUrl; delete p.images; }); });
-    res.photosDropped = true;
-    while (JSON.stringify(res).length > max) {
-      var k = ['people', 'comments', 'posts'].find(function (x) { return res[x] && res[x].length > 1; });
-      if (!k) break;
-      res[k].length = Math.floor(res[k].length * 0.85);
-      res.cutTo = res.cutTo || {}; res.cutTo[k] = res[k].length;
+    var lists = [];
+    function add(owner, key, name) {
+      if (owner && Array.isArray(owner[key])) lists.push({ owner: owner, rows: owner[key], key: key, name: name });
     }
+    add(res, 'people', 'people');
+    add(res, 'comments', 'comments');
+    add(res, 'posts', 'posts');
+    add(res.comments, 'comments', 'comments.comments');
+    add(res.reactions, 'people', 'reactions.people');
+    function each(fn) { lists.forEach(function (l) { l.rows.forEach(function (p) { if (p && typeof p === 'object') fn(p); }); }); }
+    [res, res.comments, res.reactions].forEach(function (o) { if (o && o.diagnostics) delete o.diagnostics.dom; });
+    each(function (p) { if (typeof p.reactionIconUrl === 'string' && /^data:/.test(p.reactionIconUrl)) delete p.reactionIconUrl; });
+    if (size() <= max) return res;
+    each(function (p) { if (typeof p.text === 'string' && p.text.length > 1200) { p.text = p.text.slice(0, 1200) + '…'; res.textsShortened = true; } });
+    if (size() <= max) return res;
+    each(function (p) {
+      ['imageDataUrl', 'photoUrl', 'authorPhotoUrl', 'imageUrl', 'images'].forEach(function (k) {
+        if (p[k] != null) { delete p[k]; res.photosDropped = true; }
+      });
+    });
+    while (size() > max) {
+      var l = lists.filter(function (x) { return x.rows.length > 0; }).sort(function (a, b) { return JSON.stringify(b.rows).length - JSON.stringify(a.rows).length; })[0];
+      if (!l) break;
+      l.rows.length = Math.floor(l.rows.length * 0.85);
+      res.cutTo = res.cutTo || {}; res.cutTo[l.name] = l.rows.length;
+      l.owner.complete = false; l.owner.partial = true; l.owner.retrieved = l.rows.length;
+      l.owner.note = 'Result shortened to fit the relay size limit; displayed counts are unchanged.';
+      if (l.key === 'comments') {
+        l.owner.topLevel = l.rows.filter(function (p) { return p && !p.isReply; }).length;
+        l.owner.replies = l.rows.filter(function (p) { return p && p.isReply; }).length;
+        if (res.consistency) { res.consistency.commentsRead = l.rows.length; res.consistency.commentsComplete = false; }
+      }
+      if (l.key === 'people') {
+        if (res.consistency) { res.consistency.reactionsRead = l.rows.length; res.consistency.reactionsComplete = false; }
+      }
+      if (res.status === 'ok') res.status = 'partial';
+    }
+    if (size() > max) res.sizeLimitExceeded = true;
     return res;
   }
 
