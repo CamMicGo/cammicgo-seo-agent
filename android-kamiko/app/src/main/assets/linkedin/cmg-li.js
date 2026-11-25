@@ -922,7 +922,7 @@
   }
   async function collectPeople(root, typeHint, expected, into, progress) {
     var stable = 0, rounds = 0, last = -1, seenHere = {};
-    for (; rounds < 600; rounds++) {
+    for (; rounds < 3000; rounds++) {
       if (stopRequested()) break;
       personRows(root).forEach(function (r) {
         var p = readPerson(r, typeHint);
@@ -940,7 +940,19 @@
       if (sc.length) sc.forEach(function (s) { s.scrollTop = s.scrollHeight; }); else root.scrollTop = root.scrollHeight;
       if (root === document.body || root.tagName === 'MAIN') window.scrollBy(0, Math.round((window.innerHeight || 800)));
       await waitFor(function () { return personRows(root).some(function (r) { return !seenHere[r.href]; }); }, 2200, 300);
-      if (n === last) { if (++stable >= 3) break; } else stable = 0;
+      if (n === last) {
+        // Big lists load slowly: while far from LinkedIn's count, keep trying longer and nudge the list
+        // (small scroll up then down) so the next page is requested again.
+        var far = expected != null && n < expected * 0.97;
+        if (++stable >= (far ? 10 : 3)) break;
+        if (far) {
+          (sc.length ? sc : [root]).forEach(function (s) { s.scrollTop = Math.max(0, s.scrollTop - 600); });
+          await sleep(500);
+          (sc.length ? sc : [root]).forEach(function (s) { s.scrollTop = s.scrollHeight; });
+          if (root === document.body || root.tagName === 'MAIN') { window.scrollBy(0, -600); await sleep(300); window.scrollBy(0, 1600); }
+          await sleep(1200);
+        }
+      } else stable = 0;
       last = n;
     }
     return Object.keys(seenHere).length;
