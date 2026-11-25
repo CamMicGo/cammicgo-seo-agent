@@ -836,6 +836,9 @@
       expandClicks: exp.clicks,
       note: expected != null && comments.length < expected ? 'LinkedIn shows ' + expected + ' comments but only ' + comments.length + ' could be loaded (hidden, deleted or still collapsed).' : (expected == null ? 'LinkedIn shows no comment counter here: completeness cannot be checked.' : 'All comments shown by LinkedIn were read.'),
     };
+    // Comments still missing: list the reply / load-more controls left on the page (labels only) so the next
+    // fix targets what LinkedIn really shows.
+    if (expected != null && comments.length < expected) res.unclickedControls = controls(scope.closest('[role=dialog]') || document.body).filter(function (e) { var t = (ownText(e) || label(e) || '').trim(); return t.length < 60 && /r[eé]ponse|repl|respuesta|antwort|commentaire|comment|more|plus|previous|pr[eé]c[eé]dent/i.test(t) && !/^(r[eé]pondre|reply|responder|antworten|commenter|comment)$/i.test(t) && !isOverflow(e); }).slice(0, 12).map(function (e) { return (ownText(e) || label(e)).trim().slice(0, 60); });
     if (res.status !== 'ok' || o.diagnose) res.diagnostics = { page: pageState(), dom: domShape({ commentBlocks: commentBlocks(scope).length, replyControls: replyButtons(scope).length, documentCommentBlocks: commentBlocks(document).length, postsOnPage: findPosts().posts.length, replySamples: replyButtons(document).slice(0, 3).map(function (r) { var path = []; for (var q = r; q && q !== document.body && path.length < 14; q = q.parentElement) path.push(q.tagName.toLowerCase() + (attr(q, 'role') ? '[' + attr(q, 'role') + ']' : '') + (q === scope ? '*' : '')); return { label: (label(r) || ownText(r)).slice(0, 40), inScope: scope.contains(r), path: path.join('<') }; }) }) };
     else res.diagnostics = { clicks: clickLog.slice(-20) };
     return res;
@@ -1111,6 +1114,14 @@
     [res, res.comments, res.reactions].forEach(function (o) { if (o && o.diagnostics) delete o.diagnostics.dom; });
     each(function (p) { if (typeof p.reactionIconUrl === 'string' && /^data:/.test(p.reactionIconUrl)) delete p.reactionIconUrl; });
     if (size() <= max) return res;
+    // Full extraction: the reacting people already went to the server in batches of 50 while reading, so
+    // they are shortened first; comments keep their texts and their authors' photos.
+    if (res.reactions && Array.isArray(res.reactions.people) && res.comments && typeof res.comments === 'object') {
+      var rp = res.reactions.people;
+      while (size() > max && rp.length) rp.length = Math.max(0, Math.floor(rp.length * 0.8) - 1);
+      res.reactions.peopleInBatches = true;
+      if (size() <= max) return res;
+    }
     each(function (p) { if (typeof p.text === 'string' && p.text.length > 1200) { p.text = p.text.slice(0, 1200) + '…'; res.textsShortened = true; } });
     if (size() <= max) return res;
     each(function (p) {

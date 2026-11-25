@@ -295,6 +295,17 @@ test('fixture: people read are kept in the page memory and a new run on the same
   assert.equal(w.localStorage.getItem('cmgLiPeople:7333333333333333333'),null,'memory cleared once complete');
   noForbiddenClicks(w);
 });
+test('unit: a big full extraction sheds reacting people (already saved in batches) before any comment photo or text', ()=>{
+  const {li}=page('search-no-results.html','https://www.linkedin.com/feed/');
+  const photo='https://media.licdn.com/dms/image/v2/'+'x'.repeat(200);
+  const res={status:'ok',comments:{comments:Array.from({length:50},(_,i)=>({author:'C'+i,authorPhotoUrl:photo,text:'t'.repeat(800)}))},reactions:{people:Array.from({length:2000},(_,i)=>({name:'P'+i,profileUrl:'https://www.linkedin.com/in/p'+i+'/',photoUrl:photo,headline:'h'.repeat(80)}))}};
+  const out=li.fit(res);
+  assert.ok(JSON.stringify(out).length<=230000);
+  assert.equal(out.reactions.peopleInBatches,true);
+  assert.ok(out.reactions.people.length<2000);
+  assert.equal(out.comments.comments.length,50);
+  assert.ok(out.comments.comments.every((c:Li)=>c.authorPhotoUrl===photo&&c.text.length===800),'comments untouched');
+});
 test('fixture: comment list nested far away from the post card on a post page is still read', async ()=>{
   const deep=(html:string,n:number)=>'<div>'.repeat(n)+html+'</div>'.repeat(n);
   const post='<div class="card">'+deep('<a href="https://www.linkedin.com/in/alice-martin-123/">Alice Martin</a><div>Dev</div><div>1 j</div>',3)+deep('<p>Les graphismes temps réel, parlons-en deux minutes avec ray tracing.</p>',2)+deep('<button aria-label="14 réactions">14</button><button aria-label="2 commentaires sur le post de Alice Martin">2 commentaires</button>',2)+deep('<button>J’aime</button><button>Commenter</button><button>Republier</button><button>Envoyer</button>',2)+'</div>';
