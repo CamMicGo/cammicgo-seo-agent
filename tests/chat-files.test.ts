@@ -50,6 +50,8 @@ test('LinkedIn job states are explicit: queued, running, stalled, expired', () =
  assert.equal(jobState({status:'pending',error:null,claimed_at:null},now),'queued');
  assert.equal(jobState({status:'claimed',error:null,claimed_at:'2026-11-06T11:59:00Z'},now),'running');
  assert.equal(jobState({status:'claimed',error:null,claimed_at:'2026-11-06T11:50:00Z'},now),'stalled');
+ assert.equal(jobState({status:'claimed',operation:'post_comments',error:null,claimed_at:'2026-11-06T11:50:00Z'},now),'running');
+ assert.equal(jobState({status:'claimed',operation:'post_comments',error:null,claimed_at:'2026-11-06T10:54:00Z'},now),'stalled');
  assert.equal(jobState({status:'error',error:'expired: the phone never picked up',claimed_at:null},now),'expired');
  assert.equal(jobState({status:'error',error:'Message composer not found',claimed_at:'2026-11-06T11:59:00Z'},now),'error');
  assert.equal(jobState({status:'done',error:null,claimed_at:'2026-11-06T11:59:00Z'},now),'done');
