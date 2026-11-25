@@ -172,8 +172,8 @@ export function reportPayload(data:unknown,base=process.env.APP_BASE_URL||'https
   extraction:['ok','partial','failed','timeout'].includes(str(root.status))?str(root.status):null,stoppedByUser:root.stoppedByUser===true,
   lang:reportLang(root.uiLang),
   post:post?{author:str(post.author),authorProfileUrl:str(post.authorProfileUrl),photo:pic(post.authorPhotoUrl),headline:str(post.authorHeadline),time:str(post.time),text:str(post.text).slice(0,3000),url:str(root.postUrl)||str(post.postUrl),reactionCount:post.reactionCount??null,commentCount:post.commentCount??null,images:(Array.isArray(post.images)?post.images:[]).map(postPic).filter(Boolean).slice(0,4)}:null,
-  comments:comments?{displayed:comments.displayedCount??null,complete:comments.complete??null,items:(Array.isArray(comments.comments)?comments.comments as Obj[]:[]).slice(0,300).map((c,i)=>({id:str(c.commentId)||'c'+i,parentId:str(c.parentId),author:str(c.author),url:str(c.authorProfileUrl),photo:pic(c.authorPhotoUrl),headline:str(c.authorHeadline),time:str(c.time),text:str(c.text).slice(0,3000),isReply:c.isReply===true,isPostAuthor:c.isPostAuthor===true,parentAuthor:str(c.parentAuthor),reactions:typeof c.reactionCount==='number'?c.reactionCount:null}))}:null,
-  reactions:reactions?{expected:reactions.expectedTotal??null,complete:reactions.complete??null,missing:Array.isArray(reactions.missing)?reactions.missing:[],people:(Array.isArray(reactions.people)?reactions.people as Obj[]:[]).slice(0,600).map(p=>({name:str(p.name),url:str(p.profileUrl),photo:pic(p.photoUrl),headline:str(p.headline),reaction:str(p.reaction)}))}:null,
+  comments:comments?{displayed:comments.displayedCount??null,complete:comments.complete??null,items:(Array.isArray(comments.comments)?comments.comments as Obj[]:[]).slice(0,1500).map((c,i)=>({id:str(c.commentId)||'c'+i,parentId:str(c.parentId),author:str(c.author),url:str(c.authorProfileUrl),photo:pic(c.authorPhotoUrl),headline:str(c.authorHeadline),time:str(c.time),text:str(c.text).slice(0,3000),isReply:c.isReply===true,isPostAuthor:c.isPostAuthor===true,parentAuthor:str(c.parentAuthor),reactions:typeof c.reactionCount==='number'?c.reactionCount:null}))}:null,
+  reactions:reactions?{expected:reactions.expectedTotal??null,complete:reactions.complete??null,missing:Array.isArray(reactions.missing)?reactions.missing:[],people:(Array.isArray(reactions.people)?reactions.people as Obj[]:[]).slice(0,6000).map(p=>({name:str(p.name),url:str(p.profileUrl),photo:pic(p.photoUrl),headline:str(p.headline),reaction:str(p.reaction)}))}:null,
  };
 }
 
@@ -208,11 +208,11 @@ export function cleanAnalysis(a:Record<string,unknown>,agent:string):ReportAnaly
  const list=(v:unknown,n:number,len:number)=>(Array.isArray(v)?v:[]).map(x=>t(x,len)).filter(Boolean).slice(0,n);
  const objs=(v:unknown,n:number)=>(Array.isArray(v)?v:[]).filter(x=>x&&typeof x==='object').slice(0,n) as Record<string,unknown>[];
  const num=(v:unknown)=>{const n=Number(v);return Number.isFinite(n)&&n>=0?Math.min(Math.floor(n),100000):0;};
- const ids=(v:unknown,kind:'person'|'comment')=>[...new Set((Array.isArray(v)?v:[]).map(x=>kind==='person'?personKey(String(x||'')):t(x,200)).filter(x=>x&&x!=='name:'))].slice(0,600);
+ const ids=(v:unknown,kind:'person'|'comment')=>[...new Set((Array.isArray(v)?v:[]).map(x=>kind==='person'?personKey(String(x||'')):t(x,200)).filter(x=>x&&x!=='name:'))].slice(0,6000);
  const counts=(v:unknown,n:number):Count[]=>objs(v,n).map(o=>({label:t(o.label??o.name??o.theme??o.group??o.domain,80),count:num(o.count)})).filter(x=>x.label&&x.count>0);
  const groups=(v:unknown,n:number,kind:'person'|'comment',key:string):Group[]=>objs(v,n).map(o=>{const g=ids(o[key],kind);return {label:t(o.label??o.name??o.domain??o.theme,80),count:g.length||num(o.count),ids:g,...(o.insight?{insight:t(o.insight,400)}:{})};}).filter(x=>x.label&&x.count>0);
  const sRaw=a.sentiment&&typeof a.sentiment==='object'?a.sentiment as Record<string,unknown>:null;
- const commentSentiments=objs(a.commentSentiments,300).map(o=>({id:t(o.commentId??o.id,200),sentiment:(['positive','neutral','negative'].includes(String(o.sentiment))?String(o.sentiment):'neutral') as 'positive'|'neutral'|'negative',offTopic:o.offTopic===true})).filter(x=>x.id);
+ const commentSentiments=objs(a.commentSentiments,1500).map(o=>({id:t(o.commentId??o.id,200),sentiment:(['positive','neutral','negative'].includes(String(o.sentiment))?String(o.sentiment):'neutral') as 'positive'|'neutral'|'negative',offTopic:o.offTopic===true})).filter(x=>x.id);
  let sentiment=sRaw?{positive:num(sRaw.positive),neutral:num(sRaw.neutral),negative:num(sRaw.negative)}:null;
  if(commentSentiments.length)sentiment={positive:commentSentiments.filter(x=>x.sentiment==='positive').length,neutral:commentSentiments.filter(x=>x.sentiment==='neutral').length,negative:commentSentiments.filter(x=>x.sentiment==='negative').length};
  const argsRaw=a.arguments&&typeof a.arguments==='object'&&!Array.isArray(a.arguments)?a.arguments as Record<string,unknown>:null;
@@ -373,7 +373,7 @@ export function reportHtml(r:Obj,base=process.env.APP_BASE_URL||'https://seo.cam
   for(const v of values){const a=fid(f,v);const on=`body:has(#${a}:target) a[data-f="${f}"][data-v="${v}"]`;rules.push(`#${a}:target~.cards ${item}:not(${attr(v)}){display:none}`,`${on}{background:var(--soft)}`,`${on} .bfill{fill:#004182}`,`${on} .seg{stroke-width:28}`);}
   return values.map(v=>`<span class="anchor" id="${fid(f,v)}"></span>`).join('');
  };
- const panel=(id:string,f:string,values:string[],placeholder:boolean)=>`<div class="panel${placeholder?' wait':''}" id="${id}">${filterBlock('panel','.pc',f,values,v=>`[data-${f}="${v}"]`)}<span class="anchor" id="${fid(f,'all')}"></span><a class="reset" href="#${fid(f,'all')}">${h(W.showAll)}</a>${placeholder?`<p class="sub hint">${h(W.selectFilter)}</p>`:''}<div class="cards">${people.map(card).join('')}</div><div class="pcount"></div></div>`;
+ const panel=(id:string,f:string,values:string[],placeholder:boolean)=>`<div class="panel${placeholder?' wait':''}" id="${id}">${filterBlock('panel','.pc',f,values,v=>`[data-${f}="${v}"]`)}<span class="anchor" id="${fid(f,'all')}"></span><a class="reset" href="#${fid(f,'all')}">${h(W.showAll)}</a>${placeholder?`<p class="sub hint">${h(W.selectFilter)}</p>`:''}<div class="cards">${people.filter(p=>{const k=personKey(str(p.url),str(p.name));return f==='domain'?domainOf.has(k):f==='company'?companyOf.has(k):true;}).map(card).join('')}</div><div class="pcount"></div></div>`;
  const parts:string[]=[];
 
  // 1. Post analysed

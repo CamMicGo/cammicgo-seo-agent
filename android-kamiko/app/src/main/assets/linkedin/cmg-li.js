@@ -711,6 +711,33 @@
     }).filter(function (x) { return x.s > 0 && !refusal(x.e, 'open_comments'); }).sort(function (a, b) { return b.s - a.s; });
     return ranked[0] || null;
   }
+  /**
+   * LinkedIn's default comment order ("Most relevant") hides some comments on big posts ("select Most recent
+   * to see them"). The sort dropdown (never a three-dots menu) is switched to "Most recent" first.
+   */
+  var RELEVANT_RX = /^(les plus pertinents|most relevant|m[aá]s relevantes|relevanteste|mais relevantes|pi[uù] rilevanti|самые релевантные|最相关|関連度の高い順|관련성 높은 순|الأكثر صلة)/i;
+  var RECENT_RX = /^(les plus r[ée]cents|most recent|m[aá]s recientes|neueste|mais recentes|pi[uù] recenti|самые новые|最新|新しい順|최신순|الأحدث)/i;
+  // The sort dropdown opens a popup like a menu does, but it is named by its visible order ("Most relevant"),
+  // never by dots or an overflow icon: only such a control may be opened, nothing else with a popup.
+  function isSortControl(e) {
+    var name = (ownText(e) || label(e) || '').trim();
+    return (RELEVANT_RX.test(name) || RECENT_RX.test(name)) && name.length < 60 && !OVERFLOW_RX.test([label(e), attr(e, 'data-testid'), attr(e, 'data-control-name'), cls(e)].join(' ')) && !/overflow|ellipsis|three-dots|more-horizontal/i.test(iconMeta(e));
+  }
+  async function sortCommentsByRecent(scope) {
+    var near = function () { return controls(scope.closest('[role=dialog]') || document.body).filter(function (e) { return vis(e) && (isSortControl(e) || !isOverflow(e)); }); };
+    var cur = near().find(function (e) { return isSortControl(e) && RELEVANT_RX.test((ownText(e) || label(e)).trim()); });
+    if (!cur) return near().some(function (e) { return isSortControl(e) && RECENT_RX.test((ownText(e) || label(e)).trim()); }) ? 'already_recent' : 'no_sort_control';
+    clickLog.push({ purpose: 'sort_comments', label: (ownText(cur) || label(cur)).slice(0, 80) });
+    try { cur.click(); invalidate(); } catch (x) { return 'refused'; }
+    var opt = null;
+    await waitFor(function () { opt = qsa(document, '[role=option],[role=menuitem],[role=menuitemradio],li,button,a,div[tabindex]').find(function (e) { return vis(e) && e !== cur && !isOverflow(e) && RECENT_RX.test((ownText(e) || txt(e)).trim()); }); return !!opt; }, 3000, 200);
+    if (!opt) return 'option_missing';
+    var before = commentBlocks(scope).length;
+    safeClick(clickable(opt), 'sort_comments');
+    await waitFor(function () { return commentBlocks(scope).length !== before; }, 4000, 300);
+    await sleep(500);
+    return 'recent';
+  }
   /** Set by the app (window.__cmgLiStop) when the user or the assistant asks to stop and keep what was read. */
   function stopRequested() { return !!window.__cmgLiStop; }
   async function expandComments(scope, maxRounds, progress, expected) {
@@ -786,9 +813,12 @@
       }, 9000, 350);
     }
     var limit = Math.max(1, Math.min(2000, o.limit || 100));
-    var exp = await expandComments(scope, o.maxRounds || 25, progress, post.commentCount);
+    var sorted = await sortCommentsByRecent(scope);
+    var rounds = o.maxRounds || Math.min(400, Math.max(25, Math.ceil((post.commentCount || 0) / 5) + 10));
+    var exp = await expandComments(scope, rounds, progress, post.commentCount);
     var comments = readCommentsNow(scope).slice(0, limit);
     var expected = post.commentCount;
+    if (o.diagnose || sorted !== 'recent') post.commentSort = sorted;
     var complete = expected != null ? comments.length >= expected : null;
     var res = {
       status: comments.length ? 'ok' : (expected === 0 ? 'no_comments' : (opened === 'no_comment_control' ? 'comment_control_missing' : 'extraction_failed')),
@@ -946,8 +976,12 @@
     var readAll = await collectPeople(root, null, expectedTotal, people, progress);
     perTab.push({ tab: 'all', expected: expectedTotal, read: readAll });
     var cats = tabs.filter(function (t) { return !t.all && t.type; });
+    var fromIcons = function (type) { return Object.keys(people).filter(function (k) { return people[k].reaction === type; }).length; };
     for (var i = 0; i < cats.length; i++) {
       if (stopRequested()) break;
+      // The "All" list already shows each person's reaction picture: a category whose count is reached from
+      // those pictures is not read again (halves the time on big posts).
+      if (cats[i].count != null && readAll >= (expectedTotal || 0) && fromIcons(cats[i].type) >= cats[i].count) { perTab.push({ tab: cats[i].type, expected: cats[i].count, read: fromIcons(cats[i].type), fromIcons: true }); continue; }
       var t = reactionTabs(root).find(function (x) { return x.type === cats[i].type && !x.all; }) || cats[i];
       var firstBefore = personRows(root)[0];
       if (!safeClick(t.el, 'tab')) { perTab.push({ tab: t.type, expected: t.count, read: 0, error: 'tab_refused' }); continue; }

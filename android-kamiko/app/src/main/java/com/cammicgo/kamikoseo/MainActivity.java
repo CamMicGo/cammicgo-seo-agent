@@ -1159,6 +1159,7 @@ public class MainActivity extends Activity {
     String id = job.optString("id");
     String op = job.optString("operation");
     liStopRequested = false; liStopAt = 0; liUploadedPeople = -1; liLastUpload = 0;
+    liSentPeople.clear(); liBatchSeq = 0; liLastPeople = null;
     liProgressJob = "post_comments".equals(op) ? id : null;
     if (linkedinStopButton != null) { linkedinStopButton.setVisibility("post_comments".equals(op) ? View.VISIBLE : View.GONE); linkedinStopButton.setEnabled(true); linkedinStopButton.setText(I18n.t(this, "li_stop_report")); }
     if (!linkedinMcpEnabled || linkedinWeb == null || id.isEmpty()) {
@@ -1383,6 +1384,10 @@ public class MainActivity extends Activity {
   private long liLastUpload = 0;
   private boolean liUploadBusy = false;
   private Button linkedinStopButton;
+  // Batches of people already saved on the server (by profile link), the next batch number and the last list read.
+  private final java.util.HashSet<String> liSentPeople = new java.util.HashSet<>();
+  private int liBatchSeq = 0;
+  private JSONArray liLastPeople = null;
 
   /** The read-only reader shipped as an asset (also run by the Node fixture tests). */
   private String liLib() {
@@ -1437,7 +1442,9 @@ public class MainActivity extends Activity {
           if (liStopRequested && liStopAt > 0 && System.currentTimeMillis() - liStopAt > 25000) {
             // The reader did not wind down in time: keep what it had read.
             JSONObject partial = v.optJSONObject("snapshot");
-            if (partial == null) partial = new JSONObject();
+            if (partial != null && partial.optJSONObject("reactions") != null && partial.optJSONObject("reactions").optJSONArray("people") != null) liLastPeople = partial.optJSONObject("reactions").optJSONArray("people");
+            partial = partial == null ? new JSONObject() : compactSnapshot(partial);
+            partial.remove("inProgress");
             partial.put("status", "partial"); partial.put("stoppedByUser", true);
             if (prog != null) partial.put("progress", prog);
             linkedinWeb.evaluateJavascript("delete window.__cmgLiRuns[" + q + "]", null);
@@ -1450,6 +1457,7 @@ public class MainActivity extends Activity {
             JSONObject partial = v.optJSONObject("snapshot");
             boolean hasSnapshot = partial != null;
             if (!hasSnapshot) partial = new JSONObject();
+            else if (id.equals(liProgressJob)) { JSONObject rxp = partial.optJSONObject("reactions"); if (rxp != null && rxp.optJSONArray("people") != null) liLastPeople = rxp.optJSONArray("people"); partial = compactSnapshot(partial); partial.remove("inProgress"); }
             partial.put("status", hasSnapshot ? "partial" : "timeout");
             partial.put("timedOut", true);
             if (prog != null) partial.put("progress", prog);
@@ -2554,9 +2562,30 @@ public class MainActivity extends Activity {
         }
         pool.shutdownNow();
       } catch (Exception e) { android.util.Log.w("CamMicGoLinkedIn", "Reader thumbnails", e); }
+      // Every person read is saved in batches first; the final answer may then shed people to fit the relay
+      // limit (the server merges the batches back), keeping the ones that have a thumbnail.
+      liFlushBatches(id);
+      liFitFinal(data, id.equals(liProgressJob));
       ui.post(() -> finishLinkedInJob(id, data, null));
     });
   }
+
+  private static void liFitFinal(JSONObject data, boolean batched) {
+    try {
+      if (data.toString().length() <= 240000) return;
+      JSONObject rx = data.optJSONObject("reactions");
+      JSONArray people = rx == null ? null : rx.optJSONArray("people");
+      if (people != null && batched) {
+        JSONArray keep = new JSONArray();
+        for (int i = 0; i < people.length(); i++) { JSONObject p = people.optJSONObject(i); if (p != null && p.has("imageDataUrl")) keep.put(p); }
+        rx.put("people", keep); rx.put("savedInBatches", true);
+      }
+      for (JSONObject c : liAllCards(data)) { if (data.toString().length() <= 240000) break; c.remove("imageDataUrl"); }
+      if (data.toString().length() > 240000 && people != null && batched) rx.put("people", new JSONArray());
+    } catch (Exception ignored) {}
+  }
+
+  private static java.util.List<JSONObject> liAllCards(JSONObject data) { java.util.List<JSONObject> out = new java.util.ArrayList<>(); collectLiCards(data, out, 0); return out; }
 
   /** People-like objects anywhere in a reader result (posts, comments, reaction people), a few levels deep. */
   private static void collectLiCards(Object node, java.util.List<JSONObject> out, int depth) {
@@ -2612,38 +2641,77 @@ public class MainActivity extends Activity {
   }
 
   /**
-   * Progressive save of a post extraction: every 50 more people (and at least every 15 s) the work read so
-   * far goes to the server, which keeps it in the job; its answer says whether the assistant asked to stop.
+   * Progressive save of a post extraction: every 50 new people go to the server as a batch (kept with the
+   * report, merged back at the end, so a capped final answer loses nobody). At least every 15 s a small
+   * progress message (comments, counters) is sent; its answer says whether the assistant asked to stop.
    */
   private void liUploadProgress(String id, JSONObject snapshot, JSONObject prog) {
     if (id == null || !id.equals(liProgressJob) || liUploadBusy) return;
     long now = System.currentTimeMillis();
-    int people = 0;
     JSONObject rx = snapshot == null ? null : snapshot.optJSONObject("reactions");
-    if (rx != null && rx.optJSONArray("people") != null) people = rx.optJSONArray("people").length();
-    boolean batch = snapshot != null && (liUploadedPeople < 0 || people >= liUploadedPeople + 50);
-    if (!batch && now - liLastUpload < 15000) return;
+    JSONArray people = rx == null ? null : rx.optJSONArray("people");
+    if (people != null) liLastPeople = people;
+    JSONArray batch = liUnsentPeople(people, 100);
+    boolean sendBatch = batch.length() >= 50;
+    if (!sendBatch && now - liLastUpload < 15000) return;
     liUploadBusy = true; liLastUpload = now;
-    final int sent = people;
     JSONObject body = new JSONObject();
+    final int seq = liBatchSeq;
     try {
       body.put("id", id); body.put("progress", true);
       if (prog != null) body.put("counts", prog);
-      if (batch) body.put("result", compactSnapshot(snapshot));
+      if (snapshot != null) body.put("result", compactSnapshot(snapshot));
+      if (sendBatch) { body.put("batch", batch); body.put("seq", seq); }
     } catch (Exception ignored) {}
     worker.execute(() -> {
-      boolean stop = false;
+      boolean stop = false, sent = false;
       try {
         JSONObject res = new JSONObject(RelayClient.request("POST", "/api/devices/linkedin", RelayClient.token(this), body.toString()));
-        stop = res.optBoolean("stop");
+        stop = res.optBoolean("stop"); sent = true;
       } catch (Exception e) { android.util.Log.w("CamMicGoLinkedIn", "Progress upload failed", e); }
-      boolean s2 = stop;
+      boolean s2 = stop, ok = sent;
       ui.post(() -> {
         liUploadBusy = false;
-        if (batch) liUploadedPeople = sent;
+        if (ok && sendBatch) { liBatchSeq = seq + 1; for (int i = 0; i < batch.length(); i++) liSentPeople.add(liPersonKey(batch.optJSONObject(i))); }
         if (s2 && !liStopRequested) { liStopRequested = true; if (linkedinStopButton != null) { linkedinStopButton.setEnabled(false); linkedinStopButton.setText(I18n.t(this, "li_stopping")); } }
       });
     });
+  }
+
+  private static String liPersonKey(JSONObject p) {
+    if (p == null) return "";
+    String u = p.optString("profileUrl", "").split("[?#]")[0].replaceAll("/+$", "").toLowerCase(java.util.Locale.ROOT);
+    return u.isEmpty() ? "name:" + p.optString("name", "").trim().toLowerCase(java.util.Locale.ROOT) : u;
+  }
+
+  /** People of the list not yet saved on the server (name, link, headline, reaction, photo link only). */
+  private JSONArray liUnsentPeople(JSONArray people, int max) {
+    JSONArray out = new JSONArray();
+    if (people == null) return out;
+    for (int i = 0; i < people.length() && out.length() < max; i++) {
+      JSONObject p = people.optJSONObject(i);
+      String k = liPersonKey(p);
+      if (p == null || k.equals("name:") || liSentPeople.contains(k)) continue;
+      JSONObject q = new JSONObject();
+      try { for (String f : new String[]{"name", "profileUrl", "headline", "reaction", "photoUrl"}) if (p.has(f) && !p.isNull(f)) q.put(f, p.opt(f)); } catch (Exception ignored) {}
+      out.put(q);
+    }
+    return out;
+  }
+
+  /** Before the final answer: the people not saved yet go up in batches (runs on the worker thread). */
+  private void liFlushBatches(String id) {
+    if (id == null || !id.equals(liProgressJob) || liLastPeople == null) return;
+    for (int guard = 0; guard < 200; guard++) {
+      JSONArray batch = liUnsentPeople(liLastPeople, 100);
+      if (batch.length() == 0) return;
+      try {
+        JSONObject body = new JSONObject().put("id", id).put("progress", true).put("batch", batch).put("seq", liBatchSeq);
+        RelayClient.request("POST", "/api/devices/linkedin", RelayClient.token(this), body.toString());
+        liBatchSeq++;
+        for (int i = 0; i < batch.length(); i++) liSentPeople.add(liPersonKey(batch.optJSONObject(i)));
+      } catch (Exception e) { android.util.Log.w("CamMicGoLinkedIn", "Batch flush failed", e); return; }
+    }
   }
 
   /** The snapshot without duplicate image links, kept under the relay size limit (people trimmed last). */
@@ -2653,6 +2721,7 @@ public class MainActivity extends Activity {
       out.put("status", "partial"); out.put("inProgress", true);
       JSONObject rx = out.optJSONObject("reactions");
       JSONArray people = rx == null ? null : rx.optJSONArray("people");
+      if (people != null && people.length() > 0) { rx.put("savedInBatches", people.length()); rx.put("people", new JSONArray()); people = null; }
       if (people != null) {
         JSONArray slim = new JSONArray();
         for (int i = 0; i < people.length(); i++) {

@@ -1,6 +1,6 @@
 import {NextRequest,NextResponse} from 'next/server';
 import {deviceFromAuthorization,sb,touchDevice} from '@/lib/device-relay';
-import {claimLinkedIn,finishLinkedIn,saveLinkedInProgress} from '@/lib/linkedin-relay';
+import {claimLinkedIn,finishLinkedIn,saveLinkedInBatch,saveLinkedInProgress} from '@/lib/linkedin-relay';
 export const runtime='nodejs';
 export async function GET(req:NextRequest){
  try{
@@ -21,7 +21,10 @@ export async function POST(req:NextRequest){
   if(body.length>250000)return NextResponse.json({error:'Result too large'},{status:413});
   const data=JSON.parse(body);
   if(typeof data.id!=='string'||(data.error!==undefined&&typeof data.error!=='string'))return NextResponse.json({error:'Invalid payload'},{status:400});
-  if(data.progress===true)return NextResponse.json(await saveLinkedInProgress(device.id,data.id,data.result));
+  if(data.progress===true){
+   if(Array.isArray(data.batch))await saveLinkedInBatch(device.id,data.id,Number(data.seq),data.batch);
+   return NextResponse.json(await saveLinkedInProgress(device.id,data.id,data.result));
+  }
   const ok=await finishLinkedIn(device.id,data.id,data.result,data.error);
   return NextResponse.json({ok},{status:ok?200:409});
  }catch(e){return NextResponse.json({error:e instanceof Error?e.message:'Unavailable'},{status:503});}
