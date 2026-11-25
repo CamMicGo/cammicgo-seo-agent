@@ -959,6 +959,14 @@
   }
 
   /** Opens the reaction COUNT of the target post (never the Like button) and reads every category. */
+  /**
+   * Reaction list memory in the LinkedIn page's own storage (this phone only, 6 hours): everyone read is kept
+   * as the list is scrolled, across passes and across a new run on the same post, then sent in one result.
+   */
+  function memKey(o) { var m = String((o && o.postUrl) || location.href).match(/(activity|ugcPost|share)[:-](\d{8,22})/i); return m ? 'cmgLiPeople:' + m[2] : null; }
+  function memLoad(k) { try { var v = JSON.parse(localStorage.getItem(k) || 'null'); if (v && Date.now() - v.t < 6 * 3600e3 && v.p) return v.p; } catch (e) { /* storage off */ } return {}; }
+  function memSave(k, people) { try { localStorage.setItem(k, JSON.stringify({ t: Date.now(), p: people })); } catch (e) { /* full or off */ } }
+  function memClear(k) { try { localStorage.removeItem(k); } catch (e) { /* off */ } }
   async function readReactions(o, progress) {
     o = o || {};
     var st = pageState();
@@ -983,9 +991,12 @@
     var allTab = tabs.find(function (t) { return t.all; });
     var expectedTotal = allTab && allTab.count != null ? allTab.count : (counter ? counter.total : (o.expectedTotal || null));
     var people = {}, perTab = [];
+    var mk = memKey(o), lastSave = 0, restored = 0;
+    if (mk) { var old = memLoad(mk); Object.keys(old).forEach(function (k) { people[k] = old[k]; }); restored = Object.keys(old).length; }
+    var progress2 = function (p, list) { if (mk && Date.now() - lastSave > 2000) { memSave(mk, people); lastSave = Date.now(); } if (progress) progress(p, list); };
     window.__cmgLiExpected = expectedTotal;
     if (allTab) { safeClick(allTab.el, 'tab'); await sleep(600); }
-    var readAll = await collectPeople(root, null, expectedTotal, people, progress);
+    var readAll = await collectPeople(root, null, expectedTotal, people, progress2);
     perTab.push({ tab: 'all', expected: expectedTotal, read: readAll });
     var cats = tabs.filter(function (t) { return !t.all && t.type; });
     var fromIcons = function (type) { return Object.keys(people).filter(function (k) { return people[k].reaction === type; }).length; };
@@ -999,16 +1010,35 @@
       if (!safeClick(t.el, 'tab')) { perTab.push({ tab: t.type, expected: t.count, read: 0, error: 'tab_refused' }); continue; }
       await waitFor(function () { var f = personRows(root)[0]; return attr(t.el, 'aria-selected') === 'true' || (f && f !== firstBefore); }, 4000, 250);
       await sleep(400);
-      var read = await collectPeople(root, t.type, t.count, people, progress);
+      var read = await collectPeople(root, t.type, t.count, people, progress2);
       perTab.push({ tab: t.type, expected: t.count, read: read });
     }
+    // Still far from LinkedIn's count: close and reopen the list (LinkedIn starts loading again) and keep
+    // adding to what is already known, up to two more passes.
+    for (var pass = 2; pass <= 3 && counter && s && expectedTotal != null && !stopRequested() && Object.keys(people).length < expectedTotal * 0.97; pass++) {
+      var cb = controls(root.closest('[role=dialog]') || root).find(function (b) { return /^(dismiss|close|fermer|ignorer|cerrar|schlie[ßs]en)\b/i.test(label(b) || ownText(b)); });
+      if (cb) safeClick(cb, 'close');
+      await sleep(1500);
+      var c2 = findReactionCounter(s.scope);
+      if (c2.error || !safeClick(c2.el, 'open_reactions')) break;
+      var root2 = await waitFor(function () { return reactionsRoot(s.scope.closest('[role=dialog],[aria-modal=true]')); }, 9000, 300);
+      if (!root2) break;
+      root = root2;
+      await waitFor(function () { return personRows(root).length; }, 6000, 300);
+      await sleep(800);
+      var again = await collectPeople(root, null, expectedTotal, people, progress2);
+      perTab.push({ tab: 'all', pass: pass, expected: expectedTotal, read: again });
+    }
+    if (mk) memSave(mk, people);
     var list = Object.keys(people).map(function (k) { return people[k]; });
     var byType = {}, icons = {};
     list.forEach(function (p) { var k = p.reaction || 'unknown'; byType[k] = (byType[k] || 0) + 1; if (p.reaction && p.reactionIconUrl && !icons[p.reaction] && p.reactionFromIcon === p.reaction) icons[p.reaction] = p.reactionIconUrl; });
     tabs.forEach(function (t) { if (t.type && !icons[t.type]) { var u = iconUrl(qsa(t.el, 'img,svg')[0]); if (u) icons[t.type] = u; } });
-    var missing = perTab.filter(function (x) { return x.expected != null && x.read < x.expected; }).map(function (x) { return { tab: x.tab, expected: x.expected, read: x.read, missing: x.expected - x.read }; });
+    var best = {}; perTab.forEach(function (x) { if (!best[x.tab] || x.read > best[x.tab].read) best[x.tab] = x; });
+    var missing = Object.keys(best).map(function (k) { return best[k]; }).filter(function (x) { return x.expected != null && x.read < x.expected; }).map(function (x) { return { tab: x.tab, expected: x.expected, read: x.read, missing: x.expected - x.read }; });
     var anonymous = qsa(root, 'li,[role=listitem]').filter(function (li) { return vis(li) && !qsa(li, PROFILE_LINK).length && /linkedin member|membre de linkedin|miembro de linkedin/i.test(txt(li)); }).length;
-    var complete = expectedTotal != null && list.length + anonymous >= expectedTotal && !missing.length;
+    var complete = expectedTotal != null && list.length + anonymous >= expectedTotal;
+    if (complete) { missing = []; if (mk) memClear(mk); }
     if (o.close !== false) {
       var closeBtn = controls(root.closest('[role=dialog]') || root).find(function (b) { return /^(dismiss|close|fermer|ignorer|cerrar|schlie[ßs]en)\b/i.test(label(b) || ownText(b)); });
       if (closeBtn) safeClick(closeBtn, 'close');
@@ -1024,6 +1054,8 @@
       categories: tabs.map(function (t) { return { label: t.label, type: t.all ? 'all' : t.type, count: t.count }; }),
       perCategory: perTab,
       missing: missing,
+      restoredFromMemory: restored || undefined,
+      passes: perTab.filter(function (x) { return x.tab === 'all'; }).length,
       complete: complete && !stopRequested(),
       partial: !complete || stopRequested(),
       stopped: stopRequested(),

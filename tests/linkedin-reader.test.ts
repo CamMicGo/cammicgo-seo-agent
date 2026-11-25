@@ -282,6 +282,19 @@ test('fixture: comments switched to "Most recent" through the sort dropdown (nev
   assert.equal(r.reactions.retrieved,14);
   noForbiddenClicks(w);
 });
+test('fixture: people read are kept in the page memory and a new run on the same post continues from them', async ()=>{
+  const {w,li}=page('post-reactions-fr.html','https://www.linkedin.com/feed/update/urn:li:activity:7333333333333333333/');
+  const first=await li.readReactions({},(p:Li)=>{if(p.reactionsRead>=3)w.__cmgLiStop=true;});
+  assert.equal(first.complete,false);
+  const saved=JSON.parse(w.localStorage.getItem('cmgLiPeople:7333333333333333333')||'null');
+  assert.ok(saved&&Object.keys(saved.p).length>=3,'kept in the page memory');
+  w.__cmgLiStop=false;
+  const second=await li.readReactions({});
+  assert.ok(second.restoredFromMemory>=3,'continued from memory');
+  assert.equal(second.retrieved,14);assert.equal(second.complete,true);
+  assert.equal(w.localStorage.getItem('cmgLiPeople:7333333333333333333'),null,'memory cleared once complete');
+  noForbiddenClicks(w);
+});
 test('fixture: comment list nested far away from the post card on a post page is still read', async ()=>{
   const deep=(html:string,n:number)=>'<div>'.repeat(n)+html+'</div>'.repeat(n);
   const post='<div class="card">'+deep('<a href="https://www.linkedin.com/in/alice-martin-123/">Alice Martin</a><div>Dev</div><div>1 j</div>',3)+deep('<p>Les graphismes temps réel, parlons-en deux minutes avec ray tracing.</p>',2)+deep('<button aria-label="14 réactions">14</button><button aria-label="2 commentaires sur le post de Alice Martin">2 commentaires</button>',2)+deep('<button>J’aime</button><button>Commenter</button><button>Republier</button><button>Envoyer</button>',2)+'</div>';
