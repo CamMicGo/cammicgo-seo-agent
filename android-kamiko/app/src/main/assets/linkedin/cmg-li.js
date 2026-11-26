@@ -742,28 +742,31 @@
   function stopRequested() { return !!window.__cmgLiStop; }
   async function expandComments(scope, maxRounds, progress, expected) {
     var done = typeof WeakSet !== 'undefined' ? new WeakSet() : { has: function () { return false; }, add: function () {} };
-    var clicks = 0, stable = 0, last = -1;
+    var clicks = 0, stable = 0, last = -1, collected = {}, retries = new WeakMap();
+    function capture() { invalidate(); readCommentsNow(scope).forEach(function(c){ collected[c.key] = c; }); return Object.keys(collected).length; }
     for (var round = 0; round < maxRounds; round++) {
       if (stopRequested()) break;  // "Stop and build the report" on the phone or linkedin_job_stop
       var targets = controls(scope).filter(function (e) {
-        if (done.has(e) || isOverflow(e)) return false;
+        if (isOverflow(e)) return false;
+        if (done.has(e) && (!LOAD_MORE_RX.test((ownText(e) || label(e)).trim()) || (retries.get(e) || 0) >= 4)) return false;
         var s = (ownText(e) || label(e)).trim();
         return LOAD_MORE_RX.test(s) || (SEE_MORE_RX.test(s) && inCommentBlock(e, scope));
       });
-      targets.forEach(function (e) { done.add(e); if (safeClick(clickable(e), 'expand_comments')) clicks++; });
-      var nBefore = commentBlocks(scope).length;
+      var nBefore = capture();
+      if (targets.length) { var e = targets[0]; done.add(e); retries.set(e,(retries.get(e)||0)+1); if (safeClick(clickable(e), 'expand_comments')) clicks++; }
       if (!targets.length && expected != null && nBefore >= expected) break;
       if (!targets.length) {
         scrollers(scope).forEach(function (s) { s.scrollTop = s.scrollHeight; });
         if (scope === document.body || !scope.closest('[role=dialog]')) window.scrollBy(0, Math.round((window.innerHeight || 800) * 0.8));
       }
-      await waitFor(function () { return commentBlocks(scope).length > nBefore || controls(scope).some(function (e) { return !done.has(e) && LOAD_MORE_RX.test((ownText(e) || label(e)).trim()) && !isOverflow(e); }); }, targets.length ? 3000 : 1500, 300);
-      var n = commentBlocks(scope).length;
-      if (progress) progress({ commentsVisible: n, expandClicks: clicks });
-      if (n === last && !targets.length) { if (++stable >= 2) break; } else stable = 0;
+      await waitFor(function () { invalidate(); return readCommentsNow(scope).some(function(c){return !collected[c.key];}); }, targets.length ? 5000 : 3000, 500);
+      var n = capture();
+      if (progress) progress({ commentsVisible: n, expandClicks: clicks, beat:round });
+      if (n === last && !targets.length) { if (++stable >= (expected != null && n < expected ? 6 : 2)) break; } else stable = 0;
       last = n;
     }
-    return { clicks: clicks };
+    capture();
+    return { clicks: clicks, comments: Object.keys(collected).map(function(k){return collected[k];}) };
   }
 
   /** Comments rendered next to the post card instead of inside it: widen while no other post is included. */
@@ -816,7 +819,7 @@
     var sorted = await sortCommentsByRecent(scope);
     var rounds = o.maxRounds || Math.min(400, Math.max(25, Math.ceil((post.commentCount || 0) / 5) + 10));
     var exp = await expandComments(scope, rounds, progress, post.commentCount);
-    var comments = readCommentsNow(scope).slice(0, limit);
+    var comments = exp.comments.slice(0, limit);
     var expected = post.commentCount;
     if (o.diagnose || sorted !== 'recent') post.commentSort = sorted;
     var complete = expected != null ? comments.length >= expected : null;
@@ -929,6 +932,7 @@
       if (stopRequested()) { end = 'stopped'; break; }
       invalidate();
       personRows(root).forEach(function (r) {
+        if (seenHere[r.href] && into[r.href]) return;
         var p = readPerson(r, typeHint);
         seenHere[p.profileUrl] = 1;
         var old = into[p.profileUrl];
@@ -943,7 +947,7 @@
       more = controls(root).find(function (b) { return /^(show more|load more|afficher plus|voir plus|charger plus|mostrar m[aá]s|mehr anzeigen)/i.test((ownText(b) || label(b)).trim()) && !isOverflow(b); });
       if (more) safeClick(more, 'more_reactions');
       var sc = scrollers(root);
-      if (sc.length) sc.forEach(function (s) { s.scrollTop = s.scrollHeight; }); else root.scrollTop = root.scrollHeight;
+      if (sc.length) sc.forEach(function (s) { s.scrollTop += Math.max(100, Math.floor(s.clientHeight * 0.8)); }); else root.scrollTop += Math.max(100, Math.floor(root.clientHeight * 0.8));
       if (root === document.body || root.tagName === 'MAIN') window.scrollBy(0, Math.round((window.innerHeight || 800)));
       await waitFor(function () { invalidate(); return personRows(root).some(function (r) { return !seenHere[r.href]; }); }, 2200, 300);
       if (n === last) {
@@ -952,12 +956,12 @@
         // LinkedIn answers more slowly as the list grows: wait longer after each empty round (up to 9 s).
         var far = expected != null && n < expected * 0.97;
         stalls++;
-        if (++stable >= (far ? 20 : 3)) { end = 'stalled'; break; }
+        if (++stable >= (far ? 8 : 3)) { end = 'stalled'; break; }
         if (far) {
           await sleep(Math.min(700 * stable, 6500));
           (sc.length ? sc : [root]).forEach(function (s) { s.scrollTop = Math.max(0, s.scrollTop - 600); });
           await sleep(500);
-          (sc.length ? sc : [root]).forEach(function (s) { s.scrollTop = s.scrollHeight; });
+          (sc.length ? sc : [root]).forEach(function (s) { s.scrollTop += Math.max(100, Math.floor(s.clientHeight * 0.8)); });
           if (root === document.body || root.tagName === 'MAIN') { window.scrollBy(0, -600); await sleep(300); window.scrollBy(0, 1600); }
           await sleep(1200);
         }
@@ -1012,7 +1016,7 @@
     var mk = memKey(o), lastSave = 0, restored = 0;
     if (mk && o.freshExtraction === true) memClear(mk);
     if (mk) { var old = memLoad(mk); Object.keys(old).forEach(function (k) { people[k] = old[k]; }); restored = Object.keys(old).length; }
-    var progress2 = function (p, list) { if (mk && Date.now() - lastSave > 2000) { memSave(mk, people); lastSave = Date.now(); } if (progress) progress(p, list); };
+    var progress2 = function (p, list) { if (mk && Date.now() - lastSave > 5000) { memSave(mk, people); lastSave = Date.now(); } if (progress) progress(p, list); };
     window.__cmgLiExpected = expectedTotal;
     if (allTab) { safeClick(allTab.el, 'tab'); await sleep(600); }
     if (progress) progress({stage:'reaction_collect', expectedTotal:expectedTotal, reactionsRead:Object.keys(people).length}, Object.keys(people).map(function(k){return people[k];}));
@@ -1181,7 +1185,7 @@
     if (c.status === 'navigate') return { status: 'navigate', stage: 'comments', url: c.url };
     if (progress) progress({ stage: 'reactions', commentsRead: (c.comments || []).length }, { status: 'partial', post: c.post || null, postUrl: c.postUrl || null, comments: c, reactions: { people: [], complete: false, partial: true } });
     if (stopRequested()) r = { status: 'stopped', stopped: true, people: [], retrieved: 0, complete: false, partial: true, missing: [], note: 'Stopped on request before the reactions were read.' };
-    else try { r = await readReactions(Object.assign({}, o, { postUrl: o.postUrl || c.postUrl || '', freshExtraction: true }), function (p, people) { if (progress) progress(p, { status: 'partial', post: c.post || null, postUrl: c.postUrl || null, comments: c, reactions: { people: people || [], retrieved: (people || []).length, complete: false, partial: true } }); }); } catch (e2) { r = { status: 'error', error: String(e2 && e2.message || e2), people: [] }; }
+    else try { r = await readReactions(Object.assign({}, o, { postUrl: o.postUrl || c.postUrl || '', freshExtraction: o.freshExtraction === true }), function (p, people) { if (progress) progress(p, { status: 'partial', post: c.post || null, postUrl: c.postUrl || null, comments: c, reactions: { people: people || [], retrieved: (people || []).length, complete: false, partial: true } }); }); } catch (e2) { r = { status: 'error', error: String(e2 && e2.message || e2), people: [] }; }
     var post = c.post || null;
     // The reaction list's own total is LinkedIn's real count; the number read on the post can be a
     // comment's counter once the comments are expanded.
