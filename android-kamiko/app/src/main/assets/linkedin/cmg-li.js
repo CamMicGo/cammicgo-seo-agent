@@ -923,10 +923,10 @@
     }
     return null;
   }
-  async function collectPeople(root, typeHint, expected, into, progress) {
-    var stable = 0, rounds = 0, last = -1, seenHere = {};
+  async function collectPeople(root, typeHint, expected, into, progress, diag) {
+    var stable = 0, rounds = 0, last = -1, seenHere = {}, t0 = Date.now(), stalls = 0, end = 'rounds', more = null;
     for (; rounds < 3000; rounds++) {
-      if (stopRequested()) break;
+      if (stopRequested()) { end = 'stopped'; break; }
       personRows(root).forEach(function (r) {
         var p = readPerson(r, typeHint);
         seenHere[p.profileUrl] = 1;
@@ -935,9 +935,11 @@
         else { if (typeHint) old.reaction = typeHint; if (!old.reactionIconUrl && p.reactionIconUrl) old.reactionIconUrl = p.reactionIconUrl; if (!old.photoUrl && p.photoUrl) old.photoUrl = p.photoUrl; if (!old.headline && p.headline) old.headline = p.headline; if (!old.reaction && p.reaction) old.reaction = p.reaction; }
       });
       var n = Object.keys(seenHere).length;
-      if (progress) progress({ reactionsRead: Object.keys(into).length, expectedTotal: window.__cmgLiExpected == null ? null : window.__cmgLiExpected, tab: typeHint || 'all' }, Object.keys(into).map(function (k) { return into[k]; }));
-      if (expected != null && n >= expected) break;
-      var more = controls(root).find(function (b) { return /^(show more|load more|afficher plus|voir plus|charger plus|mostrar m[aá]s|mehr anzeigen)/i.test((ownText(b) || label(b)).trim()) && !isOverflow(b); });
+      // "beat" changes every round, so the app sees the reader is alive even while it re-reads people it
+      // already knows (a new pass) or waits for LinkedIn, and does not give up on it.
+      if (progress) progress({ reactionsRead: Object.keys(into).length, expectedTotal: window.__cmgLiExpected == null ? null : window.__cmgLiExpected, tab: typeHint || 'all', inList: n, beat: rounds }, Object.keys(into).map(function (k) { return into[k]; }));
+      if (expected != null && n >= expected) { end = 'reached'; break; }
+      more = controls(root).find(function (b) { return /^(show more|load more|afficher plus|voir plus|charger plus|mostrar m[aá]s|mehr anzeigen)/i.test((ownText(b) || label(b)).trim()) && !isOverflow(b); });
       if (more) safeClick(more, 'more_reactions');
       var sc = scrollers(root);
       if (sc.length) sc.forEach(function (s) { s.scrollTop = s.scrollHeight; }); else root.scrollTop = root.scrollHeight;
@@ -946,9 +948,12 @@
       if (n === last) {
         // Big lists load slowly: while far from LinkedIn's count, keep trying longer and nudge the list
         // (small scroll up then down) so the next page is requested again.
+        // LinkedIn answers more slowly as the list grows: wait longer after each empty round (up to 9 s).
         var far = expected != null && n < expected * 0.97;
-        if (++stable >= (far ? 10 : 3)) break;
+        stalls++;
+        if (++stable >= (far ? 20 : 3)) { end = 'stalled'; break; }
         if (far) {
+          await sleep(Math.min(700 * stable, 6500));
           (sc.length ? sc : [root]).forEach(function (s) { s.scrollTop = Math.max(0, s.scrollTop - 600); });
           await sleep(500);
           (sc.length ? sc : [root]).forEach(function (s) { s.scrollTop = s.scrollHeight; });
@@ -958,6 +963,7 @@
       } else stable = 0;
       last = n;
     }
+    if (diag) { diag.end = end; diag.rounds = rounds; diag.stalls = stalls; diag.seconds = Math.round((Date.now() - t0) / 1000); diag.moreButtonLeft = !!(more && vis(more)); }
     return Object.keys(seenHere).length;
   }
 
@@ -999,8 +1005,9 @@
     var progress2 = function (p, list) { if (mk && Date.now() - lastSave > 2000) { memSave(mk, people); lastSave = Date.now(); } if (progress) progress(p, list); };
     window.__cmgLiExpected = expectedTotal;
     if (allTab) { safeClick(allTab.el, 'tab'); await sleep(600); }
-    var readAll = await collectPeople(root, null, expectedTotal, people, progress2);
-    perTab.push({ tab: 'all', expected: expectedTotal, read: readAll });
+    var d1 = {};
+    var readAll = await collectPeople(root, null, expectedTotal, people, progress2, d1);
+    perTab.push(Object.assign({ tab: 'all', expected: expectedTotal, read: readAll, total: Object.keys(people).length }, d1));
     var cats = tabs.filter(function (t) { return !t.all && t.type; });
     var fromIcons = function (type) { return Object.keys(people).filter(function (k) { return people[k].reaction === type; }).length; };
     for (var i = 0; i < cats.length; i++) {
@@ -1013,8 +1020,9 @@
       if (!safeClick(t.el, 'tab')) { perTab.push({ tab: t.type, expected: t.count, read: 0, error: 'tab_refused' }); continue; }
       await waitFor(function () { var f = personRows(root)[0]; return attr(t.el, 'aria-selected') === 'true' || (f && f !== firstBefore); }, 4000, 250);
       await sleep(400);
-      var read = await collectPeople(root, t.type, t.count, people, progress2);
-      perTab.push({ tab: t.type, expected: t.count, read: read });
+      var dt = {};
+      var read = await collectPeople(root, t.type, t.count, people, progress2, dt);
+      perTab.push(Object.assign({ tab: t.type, expected: t.count, read: read }, dt));
     }
     // Still far from LinkedIn's count: close and reopen the list (LinkedIn starts loading again) and keep
     // adding to what is already known, up to two more passes.
@@ -1029,8 +1037,9 @@
       root = root2;
       await waitFor(function () { return personRows(root).length; }, 6000, 300);
       await sleep(800);
-      var again = await collectPeople(root, null, expectedTotal, people, progress2);
-      perTab.push({ tab: 'all', pass: pass, expected: expectedTotal, read: again });
+      var d2 = {};
+      var again = await collectPeople(root, null, expectedTotal, people, progress2, d2);
+      perTab.push(Object.assign({ tab: 'all', pass: pass, expected: expectedTotal, read: again, total: Object.keys(people).length }, d2));
     }
     if (mk) memSave(mk, people);
     var list = Object.keys(people).map(function (k) { return people[k]; });
@@ -1163,6 +1172,9 @@
     if (stopRequested()) r = { status: 'stopped', stopped: true, people: [], retrieved: 0, complete: false, partial: true, missing: [], note: 'Stopped on request before the reactions were read.' };
     else try { r = await readReactions(Object.assign({}, o, { postUrl: o.postUrl || c.postUrl || '' }), function (p, people) { if (progress) progress(p, { status: 'partial', post: c.post || null, postUrl: c.postUrl || null, comments: c, reactions: { people: people || [], retrieved: (people || []).length, complete: false, partial: true } }); }); } catch (e2) { r = { status: 'error', error: String(e2 && e2.message || e2), people: [] }; }
     var post = c.post || null;
+    // The reaction list's own total is LinkedIn's real count; the number read on the post can be a
+    // comment's counter once the comments are expanded.
+    if (post && r.expectedTotal != null && post.reactionCount !== r.expectedTotal) { post.reactionCountOnPost = post.reactionCount; post.reactionCount = r.expectedTotal; }
     var out = {
       // ok = complete; partial = something read but not everything (or stopped on request); failed = nothing.
       status: c.status !== 'ok' && r.status !== 'ok' && !(r.people || []).length ? 'failed' : (c.status === 'ok' && r.status === 'ok' && c.complete !== false && r.complete === true && !stopRequested() ? 'ok' : 'partial'),
