@@ -759,7 +759,7 @@
         scrollers(scope).forEach(function (s) { s.scrollTop = s.scrollHeight; });
         if (scope === document.body || !scope.closest('[role=dialog]')) window.scrollBy(0, Math.round((window.innerHeight || 800) * 0.8));
       }
-      await waitFor(function () { return capture() > nBefore; }, targets.length ? 5000 : 3000, 500);
+      await waitFor(function () { invalidate(); return readCommentsNow(scope).some(function(c){return !collected[c.key];}); }, targets.length ? 5000 : 3000, 500);
       var n = capture();
       if (progress) progress({ commentsVisible: n, expandClicks: clicks, beat:round });
       if (n === last && !targets.length) { if (++stable >= (expected != null && n < expected ? 6 : 2)) break; } else stable = 0;
