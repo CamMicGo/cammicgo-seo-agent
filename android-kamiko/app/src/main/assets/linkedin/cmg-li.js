@@ -452,7 +452,7 @@
     }
   }
   function scrollers(root) {
-    return qsa(root || document, '*').filter(function (e) {
+    return (root && root.nodeType === 1 ? [root].concat(qsa(root, '*')) : qsa(root || document, '*')).filter(function (e) {
       if (env.noLayout) return false;
       if (e.scrollHeight <= e.clientHeight + 30) return false;
       var o = window.getComputedStyle(e).overflowY;
@@ -927,6 +927,7 @@
     var stable = 0, rounds = 0, last = -1, seenHere = {}, t0 = Date.now(), stalls = 0, end = 'rounds', more = null;
     for (; rounds < 3000; rounds++) {
       if (stopRequested()) { end = 'stopped'; break; }
+      invalidate();
       personRows(root).forEach(function (r) {
         var p = readPerson(r, typeHint);
         seenHere[p.profileUrl] = 1;
@@ -944,7 +945,7 @@
       var sc = scrollers(root);
       if (sc.length) sc.forEach(function (s) { s.scrollTop = s.scrollHeight; }); else root.scrollTop = root.scrollHeight;
       if (root === document.body || root.tagName === 'MAIN') window.scrollBy(0, Math.round((window.innerHeight || 800)));
-      await waitFor(function () { return personRows(root).some(function (r) { return !seenHere[r.href]; }); }, 2200, 300);
+      await waitFor(function () { invalidate(); return personRows(root).some(function (r) { return !seenHere[r.href]; }); }, 2200, 300);
       if (n === last) {
         // Big lists load slowly: while far from LinkedIn's count, keep trying longer and nudge the list
         // (small scroll up then down) so the next page is requested again.
@@ -980,22 +981,30 @@
     o = o || {};
     var st = pageState();
     if (st.signedOut) return { status: 'signed_out', people: [], diagnostics: { page: st } };
+    invalidate();
+    if (progress) progress({stage:'reaction_detect_dialog'}, []);
     var root = reactionsRoot(null);
     var counter = null, s = null;
     if (!root) {
       await waitFor(function () { return findPosts().posts.length || openDialogs().length; }, o.firstWait || 10000, 400);
+      invalidate();
+      if (progress) progress({stage:'reaction_resolve_post'}, []);
       s = resolveScope(o);
       if (!s.scope) return { status: s.how === 'ambiguous' ? 'ambiguous_post' : 'post_not_found', people: [], candidates: s.candidates || null, diagnostics: { page: pageState(), dom: domShape() } };
+      if (progress) progress({stage:'reaction_find_counter'}, []);
       counter = findReactionCounter(s.scope);
       if (counter.error) return { status: counter.error === 'missing' ? 'reaction_counter_missing' : 'reaction_counter_ambiguous', people: [], candidates: counter.candidates, error: 'Reaction count control ' + counter.error, diagnostics: { page: pageState(), dom: domShape({ scope: s.how }) } };
       var link = counter.el.closest('a[href]');
       if (link && /linkedin\.com/.test(link.href) && link.href.split('#')[0] !== location.href.split('#')[0]) return { status: 'navigate', url: link.href, expectedTotal: counter.total };
+      if (progress) progress({stage:'reaction_open_dialog', expectedTotal:counter.total}, []);
       if (!safeClick(counter.el, 'open_reactions')) return { status: 'reaction_counter_refused', people: [], diagnostics: { dom: domShape() } };
       var scopeDialog = s.scope.closest('[role=dialog],[aria-modal=true]');
-      root = await waitFor(function () { return reactionsRoot(scopeDialog); }, 9000, 300);
+      root = await waitFor(function () { invalidate(); return reactionsRoot(scopeDialog); }, 15000, 300);
       if (!root) return { status: 'reaction_dialog_not_found', people: [], expectedTotal: counter.total, diagnostics: { page: pageState(), dom: domShape() } };
     }
-    await waitFor(function () { return personRows(root).length; }, 6000, 300);
+    if (progress) progress({stage:'reaction_wait_rows'}, []);
+    await waitFor(function () { invalidate(); return personRows(root).length; }, 12000, 300);
+    invalidate();
     var tabs = reactionTabs(root);
     var allTab = tabs.find(function (t) { return t.all; });
     var expectedTotal = allTab && allTab.count != null ? allTab.count : (counter ? counter.total : (o.expectedTotal || null));
@@ -1005,6 +1014,7 @@
     var progress2 = function (p, list) { if (mk && Date.now() - lastSave > 2000) { memSave(mk, people); lastSave = Date.now(); } if (progress) progress(p, list); };
     window.__cmgLiExpected = expectedTotal;
     if (allTab) { safeClick(allTab.el, 'tab'); await sleep(600); }
+    if (progress) progress({stage:'reaction_collect', expectedTotal:expectedTotal, reactionsRead:Object.keys(people).length}, Object.keys(people).map(function(k){return people[k];}));
     var d1 = {};
     var readAll = await collectPeople(root, null, expectedTotal, people, progress2, d1);
     perTab.push(Object.assign({ tab: 'all', expected: expectedTotal, read: readAll, total: Object.keys(people).length }, d1));
