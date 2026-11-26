@@ -1164,8 +1164,9 @@ public class MainActivity extends Activity {
     liSentPeople.clear(); liBatchSeq = 0; liLastPeople = null;
     liProgressJob = "post_comments".equals(op) ? id : null;
     if (linkedinStopButton != null) { linkedinStopButton.setVisibility("post_comments".equals(op) ? View.VISIBLE : View.GONE); linkedinStopButton.setEnabled(true); linkedinStopButton.setText(I18n.t(this, "li_stop_report")); }
-    if (!linkedinMcpEnabled || linkedinWeb == null || id.isEmpty()) {
-      linkedinPollBusy = false;
+    if (!foreground || !linkedinMcpEnabled || linkedinWeb == null || id.isEmpty()) {
+      if (!id.isEmpty()) finishLinkedInJob(id, null, "LinkedIn control unavailable before execution");
+      else linkedinPollBusy = false;
       return;
     }
     if ("inbox".equals(op) || "back".equals(op)) {
@@ -1548,7 +1549,7 @@ public class MainActivity extends Activity {
   }
 
   private void liCommentsStep(String id, String fn, JSONObject opts, int hops, LiDone cb) {
-    runLi(id, fn, opts, "readPostFull".equals(fn) ? 200000 : 120000, (r, err) -> {
+    runLi(id, fn, opts, "readPostFull".equals(fn) ? 600000 : 120000, (r, err) -> {
       if (r != null && "navigate".equals(r.optString("status")) && hops < 1) { liLoad(id, r.optString("url"), () -> liCommentsStep(id, fn, opts, hops + 1, cb)); return; }
       cb.done(r, err);
     });
