@@ -245,6 +245,9 @@ test('fixture: full extraction on a post page returns comments, reactions and th
   assert.equal(r.comments.comments.length,1);
   assert.equal(r.reactions.retrieved,14);
   assert.deepEqual(plain(r.consistency),{commentsDisplayed:1,commentsRead:1,commentsComplete:true,reactionsDisplayed:14,reactionsRead:14,reactionsComplete:true});
+  assert.equal(r.post.reactionCount,14,'the post shows the reaction list total, never a comment counter');
+  const all=r.reactions.perCategory.find((x:Li)=>x.tab==='all');
+  assert.equal(all.end,'reached');assert.equal(typeof all.seconds,'number');assert.equal(all.total,14);
   noForbiddenClicks(w);
 });
 
