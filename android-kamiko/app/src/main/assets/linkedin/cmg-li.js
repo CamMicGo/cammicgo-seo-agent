@@ -1010,6 +1010,7 @@
     var expectedTotal = allTab && allTab.count != null ? allTab.count : (counter ? counter.total : (o.expectedTotal || null));
     var people = {}, perTab = [];
     var mk = memKey(o), lastSave = 0, restored = 0;
+    if (mk && o.freshExtraction === true) memClear(mk);
     if (mk) { var old = memLoad(mk); Object.keys(old).forEach(function (k) { people[k] = old[k]; }); restored = Object.keys(old).length; }
     var progress2 = function (p, list) { if (mk && Date.now() - lastSave > 2000) { memSave(mk, people); lastSave = Date.now(); } if (progress) progress(p, list); };
     window.__cmgLiExpected = expectedTotal;
@@ -1180,7 +1181,7 @@
     if (c.status === 'navigate') return { status: 'navigate', stage: 'comments', url: c.url };
     if (progress) progress({ stage: 'reactions', commentsRead: (c.comments || []).length }, { status: 'partial', post: c.post || null, postUrl: c.postUrl || null, comments: c, reactions: { people: [], complete: false, partial: true } });
     if (stopRequested()) r = { status: 'stopped', stopped: true, people: [], retrieved: 0, complete: false, partial: true, missing: [], note: 'Stopped on request before the reactions were read.' };
-    else try { r = await readReactions(Object.assign({}, o, { postUrl: o.postUrl || c.postUrl || '' }), function (p, people) { if (progress) progress(p, { status: 'partial', post: c.post || null, postUrl: c.postUrl || null, comments: c, reactions: { people: people || [], retrieved: (people || []).length, complete: false, partial: true } }); }); } catch (e2) { r = { status: 'error', error: String(e2 && e2.message || e2), people: [] }; }
+    else try { r = await readReactions(Object.assign({}, o, { postUrl: o.postUrl || c.postUrl || '', freshExtraction: true }), function (p, people) { if (progress) progress(p, { status: 'partial', post: c.post || null, postUrl: c.postUrl || null, comments: c, reactions: { people: people || [], retrieved: (people || []).length, complete: false, partial: true } }); }); } catch (e2) { r = { status: 'error', error: String(e2 && e2.message || e2), people: [] }; }
     var post = c.post || null;
     // The reaction list's own total is LinkedIn's real count; the number read on the post can be a
     // comment's counter once the comments are expanded.
