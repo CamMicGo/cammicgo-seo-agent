@@ -118,6 +118,7 @@ public class MainActivity extends Activity {
   private LinearLayout linkedinActions;
   private boolean linkedinMcpEnabled = false;
   private boolean linkedinPollBusy = false;
+  private final ExecutorService linkedinPollWorker = Executors.newSingleThreadExecutor();
   /** Read by the background relay: notify only when the app cannot pick LinkedIn commands up itself. */
   static volatile boolean foreground = false, linkedinControlOn = false;
   private String linkedinBusyJob;
@@ -126,8 +127,8 @@ public class MainActivity extends Activity {
   private String linkedinLastPollError = "";
   private final Runnable linkedinPoll = new Runnable() {
     @Override public void run() {
-      linkedinControlOn = linkedinMcpEnabled;
-      if (!linkedinMcpEnabled || linkedinWeb == null) return;
+      linkedinControlOn = foreground && linkedinMcpEnabled && linkedinWeb != null;
+      if (!linkedinControlOn) return;
       // Watchdog: a job that never reports back (page frozen, callback lost) must not block the queue forever.
       // A post extraction counts from its last progress (it may legitimately run for many minutes).
       if (linkedinPollBusy && linkedinBusyJob != null && System.currentTimeMillis() - linkedinBusySince > (linkedinBusyJob.equals(liProgressJob) ? 600_000 : 240_000)) {
@@ -137,7 +138,7 @@ public class MainActivity extends Activity {
       }
       if (!linkedinPollBusy && RelayClient.token(MainActivity.this) != null) {
         linkedinPollBusy = true;
-        worker.execute(() -> {
+        linkedinPollWorker.execute(() -> {
           try {
             JSONObject response = new JSONObject(RelayClient.request("GET", "/api/devices/linkedin", RelayClient.token(MainActivity.this), null));
             JSONObject job = response.optJSONObject("job");
@@ -1020,20 +1021,20 @@ public class MainActivity extends Activity {
     linkedinExpand = expandLinkedIn;
     toolsRow.addView(expandLinkedIn, toolLp(dp(40), 0, false));
     expandLinkedIn.setOnClickListener(v -> setLinkedInExpanded(!linkedinExpanded));
-    linkedinMcpEnabled = false;
     linkedinWeb = new WebView(this);
     linkedinWeb.getSettings().setJavaScriptEnabled(true);
     linkedinWeb.getSettings().setDomStorageEnabled(true);
     CookieManager.getInstance().setAcceptCookie(true);
     CookieManager.getInstance().setAcceptThirdPartyCookies(linkedinWeb, true);
-    Button mcpControl = toolButton(linkedinToolbarText("allow"), UiIcons.Kind.SHIELD);
+    Button mcpControl = toolButton(linkedinToolbarText(linkedinMcpEnabled ? "allowed" : "allow"), UiIcons.Kind.SHIELD);
     mcpControl.setContentDescription(linkedinToolbarText("permission"));
     linkedinMcpControlButton = mcpControl;
-    setToggleState(mcpControl, false);
+    setToggleState(mcpControl, linkedinMcpEnabled);
     toolsRow.addView(mcpControl, toolLp(0, 1, true));
     mcpControl.setOnClickListener(v -> {
       if (linkedinMcpEnabled) {
         linkedinMcpEnabled = false;
+        linkedinControlOn = false;
         ui.removeCallbacks(linkedinPoll);
         mcpControl.setText(linkedinToolbarText("allow"));
         setToggleState(mcpControl, false);
@@ -1046,6 +1047,7 @@ public class MainActivity extends Activity {
             linkedinMcpEnabled = true;
             mcpControl.setText(linkedinToolbarText("allowed"));
             setToggleState(mcpControl, true);
+            ui.removeCallbacks(linkedinPoll);
             ui.post(linkedinPoll);
           }).show();
       }
@@ -1452,7 +1454,7 @@ public class MainActivity extends Activity {
             return;
           }
           long nextDeadline = deadline;
-          if (prog != null && !prog.toString().equals(lastLiHeartbeat)) { lastLiHeartbeat = prog.toString(); nextDeadline = Math.min(hardDeadline, System.currentTimeMillis() + 200000); }
+          if (prog != null && !prog.toString().equals(lastLiHeartbeat)) { lastLiHeartbeat = prog.toString(); nextDeadline = Math.min(hardDeadline, System.currentTimeMillis() + 600000); }
           if (System.currentTimeMillis() > Math.min(nextDeadline, hardDeadline)) {
             JSONObject partial = v.optJSONObject("snapshot");
             boolean hasSnapshot = partial != null;
@@ -1525,7 +1527,7 @@ public class MainActivity extends Activity {
   }
 
   private void liReadReactions(String id, JSONObject opts, int hops) {
-    runLi(id, "readReactions", opts, 170000, (r, err) -> {
+    runLi(id, "readReactions", opts, 600000, (r, err) -> {
       if (r != null && "navigate".equals(r.optString("status")) && hops < 1) {
         try { if (r.has("expectedTotal")) opts.put("expectedTotal", r.opt("expectedTotal")); } catch (Exception ignored) {}
         liLoad(id, r.optString("url"), () -> liReadReactions(id, opts, hops + 1));
@@ -1648,7 +1650,7 @@ public class MainActivity extends Activity {
     LiDone done = (r, err) -> {
       if (r != null && r.has("reactionsNavigate")) {
         // The reaction list is a separate page on this layout: read it there, keep the comments.
-        liLoad(id, r.optString("reactionsNavigate"), () -> runLi(id, "readReactions", opts, 150000, (rr, re) -> {
+        liLoad(id, r.optString("reactionsNavigate"), () -> runLi(id, "readReactions", opts, 600000, (rr, re) -> {
           try {
             r.put("reactions", rr == null ? new JSONObject().put("status", "error").put("error", re) : rr);
             r.remove("reactionsNavigate");
@@ -3901,6 +3903,7 @@ public class MainActivity extends Activity {
   }
   @Override protected void onPause() {
     foreground = false;
+    linkedinControlOn = false;
     ui.removeCallbacks(refresher);
     ui.removeCallbacks(linkedinPoll);
     // Do not revoke the user's explicit consent on tab switches or temporary pauses.
@@ -3911,7 +3914,7 @@ public class MainActivity extends Activity {
   // ---------- manual extraction ----------
 
   @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); setIntent(intent); handleShare(intent); }
-  @Override protected void onDestroy() { worker.shutdownNow(); super.onDestroy(); }
+  @Override protected void onDestroy() { ui.removeCallbacks(linkedinPoll); linkedinPollWorker.shutdownNow(); worker.shutdownNow(); super.onDestroy(); }
 
   private void handleShare(Intent intent) {
     // Tapped the "LinkedIn command waiting" notification: show the LinkedIn tab and its control.
