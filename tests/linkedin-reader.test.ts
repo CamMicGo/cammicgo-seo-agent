@@ -258,6 +258,36 @@ test('fixture: reactions — count control (not Like), 6 categories, lazy loadin
   noForbiddenClicks(w);
 });
 
+const bgPost=`<main><div componentkey="urn:li:activity:7344444444444444444"><div><a href="https://www.linkedin.com/company/mistralai/">Mistral AI</a></div><div><span dir="ltr">Découvrez Mistral Studio.</span></div><div><button aria-label="5 réactions">5</button></div></div></main>`;
+const LIKE='<img alt="like" src="https://static.licdn.com/aero-v1/sc/h/8ekq8gho1ruaf8i7f86vd1ftt" width="16">';
+const linkRow=(i:number)=>`<li><a href="https://www.linkedin.com/in/p-${i}/"><img src="https://media.licdn.com/dms/image/v2/p${i}/profile-displayphoto/0.jpg" alt="Voir le profil de Personne ${i}"></a><div><a href="https://www.linkedin.com/in/p-${i}/"><span>Personne ${i}</span></a><div>Métier ${i}</div></div>${LIKE}</li>`;
+const photoRow=(i:number)=>`<div class="r"><div class="av"><img src="https://media.licdn.com/dms/image/v2/p${i}/profile-displayphoto/0.jpg" alt=""></div><div><div>Personne ${i}</div><div>Métier ${i}</div></div>${LIKE}</div>`;
+
+test('fixture: a reaction list in a native <dialog> sheet is read', async ()=>{
+  const html=`<!doctype html><html lang="fr"><body>${bgPost}<dialog open><header><h2>Réactions</h2><button aria-label="Fermer">×</button></header>
+   <div><button>Tous les 5</button><button aria-label="4 J’aime">${LIKE}4</button><button aria-haspopup="true" onclick="window.__overflowClicked=true">Plus</button></div><ul>${[1,2,3,4,5].map(linkRow).join('')}</ul></dialog></body></html>`;
+  const {w,li}=page('','https://www.linkedin.com/feed/update/urn:li:activity:7344444444444444444/',{html});
+  const r=await li.readReactions({close:false});
+  assert.equal(r.status,'ok',JSON.stringify(r.diagnostics));
+  assert.equal(r.retrieved,5);
+  assert.equal(r.expectedTotal,5);
+  assert.equal(r.people[0].profileUrl,'https://www.linkedin.com/in/p-1/');
+  noForbiddenClicks(w);
+});
+
+test('fixture: a mobile sheet titled "Réactions" without dialog role or profile links is read by name', async ()=>{
+  const html=`<!doctype html><html lang="fr"><body>${bgPost}<div class="sheet"><div class="hd"><div>Réactions</div><button aria-label="Fermer">×</button></div>
+   <div><button>Tous les 3</button><button aria-label="3 J’aime">${LIKE}3</button></div><div class="list">${[1,2,3].map(photoRow).join('')}</div></div></body></html>`;
+  const {w,li}=page('','https://www.linkedin.com/feed/update/urn:li:activity:7344444444444444444/',{html});
+  const r=await li.readReactions({close:false});
+  assert.equal(r.status,'ok',JSON.stringify(r.diagnostics));
+  assert.deepEqual(plain(r.people.map((p:Li)=>p.name)).sort(),['Personne 1','Personne 2','Personne 3']);
+  assert.equal(r.people[0].profileUrl,null);
+  assert.match(r.people[0].photoUrl,/profile-displayphoto/);
+  assert.equal(r.people[0].reaction,'like');
+  noForbiddenClicks(w);
+});
+
 test('fixture: reactions never claim completeness when LinkedIn lists fewer people than it counts', async ()=>{
   const {li}=page('post-reactions-fr.html','https://www.linkedin.com/feed/update/urn:li:activity:7333333333333333333/',{before:w=>{w.__hiddenReactors=1;}});
   const r=await li.readReactions({});
