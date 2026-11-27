@@ -2590,11 +2590,11 @@ public class MainActivity extends Activity {
       } catch (Exception e) { android.util.Log.w("CamMicGoLinkedIn", "Reader thumbnails", e); }
       // Every person read is saved in batches first; the final answer may then shed people to fit the relay
       // limit (the server merges the batches back), keeping the ones that have a thumbnail.
-      if (id.equals(liProgressJob)) {
+      if (id.equals(liProgressJob)) try {
         JSONObject frx = data.optJSONObject("reactions");
         JSONArray fp = frx == null ? null : frx.optJSONArray("people");
         if (fp != null) { JSONArray slim = new JSONArray(); for (int i = 0; i < fp.length(); i++) { JSONObject p = fp.optJSONObject(i); if (p == null) continue; JSONObject q = new JSONObject(); for (String f : new String[]{"name", "profileUrl", "headline", "reaction", "photoUrl"}) if (p.has(f) && !p.isNull(f)) q.put(f, p.opt(f)); slim.put(q); } liAddPeople(slim); }
-      }
+      } catch (Exception ignored) {}
       liFlushBatches(id);
       liFitFinal(data, id.equals(liProgressJob));
       ui.post(() -> finishLinkedInJob(id, data, null));
