@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- untyped result objects in tests */
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 process.env.LINKEDIN_PHOTO_SECRET='test-secret';
@@ -37,4 +38,14 @@ test('saved batches of 50 put back every person the capped final answer left out
  const stopped={reactions:{expectedTotal:2000,stopped:true,people:[]}};
  const s2=mergeReactionPeople(stopped,saved.slice(0,50)) as {reactions:Record<string,unknown>};
  assert.equal((s2.reactions.people as unknown[]).length,50);assert.notEqual(s2.reactions.complete,true,'a stopped read is never complete');
+});
+
+test('people saved by the app reach the total: the extraction becomes complete (not partial), unless stopped or comments missing', ()=>{
+  const saved=Array.from({length:3},(_,i)=>({name:'P'+i,profileUrl:'https://www.linkedin.com/in/p'+i+'/',reaction:'like'}));
+  const ok=mergeReactionPeople({status:'partial',comments:{complete:true},reactions:{people:[],expectedTotal:3}},saved) as Record<string,any>;
+  assert.equal(ok.status,'ok');assert.equal(ok.reactions.complete,true);
+  const cm=mergeReactionPeople({status:'partial',comments:{complete:false},reactions:{people:[],expectedTotal:3}},saved) as Record<string,any>;
+  assert.equal(cm.status,'partial');assert.equal(cm.reactions.complete,true);
+  const st=mergeReactionPeople({status:'partial',stoppedByUser:true,comments:{complete:true},reactions:{people:[],expectedTotal:3}},saved) as Record<string,any>;
+  assert.equal(st.status,'partial');
 });

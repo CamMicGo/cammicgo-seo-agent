@@ -1232,11 +1232,24 @@
       // The first piece is asked for by the page when the list opens: give it a moment, scroll once if needed.
       await waitFor(function () { return window.__cmgLiTap && window.__cmgLiTap.reactions; }, 4000, 300);
       if (!(window.__cmgLiTap && window.__cmgLiTap.reactions)) { (scrollers(root)[0] || root).scrollTop += 2000; await waitFor(function () { return window.__cmgLiTap && window.__cmgLiTap.reactions; }, 5000, 300); }
-      fast = await apiReadReactions(people, expectedTotal, progress2);
-      perTab.push(Object.assign({ tab: 'fast' }, fast, { total: Object.keys(people).length }));
+      var T0 = window.__cmgLiTap;
+      if (o.nativeFast === true && T0 && T0.reactions) {
+        // The app itself asks for the pieces (it keeps going when Android freezes this page in the
+        // background) and saves the people on the server; this page waits for its answer.
+        var h0 = {}; Object.keys(T0.reactions.headers || {}).forEach(function (k) { h0[k] = T0.reactions.headers[k]; });
+        if (!Object.keys(h0).some(function (k) { return /^csrf-token$/i.test(k); })) { var js0 = (document.cookie.match(/JSESSIONID="?([^";]+)/) || [])[1]; if (js0) h0['csrf-token'] = js0; }
+        window.__cmgLiNativeDone = null;
+        if (progress) progress({ stage: 'reaction_native', expectedTotal: expectedTotal, reactionsRead: Object.keys(people).length, fastReq: { url: T0.reactions.url, headers: h0 } }, Object.keys(people).map(function (k) { return people[k]; }));
+        var waitedFrom = Date.now();
+        while (!window.__cmgLiNativeDone && !stopRequested() && Date.now() - waitedFrom < 45 * 60000) await sleep(1000);
+        fast = Object.assign({ used: true, native: true }, window.__cmgLiNativeDone || { reason: stopRequested() ? 'stopped' : 'no_answer' });
+      } else fast = await apiReadReactions(people, expectedTotal, progress2);
+      perTab.push(Object.assign({ tab: 'fast' }, fast, { total: fast.native ? fast.total : Object.keys(people).length }));
     }
     var d1 = {};
-    if (fast && fast.used && expectedTotal != null && Object.keys(people).length >= expectedTotal * 0.97) {
+    var haveFast = fast && fast.used ? (fast.native ? (fast.total || 0) : Object.keys(people).length) : 0;
+    var fastDone = !!(fast && fast.used && expectedTotal != null && haveFast >= expectedTotal * 0.97);
+    if (fastDone) {
       // Fast read got (nearly) everything: the page list is not scrolled again.
       perTab.push({ tab: 'all', expected: expectedTotal, read: 0, skipped: 'fast_read', total: Object.keys(people).length });
     } else {
@@ -1246,7 +1259,7 @@
     if (readAll == null) readAll = Object.keys(people).length;
     var cats = tabs.filter(function (t) { return !t.all && t.type; });
     var fromIcons = function (type) { return Object.keys(people).filter(function (k) { return people[k].reaction === type; }).length; };
-    for (var i = 0; i < cats.length; i++) {
+    for (var i = 0; i < cats.length && !fastDone; i++) {
       if (stopRequested()) break;
       // The "All" list already shows each person's reaction picture: a category whose count is reached from
       // those pictures is not read again (halves the time on big posts).
@@ -1262,7 +1275,7 @@
     }
     // Still far from LinkedIn's count: close and reopen the list (LinkedIn starts loading again) and keep
     // adding to what is already known, up to two more passes.
-    for (var pass = 2; pass <= 3 && counter && s && expectedTotal != null && !stopRequested() && Object.keys(people).length < expectedTotal * 0.97; pass++) {
+    for (var pass = 2; pass <= 3 && !fastDone && counter && s && expectedTotal != null && !stopRequested() && Object.keys(people).length < expectedTotal * 0.97; pass++) {
       var cb = controls(root.closest('[role=dialog]') || root).find(function (b) { return /^(dismiss|close|fermer|ignorer|cerrar|schlie[ßs]en)\b/i.test(label(b) || ownText(b)); });
       if (cb) safeClick(cb, 'close');
       await sleep(1500);
