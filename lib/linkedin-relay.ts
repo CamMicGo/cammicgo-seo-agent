@@ -160,6 +160,12 @@ export async function expireLinkedIn(userId:string){
   body:JSON.stringify({status:'error',error:'expired: the phone never picked up this command (CamMicGo app not open with LinkedIn control enabled). Nothing was done.',payload:{},completed_at:new Date().toISOString()})}).catch(()=>{});
 }
 export type LinkedInJobRow={id:string;operation:string;status:string;result:unknown;error:string|null;created_at:string;claimed_at:string|null;completed_at:string|null;expires_at:string;payload?:Record<string,string>|null};
+/** The user's latest post extractions (newest first), for an assistant that lost a jobId. */
+export async function recentLinkedInJobs(userId:string,limit=10){
+ await expireLinkedIn(userId);
+ const n=Math.max(1,Math.min(20,Math.floor(limit)));
+ return sb<Array<{id:string;operation:string;status:string;created_at:string;claimed_at:string|null;completed_at:string|null;error:string|null;post:string|null;reportUrl:string|null;state:string|null;result:unknown}>>('/rest/v1/cmg_linkedin_jobs?user_id=eq.'+userId+'&operation=eq.post_comments&order=created_at.desc&limit='+n+'&select=id,operation,status,created_at,claimed_at,completed_at,error,post:payload->>postUrl,reportUrl:result->>reportUrl,state:result->>status,result:result->progress');
+}
 export async function getLinkedIn(userId:string,id:string):Promise<LinkedInJobRow|null>{
  if(!/^[0-9a-f-]{36}$/i.test(id))return null;
  await expireLinkedIn(userId);
