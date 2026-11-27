@@ -1922,6 +1922,7 @@ public class MainActivity extends Activity {
     liSearchPosts(id, job, 0, new JSONArray(), null, (sr, se) -> {
       JSONArray posts = sr == null ? null : sr.optJSONArray("posts");
       if (posts == null || posts.length() == 0) { finishLinkedInJob(id, sr, se == null ? "No matching post found" : se); return; }
+      posts = liDropTwins(posts);
       JSONObject best = posts.optJSONObject(0);
       try {
         if (posts.length() > 1 && best.optJSONObject("match") != null && posts.optJSONObject(1).optJSONObject("match") != null
@@ -1941,6 +1942,29 @@ public class MainActivity extends Activity {
         }
       } catch (Exception e) { finishLinkedInJob(id, null, e.getMessage()); }
     });
+  }
+
+  /**
+   * The same post listed twice (a playing video changes its text): same URL, or same author with the same
+   * reaction and comment counts. Only exact twins of an earlier entry are dropped.
+   */
+  static JSONArray liDropTwins(JSONArray posts) {
+    JSONArray out = new JSONArray();
+    for (int i = 0; i < posts.length(); i++) {
+      JSONObject p = posts.optJSONObject(i);
+      if (p == null) continue;
+      boolean twin = false;
+      for (int j = 0; j < out.length() && !twin; j++) {
+        JSONObject q = out.optJSONObject(j);
+        String u1 = p.optString("postUrl", ""), u2 = q.optString("postUrl", "");
+        if (!u1.isEmpty() && !u2.isEmpty()) { twin = u1.equals(u2); continue; }
+        twin = !p.optString("author", "").isEmpty() && p.optString("author", "").equals(q.optString("author", ""))
+          && !p.isNull("reactionCount") && p.has("reactionCount") && p.optLong("reactionCount", -1) == q.optLong("reactionCount", -2)
+          && p.optLong("commentCount", -1) == q.optLong("commentCount", -1);
+      }
+      if (!twin) out.put(p);
+    }
+    return out;
   }
 
   /** Job offers from LinkedIn job search, 25 per page; looks again while the list renders. */

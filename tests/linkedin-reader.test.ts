@@ -88,6 +88,56 @@ test('fixture: post search on the new layout finds posts without data-urn, filte
   noForbiddenClicks(w);
 });
 
+const videoPost=(timer:string,body=true,author='Mistral AI',text='Découvrez Mistral Studio, notre nouvelle plateforme pour créer des agents en production.')=>`
+  <div role="listitem" class="x9f2a">
+   <div class="a1b2"><a href="https://www.linkedin.com/company/mistralai/"><img src="https://media.licdn.com/dms/image/v2/m/company-logo_100_100/0.jpg" alt="${author}"></a>
+    <div><a href="https://www.linkedin.com/company/mistralai/"><div><span>${author}</span></div></a><div>1 024 567 abonnés</div><div>3 sem •</div></div></div>
+   ${body?`<div><span dir="ltr">${text}</span></div>`:''}
+   <div class="video-js vjs-paused" data-vjs-player><video src="blob:x"></video>
+    <div class="vjs-control-bar"><button class="vjs-play-control"><span dir="ltr">Play</span></button><button><span dir="ltr">Pause</span></button>
+     <div class="vjs-current-time"><span dir="ltr">${timer}</span></div><div class="vjs-remaining-time">Remaining time -1:02</div><div>Loaded: 45%</div>
+     <button><span dir="ltr">Unmute</span></button><button><span dir="ltr">Fullscreen</span></button></div></div>
+   <div><button aria-label="1 267 réactions">1 267</button><button aria-label="88 commentaires">88 commentaires</button></div>
+   <div><button aria-label="Réagir avec J’aime" aria-pressed="false" onclick="window.__likeClicked=true">J’aime</button><button aria-label="Commenter">Commenter</button><button>Republier</button><button>Envoyer</button></div>
+  </div>`;
+const searchPage=(items:string)=>`<!doctype html><html lang="fr"><body><header><nav><a href="https://www.linkedin.com/in/me-user/">Vous</a></nav></header><main><div role="list">${items}</div></main></body></html>`;
+
+test('fixture: a video post keeps its text, not the player controls', async ()=>{
+  const {w,li}=page('','https://www.linkedin.com/search/results/content/?keywords=mistral%20studio',{html:searchPage(videoPost('0:05 / 1:30'))});
+  const r=await li.searchPosts({keywords:'Mistral Studio',author:'Mistral AI',scrolls:0});
+  assert.equal(r.posts.length,1);
+  const p=r.posts[0];
+  assert.match(p.text,/Découvrez Mistral Studio/);
+  assert.ok(!/Play|Pause|Fullscreen|Unmute|Loaded|0:05/.test(p.text),p.text);
+  assert.equal(p.reactionCount,1267);
+  assert.equal(p.video,true);
+  noForbiddenClicks(w);
+});
+
+test('fixture: the same video post seen with different player times is one post, and is read without ambiguity', async ()=>{
+  const html=searchPage(videoPost('0:05 / 1:30')+videoPost('0:41 / 1:30')+videoPost('1:12 / 1:30',false)+videoPost('1:20 / 1:30',false));
+  const {li}=page('','https://www.linkedin.com/search/results/content/?keywords=mistral%20studio',{html});
+  const r=await li.searchPosts({keywords:'Mistral Studio',author:'Mistral AI',scrolls:0});
+  assert.equal(r.posts.length,1,JSON.stringify(r.posts.map((x:Li)=>x.text)));
+  assert.ok(r.posts[0].duplicatesMerged>=1);
+  const m=li.markTarget({keywords:'Mistral Studio',author:'Mistral AI'});
+  assert.equal(m.marked,true,JSON.stringify(m.candidates));
+});
+
+test('fixture: two different posts of the same author stay two posts', async ()=>{
+  const html=searchPage(videoPost('0:05 / 1:30')+videoPost('0:10 / 2:00',true,'Mistral AI','Mistral Medium 3 est disponible dans Le Chat et sur La Plateforme dès aujourd’hui.'));
+  const {li}=page('','https://www.linkedin.com/search/results/content/?keywords=mistral',{html});
+  const r=await li.searchPosts({keywords:'Mistral',author:'Mistral AI',scrolls:0});
+  assert.equal(r.posts.length,2);
+});
+
+test('unit: player lines are dropped only from video posts', ()=>{
+  const {li}=page('search-no-results.html','https://www.linkedin.com/feed/');
+  assert.equal(li._test.cleanPostText('Bonjour\nPlay\n0:12 / 1:30\nFullscreen\nLoaded: 45%',true),'Bonjour');
+  assert.equal(li._test.cleanPostText('Play\nLe jeu',false),'Play\nLe jeu');
+  assert.equal(li._test.postKey({author:'A',text:'Texte 0:05'}),li._test.postKey({author:'A',text:'Texte 0:41'}));
+});
+
 test('fixture: post URN read from any attribute (componentkey)', async ()=>{
   const {li}=page('search-sdui-fr.html','https://www.linkedin.com/search/results/content/?keywords=graphismes');
   const r=await li.searchPosts({keywords:'conférence',author:'Bruno',scrolls:0});
