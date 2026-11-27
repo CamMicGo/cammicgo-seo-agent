@@ -391,3 +391,39 @@ test('unit: a pause in the reader also ends when the app checks the page (frozen
   await pending;
   assert.equal(ended,true,'the reader finished with frozen timers, driven by the checks alone');
 });
+
+test('unit: fast read (opt-in) reads people from both shapes of LinkedIn reaction answers', ()=>{
+  const {li}=page('search-no-results.html','https://www.linkedin.com/feed/');
+  const img={attributes:[{detailData:{nonEntityProfilePicture:{vectorImage:{rootUrl:'https://media.licdn.com/dms/image/v2/abc/',artifacts:[{width:100,fileIdentifyingUrlPathSegment:'100.jpg'},{width:200,fileIdentifyingUrlPathSegment:'200.jpg'}]}}}}]};
+  const newer={data:{},included:[
+    {$type:'com.linkedin.voyager.dash.social.Reaction',reactionType:'PRAISE',reactorLockup:{title:{text:'Ana Silva'},subtitle:{text:'CTO at Example'},navigationUrl:'https://www.linkedin.com/in/ACoAAA1/?miniProfileUrn=x',image:img}},
+    {$type:'com.linkedin.voyager.dash.social.Reaction',reactionType:'LIKE',reactorLockup:{title:{text:'Bo Chen'},subtitle:{text:'Student'},navigationUrl:'https://www.linkedin.com/in/ACoAAA2'}},
+  ]};
+  const a=li._test.apiPeople(newer);
+  assert.equal(a.length,2);
+  assert.equal(a[0].name,'Ana Silva');assert.equal(a[0].reaction,'celebrate');assert.equal(a[0].headline,'CTO at Example');
+  assert.equal(a[0].photoUrl,'https://media.licdn.com/dms/image/v2/abc/200.jpg');
+  assert.match(a[0].profileUrl,/\/in\/ACoAAA1\/$/);
+  const older={included:[
+    {entityUrn:'urn:li:fs_miniProfile:1',firstName:'Cy',lastName:'Dee',occupation:'Designer',publicIdentifier:'cy-dee'},
+    {reactionType:'EMPATHY','*actor':'urn:li:fs_miniProfile:1'},
+  ]};
+  const b=li._test.apiPeople(older);
+  assert.equal(b.length,1);assert.equal(b[0].name,'Cy Dee');assert.equal(b[0].reaction,'love');assert.equal(b[0].profileUrl,'https://www.linkedin.com/in/cy-dee/');
+});
+
+test('unit: fast read pages like the site (same piece size, pauses), stops at the first error, keeps a daily cap', async ()=>{
+  const {w,li}=page('search-no-results.html','https://www.linkedin.com/feed/');
+  const calls:string[]=[];
+  const person=(i:number)=>({reactionType:'LIKE',reactorLockup:{title:{text:'P'+i},navigationUrl:'https://www.linkedin.com/in/p'+i+'/'}});
+  w.__cmgLiTap={fetch:async(url:string)=>{calls.push(url);const s=+url.match(/start:(\d+)/)![1];if(s>=40)return {ok:false,status:429,headers:{get:()=>'application/json'}};return {ok:true,headers:{get:()=>'application/json'},json:async()=>({included:Array.from({length:10},(_,i)=>person(s+i))})};},
+    reactions:{url:'https://www.linkedin.com/voyager/api/graphql?variables=(count:10,start:10,threadUrn:urn%3Ali%3Aactivity%3A1)&queryId=voyagerSocialDashReactions.abc',headers:{'csrf-token':'ajax:1'}}};
+  const people:Li={};
+  const r=await li._test.apiReadReactions(people,100,null);
+  assert.equal(r.used,true);assert.equal(r.reason,'http_429');assert.equal(r.pieceSize,10);
+  assert.equal(Object.keys(people).length,40);
+  assert.deepEqual(calls.map(u=>+u.match(/start:(\d+)/)![1]),[0,10,20,30,40]);
+  w.localStorage.setItem('cmgLiApiDay',JSON.stringify({d:new Date().toISOString().slice(0,10),posts:99,people:0}));
+  const capped=await li._test.apiReadReactions({},100,null);
+  assert.equal(capped.used,false);assert.equal(capped.reason,'daily_cap');
+});
