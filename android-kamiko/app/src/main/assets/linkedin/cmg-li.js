@@ -1110,14 +1110,25 @@
       if (stopRequested()) { reason = 'stopped'; break; }
       if (expected != null && start >= expected + count) break;
       var url = req.url.replace(/([?&(,]start[=:])\d+/, '$1' + start);
-      var json = null;
-      try {
-        var res = await T.fetch(url, { method: 'GET', headers: headers, credentials: 'include' });
-        if (!res.ok) { reason = 'http_' + res.status; break; }
-        var ct = (res.headers && res.headers.get && res.headers.get('content-type')) || '';
-        if (ct && !/json/i.test(ct)) { reason = 'not_json'; break; }
-        json = await res.json();
-      } catch (e) { reason = 'network'; break; }
+      var json = null, fail = null;
+      // A request that never answers must not hold the reader: 20 s at most, one more try, then page reading.
+      for (var attempt = 0; attempt < 2 && json == null; attempt++) {
+        fail = null;
+        try {
+          var ac = typeof AbortController !== 'undefined' ? new AbortController() : null;
+          var timer = setTimeout(function () { if (ac) ac.abort(); }, 20000);
+          var res = await Promise.race([
+            T.fetch(url, { method: 'GET', headers: headers, credentials: 'include', signal: ac ? ac.signal : undefined }),
+            sleep(21000).then(function () { throw new Error('timeout'); }),
+          ]);
+          clearTimeout(timer);
+          if (!res.ok) { fail = 'http_' + res.status; break; }
+          var ct = (res.headers && res.headers.get && res.headers.get('content-type')) || '';
+          if (ct && !/json/i.test(ct)) { fail = 'not_json'; break; }
+          json = await Promise.race([res.json(), sleep(15000).then(function () { throw new Error('timeout'); })]);
+        } catch (e) { fail = /timeout|abort/i.test(String(e && (e.name + e.message))) ? 'timeout' : 'network'; if (attempt === 0) await sleep(3000); }
+      }
+      if (json == null) { reason = fail || 'network'; break; }
       var got = apiPeople(json), fresh = 0;
       got.forEach(function (p) { var k = p.profileUrl; if (!people[k]) { people[k] = p; fresh++; } else { var old = people[k]; ['photoUrl', 'headline', 'reaction', 'name'].forEach(function (f) { if (!old[f] && p[f]) old[f] = p[f]; }); } });
       added += fresh; pages++;

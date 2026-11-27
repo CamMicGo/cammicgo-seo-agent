@@ -427,3 +427,12 @@ test('unit: fast read pages like the site (same piece size, pauses), stops at th
   const capped=await li._test.apiReadReactions({},100,null);
   assert.equal(capped.used,false);assert.equal(capped.reason,'daily_cap');
 });
+
+test('unit: fast read gives up on a request that never answers (one retry), so page reading can take over', async ()=>{
+  const {w,li}=page('search-no-results.html','https://www.linkedin.com/feed/');
+  let n=0;
+  w.__cmgLiTap={fetch:(url:string)=>{n++;const s=+url.match(/start:(\d+)/)![1];if(s>=10)return new Promise(()=>{});return Promise.resolve({ok:true,headers:{get:()=>'application/json'},json:async()=>({included:[{reactionType:'LIKE',reactorLockup:{title:{text:'A'},navigationUrl:'https://www.linkedin.com/in/a/'}}]})});},
+    reactions:{url:'https://www.linkedin.com/voyager/api/graphql?variables=(count:10,start:0)&queryId=x',headers:{}}};
+  const r=await li._test.apiReadReactions({},100,null);
+  assert.equal(r.reason,'timeout');assert.equal(r.added,1);assert.equal(n,3,'first page, then the hanging one tried twice');
+});
