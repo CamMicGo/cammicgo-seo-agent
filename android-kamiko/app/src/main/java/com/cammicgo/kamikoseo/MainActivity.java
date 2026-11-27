@@ -1161,7 +1161,7 @@ public class MainActivity extends Activity {
     String id = job.optString("id");
     String op = job.optString("operation");
     liStopRequested = false; liStopAt = 0; liUploadedPeople = -1; liLastUpload = 0;
-    liSentPeople.clear(); liBatchSeq = 0; liLastPeople = null; liPeopleIndex.clear();
+    liSentPeople.clear(); liBatchSeq = 0; liLastPeople = null; liPeopleIndex.clear(); liUploadsOk = 0; liUploadsFailed = 0; liQueuedInPage = 0; liUploadError = ""; liUploadBusy = false;
     liProgressJob = "post_comments".equals(op) ? id : null;
     if (linkedinStopButton != null) { linkedinStopButton.setVisibility("post_comments".equals(op) ? View.VISIBLE : View.GONE); linkedinStopButton.setEnabled(true); linkedinStopButton.setText(I18n.t(this, "li_stop_report")); }
     if (!foreground || !linkedinMcpEnabled || linkedinWeb == null || id.isEmpty()) {
@@ -1392,6 +1392,11 @@ public class MainActivity extends Activity {
   private int liBatchSeq = 0;
   private JSONArray liLastPeople = null;
   private final java.util.HashMap<String, Integer> liPeopleIndex = new java.util.HashMap<>();
+  // Uploads of a running extraction have their own thread: nothing else in the app can hold them up.
+  private final ExecutorService liUploadWorker = Executors.newSingleThreadExecutor();
+  private int liUploadsOk = 0, liUploadsFailed = 0, liQueuedInPage = 0;
+  private String liUploadError = "";
+  private long liUploadBusySince = 0;
 
   /**
    * People handed over by the reader since the last check, added to everything read for this job.
@@ -1451,7 +1456,7 @@ public class MainActivity extends Activity {
         try {
           JSONObject v = new JSONObject(new JSONArray("[" + raw + "]").getString(0));
           if (v.optBoolean("lost")) { cb.done(null, "The LinkedIn page changed while it was being read"); return; }
-          if (id.equals(liProgressJob)) liAddPeople(v.optJSONArray("fresh"));
+          if (id.equals(liProgressJob)) { liAddPeople(v.optJSONArray("fresh")); liQueuedInPage = v.optInt("queued", 0); }
           if (v.optBoolean("done")) {
             Object res = v.opt("result");
             if (res instanceof JSONObject) cb.done((JSONObject) res, null);
@@ -2681,29 +2686,41 @@ public class MainActivity extends Activity {
    * progress message (comments, counters) is sent; its answer says whether the assistant asked to stop.
    */
   private void liUploadProgress(String id, JSONObject snapshot, JSONObject prog) {
-    if (id == null || !id.equals(liProgressJob) || liUploadBusy) return;
     long now = System.currentTimeMillis();
+    // A request that never came back (network lost) must not freeze every later upload.
+    if (liUploadBusy && now - liUploadBusySince > 90000) liUploadBusy = false;
+    if (id == null || !id.equals(liProgressJob) || liUploadBusy) return;
     JSONArray batch = liUnsentPeople(liLastPeople, 100);
     boolean sendBatch = batch.length() >= 50;
     if (!sendBatch && now - liLastUpload < 15000) return;
-    liUploadBusy = true; liLastUpload = now;
+    liUploadBusy = true; liLastUpload = now; liUploadBusySince = now;
     JSONObject body = new JSONObject();
     final int seq = liBatchSeq;
     try {
       body.put("id", id); body.put("progress", true);
-      if (prog != null) body.put("counts", prog);
-      if (snapshot != null) { JSONObject cs = compactSnapshot(snapshot); JSONObject crx = cs.optJSONObject("reactions"); if (crx != null && liLastPeople != null) { crx.put("savedInBatches", liLastPeople.length()); crx.put("retrieved", liLastPeople.length()); } body.put("result", cs); }
+      JSONObject counts = prog == null ? new JSONObject() : new JSONObject(prog.toString());
+      // What the phone itself knows, shown by linkedin_job_status while the read goes on.
+      JSONObject phone = new JSONObject();
+      int received = liLastPeople == null ? 0 : liLastPeople.length(), saved;
+      synchronized (this) { saved = liSentPeople.size(); }
+      phone.put("reactionsReceived", received).put("reactionsSaved", saved).put("waitingInPage", liQueuedInPage).put("uploadsOk", liUploadsOk).put("uploadsFailed", liUploadsFailed).put("batches", liBatchSeq).put("lastUploadError", liUploadError).put("at", now);
+      counts.put("phone", phone);
+      body.put("counts", counts);
+      if (snapshot != null) { JSONObject cs = compactSnapshot(snapshot); JSONObject crx = cs.optJSONObject("reactions"); if (crx != null) { crx.put("savedInBatches", saved); crx.put("retrieved", received); } body.put("result", cs); }
       if (sendBatch) { body.put("batch", batch); body.put("seq", seq); }
+      // Over the relay limit, the batch matters more than the snapshot (the comments are re-sent at the end).
+      if (body.toString().length() > 240000) body.remove("result");
     } catch (Exception ignored) {}
-    worker.execute(() -> {
-      boolean stop = false, sent = false;
+    liUploadWorker.execute(() -> {
+      boolean stop = false, sent = false; String err = "";
       try {
         JSONObject res = new JSONObject(RelayClient.request("POST", "/api/devices/linkedin", RelayClient.token(this), body.toString()));
         stop = res.optBoolean("stop"); sent = true;
-      } catch (Exception e) { android.util.Log.w("CamMicGoLinkedIn", "Progress upload failed", e); }
-      boolean s2 = stop, ok = sent;
+      } catch (Exception e) { err = String.valueOf(e.getMessage()); android.util.Log.w("CamMicGoLinkedIn", "Progress upload failed", e); }
+      boolean s2 = stop, ok = sent; String e2 = err;
       ui.post(() -> {
         liUploadBusy = false;
+        if (ok) { liUploadsOk++; } else { liUploadsFailed++; liUploadError = e2.length() > 160 ? e2.substring(0, 160) : e2; }
         if (ok && sendBatch) { liBatchSeq = seq + 1; synchronized (MainActivity.this) { for (int i = 0; i < batch.length(); i++) liSentPeople.add(liPersonKey(batch.optJSONObject(i))); } }
         if (s2 && !liStopRequested) { liStopRequested = true; if (linkedinStopButton != null) { linkedinStopButton.setEnabled(false); linkedinStopButton.setText(I18n.t(this, "li_stopping")); } }
       });
