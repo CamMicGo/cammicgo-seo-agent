@@ -1698,6 +1698,9 @@ public class MainActivity extends Activity {
   private void liFullExtraction(String id, JSONObject job) {
     String postUrl = job.optString("postUrl", "").trim();
     JSONObject opts = liOpts(job);
+    // A new extraction starts from zero: people kept in the page memory by an earlier run are not counted
+    // again (progress is saved on the server in batches during the run).
+    try { opts.put("freshExtraction", true); } catch (Exception ignored) {}
     LiDone done = (r, err) -> {
       if (r != null && r.has("reactionsNavigate")) {
         // The reaction list is a separate page on this layout: read it there, keep the comments.
