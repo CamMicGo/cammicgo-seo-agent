@@ -61,6 +61,10 @@ test('unit: reaction types from labels, SVG traits and LinkedIn internal names (
   assert.equal(li._test.reactionTotal({getAttribute:(n:string)=>n==='aria-label'?'Tom Ricard et 13 autres personnes':'',innerText:''}),14);
   assert.equal(li._test.parseCount('1 234 réactions'),1234);
   assert.equal(li._test.parseCount('1,2 k'),1200);
+  assert.equal(li._test.parseCount('Tous les 1 267 1 267'),1267,'a label read twice is not one big number');
+  assert.equal(li._test.parseCount('1 118'),1118);
+  assert.equal(li._test.parseCount('2609'),2609);
+  assert.equal(li._test.parseCount('1,267 reactions'),1267);
   assert.equal(li._test.urnFromString('https://www.linkedin.com/posts/carla-dupont_design-activity-7311111111111111111-AbCd'),'urn:li:activity:7311111111111111111');
 });
 
