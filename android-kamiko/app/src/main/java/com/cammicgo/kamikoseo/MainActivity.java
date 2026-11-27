@@ -1024,6 +1024,9 @@ public class MainActivity extends Activity {
     linkedinWeb = new WebView(this);
     linkedinWeb.getSettings().setJavaScriptEnabled(true);
     linkedinWeb.getSettings().setDomStorageEnabled(true);
+    // The extraction goes on while the user is in other apps: keep the page's renderer at full priority
+    // even when it is not on screen (the reader's pauses no longer rely on the page's timers either).
+    if (android.os.Build.VERSION.SDK_INT >= 26) linkedinWeb.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false);
     CookieManager.getInstance().setAcceptCookie(true);
     CookieManager.getInstance().setAcceptThirdPartyCookies(linkedinWeb, true);
     Button mcpControl = toolButton(linkedinToolbarText(linkedinMcpEnabled ? "allowed" : "allow"), UiIcons.Kind.SHIELD);
@@ -2705,7 +2708,7 @@ public class MainActivity extends Activity {
   }
   private void liDrawCounts() {
     if (liProgressPanel == null) return;
-    if (liProgressJob == null) { liProgressPanel.setVisibility(View.GONE); return; }
+    if (liProgressJob == null) { liProgressPanel.setVisibility(View.GONE); liProgressNotify(null, 0, 0); return; }
     liProgressPanel.setVisibility(View.VISIBLE);
     int received = liLastPeople == null ? 0 : liLastPeople.length(), saved;
     synchronized (this) { saved = liSentPeople.size(); }
@@ -2715,6 +2718,30 @@ public class MainActivity extends Activity {
     liReactionsText.setText(I18n.t(this, "li_progress_reactions", rx, liReactionsTotal < 0 ? "?" : String.valueOf(liReactionsTotal), saved));
     liReactionsBar.setProgress(liReactionsTotal > 0 ? Math.min(1000, rx * 1000 / liReactionsTotal) : 0);
     liReactionsBar.setSecondaryProgress(liReactionsTotal > 0 ? Math.min(1000, saved * 1000 / liReactionsTotal) : 0);
+    liProgressNotify(liCommentsText.getText() + " · " + liReactionsText.getText(), rx, liReactionsTotal);
+  }
+  private long liNotifiedAt = 0;
+  /** The same counters in an ongoing notification, so they can be followed from any other app. */
+  private void liProgressNotify(String text, int done, int total) {
+    try {
+      android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+      if (nm == null) return;
+      if (text == null) { nm.cancel(43); liNotifiedAt = 0; return; }
+      long now = System.currentTimeMillis();
+      if (now - liNotifiedAt < 2000) return;
+      liNotifiedAt = now;
+      android.app.Notification.Builder b;
+      if (android.os.Build.VERSION.SDK_INT >= 26) {
+        if (nm.getNotificationChannel(RelayService.CHANNEL) == null) nm.createNotificationChannel(new android.app.NotificationChannel(RelayService.CHANNEL, I18n.t(this, "channel"), android.app.NotificationManager.IMPORTANCE_LOW));
+        b = new android.app.Notification.Builder(this, RelayService.CHANNEL);
+      } else b = new android.app.Notification.Builder(this);
+      Intent open = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+      b.setSmallIcon(android.R.drawable.stat_sys_download).setContentTitle("LinkedIn").setContentText(text)
+        .setStyle(new android.app.Notification.BigTextStyle().bigText(text)).setOngoing(true).setOnlyAlertOnce(true)
+        .setContentIntent(android.app.PendingIntent.getActivity(this, 43, open, android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE))
+        .setProgress(total > 0 ? 1000 : 0, total > 0 ? Math.min(1000, done * 1000 / total) : 0, total <= 0);
+      nm.notify(43, b.build());
+    } catch (Exception ignored) {}
   }
   /** The same counters, sent to the server with every progress message (read by linkedin_job_status). */
   private JSONObject liCountsJson() throws Exception {
@@ -2854,6 +2881,7 @@ public class MainActivity extends Activity {
     liStopRequested = false; liStopAt = 0; liProgressJob = null; liUploadedPeople = -1; liLastUpload = 0;
     if (linkedinStopButton != null) linkedinStopButton.setVisibility(View.GONE);
     if (liProgressPanel != null) liProgressPanel.setVisibility(View.GONE);
+    liProgressNotify(null, 0, 0);
     String extractionStatus = result == null ? "" : result.optString("status");
     recordLinkedInActivity(id, "", error != null || "timeout".equals(extractionStatus) || "failed".equals(extractionStatus) ? "failed" : "partial".equals(extractionStatus) ? "partial" : "done", error == null ? "" : error, "");
     if (id != null && id.equals(linkedinBusyJob)) linkedinBusyJob = null;
