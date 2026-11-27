@@ -748,12 +748,18 @@
       if (stopRequested()) break;  // "Stop and build the report" on the phone or linkedin_job_stop
       var targets = controls(scope).filter(function (e) {
         if (isOverflow(e)) return false;
-        if (done.has(e) && (!LOAD_MORE_RX.test((ownText(e) || label(e)).trim()) || (retries.get(e) || 0) >= 4)) return false;
+        if (done.has(e) && (!LOAD_MORE_RX.test((ownText(e) || label(e)).trim()) || (SEE_MORE_RX.test((ownText(e) || label(e)).trim()) && inCommentBlock(e, scope)) || (retries.get(e) || 0) >= 4)) return false;
         var s = (ownText(e) || label(e)).trim();
         return LOAD_MORE_RX.test(s) || (SEE_MORE_RX.test(s) && inCommentBlock(e, scope));
       });
       var nBefore = capture();
-      if (targets.length) { var e = targets[0]; done.add(e); retries.set(e,(retries.get(e)||0)+1); if (safeClick(clickable(e), 'expand_comments')) clicks++; }
+      // "See more" only unfolds a text: all of them at once. A "load more / replies" control loads from
+      // LinkedIn: one per round, then wait for it (several at once get lost on big posts).
+      var loaders = targets.filter(function (e) { var t = (ownText(e) || label(e)).trim(); return LOAD_MORE_RX.test(t) && !(SEE_MORE_RX.test(t) && inCommentBlock(e, scope)); });
+      targets.filter(function (e) { return loaders.indexOf(e) < 0; }).forEach(function (e) { done.add(e); safeClick(clickable(e), 'expand_comments'); });
+      var clicked = null;
+      if (loaders.length) { var e = loaders[0]; clicked = e; done.add(e); retries.set(e,(retries.get(e)||0)+1); if (safeClick(clickable(e), 'expand_comments')) clicks++; }
+      targets = loaders;
       if (!targets.length && expected != null && nBefore >= expected) break;
       if (!targets.length) {
         scrollers(scope).forEach(function (s) { s.scrollTop = s.scrollHeight; });
@@ -761,6 +767,9 @@
       }
       await waitFor(function () { invalidate(); return readCommentsNow(scope).some(function(c){return !collected[c.key];}); }, targets.length ? 5000 : 3000, 500);
       var n = capture();
+      // LinkedIn keeps the same "load more" button for every page: only clicks that bring nothing count
+      // towards giving up on it.
+      if (clicked && n > nBefore) retries.set(clicked, 0);
       if (progress) progress({ commentsVisible: n, expandClicks: clicks, beat:round });
       if (n === last && !targets.length) { if (++stable >= (expected != null && n < expected ? 6 : 2)) break; } else stable = 0;
       last = n;
@@ -817,7 +826,7 @@
     }
     var limit = Math.max(1, Math.min(2000, o.limit || 100));
     var sorted = await sortCommentsByRecent(scope);
-    var rounds = o.maxRounds || Math.min(400, Math.max(25, Math.ceil((post.commentCount || 0) / 5) + 10));
+    var rounds = o.maxRounds || Math.min(600, Math.max(40, Math.ceil((post.commentCount || 0) / 2) + 20));
     var exp = await expandComments(scope, rounds, progress, post.commentCount);
     var comments = exp.comments.slice(0, limit);
     var expected = post.commentCount;
@@ -910,7 +919,13 @@
     var ls = nameLines(r.row).filter(function (x) { return x !== info.name; });
     var icon = qsa(r.row, 'img,svg,li-icon,[data-test-icon]').filter(function (i) { return isReactionIcon(i) || (!!classifyReaction(iconMeta(i)) && !/dms\/image|profile-displayphoto/.test(attr(i, 'src'))); });
     var fromIcon = icon.map(function (i) { return classifyReaction(iconMeta(i) + ' ' + label(i)); }).filter(Boolean)[0] || null;
-    return { name: info.name || null, profileUrl: r.href, photoUrl: info.photoUrl || null, headline: (ls[0] || '').slice(0, 200) || null, reaction: typeHint || fromIcon, reactionFromIcon: fromIcon, reactionIconUrl: iconUrl(icon[0]) };
+    // One reaction picture per type is enough (the server shows its own): a picture per person made the
+    // list megabytes long on big posts and choked the transfer to the app.
+    var ICONS = window.__cmgLiIcons = window.__cmgLiIcons || {};
+    var iu = null;
+    if (fromIcon && !ICONS[fromIcon]) ICONS[fromIcon] = iconUrl(icon[0]);
+    if (icon[0]) { var im = icon[0].tagName === 'IMG' ? icon[0] : icon[0].querySelector && icon[0].querySelector('img'); var src = im ? (im.currentSrc || attr(im, 'src')) : ''; if (/^https:\/\/[a-z0-9.-]*licdn\.com\//i.test(src)) iu = src.slice(0, 400); }
+    return { name: info.name || null, profileUrl: r.href, photoUrl: info.photoUrl || null, headline: (ls[0] || '').slice(0, 200) || null, reaction: typeHint || fromIcon, reactionFromIcon: fromIcon, reactionIconUrl: iu };
   }
   /** LinkedIn's own reaction picture: an <img> URL, or the SVG itself as a data URL (no external fetch). */
   function iconUrl(i) {
@@ -979,7 +994,48 @@
    */
   function memKey(o) { var m = String((o && o.postUrl) || location.href).match(/(activity|ugcPost|share)[:-](\d{8,22})/i); return m ? 'cmgLiPeople:' + m[2] : null; }
   function memLoad(k) { try { var v = JSON.parse(localStorage.getItem(k) || 'null'); if (v && Date.now() - v.t < 6 * 3600e3 && v.p) return v.p; } catch (e) { /* storage off */ } return {}; }
-  function memSave(k, people) { try { localStorage.setItem(k, JSON.stringify({ t: Date.now(), p: people })); } catch (e) { /* full or off */ } }
+  function memSave(k, people) {
+    var slim = {};
+    Object.keys(people).forEach(function (u) { slim[u] = slimPerson(people[u]); });
+    try { localStorage.setItem(k, JSON.stringify({ t: Date.now(), p: slim })); } catch (e) { /* full or off */ }
+  }
+  function slimPerson(x) { var o = {}; ['name', 'profileUrl', 'headline', 'reaction', 'photoUrl'].forEach(function (f) { if (x && x[f] != null) o[f] = x[f]; }); return o; }
+  function personKey(x) { var u = String((x && x.profileUrl) || '').split(/[?#]/)[0].replace(/\/+$/, '').toLowerCase(); return u || ('name:' + String((x && x.name) || '').trim().toLowerCase()); }
+  /**
+   * Progress of a run, kept small: people go into a queue that the app drains a few hundred at a time
+   * (each one once, again only when a field was learned later), never the whole list at every check.
+   */
+  function runProgress(v, p, snap) {
+    if (!v || v.done) return;
+    v.partial = p;
+    if (!snap) return;
+    var rx = snap.reactions;
+    if (rx && Array.isArray(rx.people)) {
+      v.seen = v.seen || {}; v.q = v.q || []; v.count = v.count || 0;
+      rx.people.forEach(function (x) {
+        var k = personKey(x);
+        if (k === 'name:') return;
+        var sl = slimPerson(x), sig = [sl.reaction || '', sl.headline ? 1 : 0, sl.photoUrl ? 1 : 0].join('|');
+        if (v.seen[k] === sig) return;
+        if (v.seen[k] == null) v.count++;
+        v.seen[k] = sig; v.q.push(sl);
+      });
+      var r2 = {}; Object.keys(rx).forEach(function (f) { if (f !== 'people') r2[f] = rx[f]; });
+      r2.people = []; r2.retrieved = v.count; r2.savedInBatches = v.count;
+      var s2 = {}; Object.keys(snap).forEach(function (f) { s2[f] = snap[f]; });
+      s2.reactions = r2; snap = s2;
+    }
+    v.snapshot = snap;
+  }
+  function runPoll(R, k, max) {
+    var v = R && R[k];
+    if (!v) return JSON.stringify({ lost: true });
+    var fresh = v.q ? v.q.splice(0, max || 300) : [];
+    var left = v.q ? v.q.length : 0;
+    // The final answer is handed over only once every queued person has been taken.
+    if (v.done && !left) { delete R[k]; return JSON.stringify({ done: true, result: v.result, error: v.error, fresh: fresh }); }
+    return JSON.stringify({ done: false, partial: v.partial || null, snapshot: v.snapshot || null, fresh: fresh, queued: left });
+  }
   function memClear(k) { try { localStorage.removeItem(k); } catch (e) { /* off */ } }
   async function readReactions(o, progress) {
     o = o || {};
@@ -1060,6 +1116,7 @@
     var list = Object.keys(people).map(function (k) { return people[k]; });
     var byType = {}, icons = {};
     list.forEach(function (p) { var k = p.reaction || 'unknown'; byType[k] = (byType[k] || 0) + 1; if (p.reaction && p.reactionIconUrl && !icons[p.reaction] && p.reactionFromIcon === p.reaction) icons[p.reaction] = p.reactionIconUrl; });
+    var gi = window.__cmgLiIcons || {}; Object.keys(gi).forEach(function (k) { if (gi[k] && !icons[k]) icons[k] = gi[k]; });
     tabs.forEach(function (t) { if (t.type && !icons[t.type]) { var u = iconUrl(qsa(t.el, 'img,svg')[0]); if (u) icons[t.type] = u; } });
     var best = {}; perTab.forEach(function (x) { if (!best[x.tab] || x.read > best[x.tab].read) best[x.tab] = x; });
     var missing = Object.keys(best).map(function (k) { return best[k]; }).filter(function (x) { return x.expected != null && x.read < x.expected; }).map(function (x) { return { tab: x.tab, expected: x.expected, read: x.read, missing: x.expected - x.read }; });
@@ -1226,6 +1283,8 @@
     targetOpen: pub(targetOpen),
     readComments: pub(readComments),
     readReactions: pub(readReactions),
+    runProgress: runProgress,
+    runPoll: runPoll,
     readPostFull: pub(readPostFull),
     findProfile: pub(findProfile),
     fit: fit,
