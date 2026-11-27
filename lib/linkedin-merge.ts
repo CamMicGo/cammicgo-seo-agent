@@ -26,7 +26,10 @@ export function mergeReactionPeople(result:unknown,saved:O[]):unknown{
  rx.byType=by;rx.retrieved=people.length;rx.restoredFromBatches=added;
  const exp=typeof rx.expectedTotal==='number'?rx.expectedTotal:null;
  const anon=typeof rx.anonymousRows==='number'?rx.anonymousRows:0;
- if(exp!=null&&people.length+anon>=exp&&rx.stopped!==true){rx.complete=true;rx.partial=false;rx.missing=[];}
+ if(exp!=null&&people.length+anon>=exp&&rx.stopped!==true){rx.complete=true;rx.partial=false;rx.missing=[];
+  // Every reaction is there and the comments are complete too: the extraction is complete, not partial.
+  const cm=root.comments&&typeof root.comments==='object'?root.comments as O:null;
+  if(root.status==='partial'&&root.stoppedByUser!==true&&(!cm||cm.complete!==false))root.status='ok';}
  const cons=root.consistency&&typeof root.consistency==='object'?root.consistency as O:null;
  if(cons){cons.reactionsRead=people.length;cons.reactionsComplete=rx.complete??null;}
  if(root.truncated)root.peopleRestored=true;

@@ -1192,7 +1192,7 @@ public class MainActivity extends Activity {
     String op = job.optString("operation");
     liStopRequested = false; liStopAt = 0; liUploadedPeople = -1; liLastUpload = 0;
     liSentPeople.clear(); liBatchSeq = 0; liLastPeople = null; liPeopleIndex.clear(); liUploadsOk = 0; liUploadsFailed = 0; liQueuedInPage = 0; liUploadError = ""; liUploadBusy = false;
-    liCommentsRead = 0; liCommentsTotal = -1; liReactionsRead = 0; liReactionsTotal = -1; liStage = "";
+    liCommentsRead = 0; liCommentsTotal = -1; liReactionsRead = 0; liReactionsTotal = -1; liStage = ""; liLastSnapshot = null; liNativeJob = null; liNativeDone = null;
     liProgressJob = "post_comments".equals(op) ? id : null;
     if (linkedinStopButton != null) { linkedinStopButton.setVisibility("post_comments".equals(op) ? View.VISIBLE : View.GONE); linkedinStopButton.setEnabled(true); linkedinStopButton.setText(I18n.t(this, "li_stop_report")); }
     liDrawCounts();
@@ -1424,6 +1424,174 @@ public class MainActivity extends Activity {
   private int liBatchSeq = 0;
   private JSONArray liLastPeople = null;
   private final java.util.HashMap<String, Integer> liPeopleIndex = new java.util.HashMap<>();
+  private final java.util.HashSet<String> liFinishedJobs = new java.util.HashSet<>();
+  private JSONObject liLastSnapshot = null;
+  private volatile String liNativeJob = null;
+  private volatile JSONObject liNativeDone = null;
+
+  /**
+   * Fast read run by the app itself (the reader hands over the request the LinkedIn page sent for a piece of
+   * the reaction list): the app asks for every piece with the page's own headers and the session cookies,
+   * same piece size, 2-4 s apart, stops at the first error. Unlike the page, it keeps going while the user is
+   * in other apps. People are saved on the server as they come (batches of 50).
+   */
+  private void liStartNative(String id, JSONObject fr, int expected) {
+    liNativeJob = id; liNativeDone = null;
+    final String template = fr.optString("url", "");
+    final JSONObject headers = fr.optJSONObject("headers") == null ? new JSONObject() : fr.optJSONObject("headers");
+    final String agent = linkedinWeb == null ? "" : linkedinWeb.getSettings().getUserAgentString();
+    if (expected > 0) liReactionsTotal = expected;
+    new Thread(() -> {
+      String reason = "end"; int pages = 0, added = 0, empty = 0, count = 0;
+      long t0 = System.currentTimeMillis();
+      java.util.regex.Matcher cm = java.util.regex.Pattern.compile("[?&(,]count[=:](\\d+)").matcher(template);
+      if (cm.find()) count = Integer.parseInt(cm.group(1));
+      if (count <= 0 || count > 100 || !template.startsWith("https://www.linkedin.com/") || !template.matches(".*[?&(,]start[=:]\\d+.*")) reason = "no_paging";
+      else {
+        for (int start = 0; pages < 400; start += count) {
+          if (!id.equals(liProgressJob)) { reason = "job_ended"; break; }
+          if (liStopRequested) { reason = "stopped"; break; }
+          if (expected > 0 && start >= expected + count) break;
+          String url = template.replaceFirst("([?&(,]start[=:])\\d+", "$1" + start);
+          String body = null; int code = 0;
+          for (int attempt = 0; attempt < 2 && body == null; attempt++) {
+            try {
+              java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+              c.setConnectTimeout(15000); c.setReadTimeout(20000); c.setInstanceFollowRedirects(false);
+              java.util.Iterator<String> it = headers.keys();
+              while (it.hasNext()) { String k = it.next(); if (!k.equalsIgnoreCase("cookie") && !k.equalsIgnoreCase("host") && !k.equalsIgnoreCase("content-length")) c.setRequestProperty(k, headers.optString(k)); }
+              if (c.getRequestProperty("accept") == null && c.getRequestProperty("Accept") == null) c.setRequestProperty("Accept", "application/vnd.linkedin.normalized+json+2.1");
+              String cookie = CookieManager.getInstance().getCookie("https://www.linkedin.com/");
+              if (cookie != null) c.setRequestProperty("Cookie", cookie);
+              if (!agent.isEmpty()) c.setRequestProperty("User-Agent", agent);
+              code = c.getResponseCode();
+              if (code != 200) { c.disconnect(); break; }
+              String ct = c.getContentType() == null ? "" : c.getContentType();
+              if (!ct.contains("json")) { code = -2; c.disconnect(); break; }
+              try (java.io.InputStream in = c.getInputStream()) {
+                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream(); byte[] buf = new byte[16384]; int n;
+                while ((n = in.read(buf)) > 0) { out.write(buf, 0, n); if (out.size() > 3_000_000) break; }
+                body = out.toString("UTF-8");
+              }
+            } catch (Exception e) { code = -1; if (attempt == 0) try { Thread.sleep(3000); } catch (InterruptedException ie) { break; } }
+          }
+          if (body == null) { reason = code == -1 ? "network" : code == -2 ? "not_json" : "http_" + code; break; }
+          JSONArray got;
+          try { got = liApiPeople(new JSONObject(body)); } catch (Exception e) { reason = "bad_answer"; break; }
+          int before = liLastPeople == null ? 0 : liLastPeople.length();
+          liAddPeople(got);
+          int now = liLastPeople == null ? 0 : liLastPeople.length();
+          added += now - before; pages++;
+          final int seen = now, page = pages;
+          ui.post(() -> {
+            liReactionsRead = Math.max(liReactionsRead, seen); liStage = "reaction_native";
+            liDrawCounts();
+            try { liUploadProgress(id, liLastSnapshot, new JSONObject().put("stage", "reaction_native").put("reactionsRead", seen).put("expectedTotal", expected > 0 ? expected : JSONObject.NULL).put("page", page).put("beat", page)); } catch (Exception ignored) {}
+          });
+          if (got.length() == 0) { if (++empty >= 2) { reason = "no_more"; break; } } else empty = 0;
+          try { Thread.sleep(2000 + (long) (Math.random() * 2000)); } catch (InterruptedException ie) { reason = "interrupted"; break; }
+        }
+      }
+      JSONObject done = new JSONObject();
+      try { done.put("reason", reason).put("pages", pages).put("added", added).put("total", liLastPeople == null ? 0 : liLastPeople.length()).put("pieceSize", count).put("seconds", (System.currentTimeMillis() - t0) / 1000); } catch (Exception ignored) {}
+      liNativeDone = done;
+      ui.post(() -> {
+        if (linkedinWeb != null) linkedinWeb.evaluateJavascript("window.__cmgLiNativeDone=" + done + ";", null);
+        // If the page stays frozen (user in another app), the app ends the job itself with what it has.
+        ui.postDelayed(() -> liFinishNativeIfStuck(id), 60000);
+      });
+    }, "cammicgo-li-fast").start();
+  }
+
+  private void liFinishNativeIfStuck(String id) {
+    if (!id.equals(liProgressJob) || liFinishedJobs.contains(id)) return;
+    JSONObject partial;
+    try {
+      partial = liLastSnapshot == null ? new JSONObject() : compactSnapshot(liLastSnapshot);
+      partial.remove("inProgress");
+      partial.put("status", "partial");
+      JSONObject rx = partial.optJSONObject("reactions"); if (rx == null) { rx = new JSONObject(); partial.put("reactions", rx); }
+      rx.put("fastRead", liNativeDone); if (liReactionsTotal > 0) rx.put("expectedTotal", liReactionsTotal);
+      rx.put("people", new JSONArray()); rx.put("complete", false); rx.put("partial", true);
+      partial.put("finishedByApp", "the LinkedIn page stayed frozen in the background; the people read were saved in batches");
+    } catch (Exception e) { partial = new JSONObject(); }
+    final JSONObject res = partial;
+    liUploadWorker.execute(() -> { liFlushBatches(id); ui.post(() -> finishLinkedInJob(id, res, null)); });
+  }
+
+  /** People of one answer of LinkedIn's reaction service (both its older and newer shapes). */
+  static JSONArray liApiPeople(JSONObject json) {
+    java.util.List<JSONObject> all = new java.util.ArrayList<>();
+    java.util.Map<String, JSONObject> byUrn = new java.util.HashMap<>();
+    liWalk(json, all, byUrn, 0);
+    JSONArray out = new JSONArray();
+    for (JSONObject o : all) {
+      String rt = o.optString("reactionType", "");
+      if (rt.isEmpty()) continue;
+      String type = liReactionType(rt);
+      String name = null, headline = null, url = null, photo = null;
+      JSONObject lk = o.optJSONObject("reactorLockup");
+      if (lk != null) {
+        name = liText(lk.opt("title")); headline = liText(lk.opt("subtitle")); url = lk.optString("navigationUrl", null); photo = liPhoto(lk.opt("image"));
+      } else {
+        Object a = o.opt("actor"); if (a == null) a = o.opt("*actor"); if (a == null) a = o.opt("actorUrn"); if (a == null) a = o.opt("*reactor");
+        JSONObject ao = a instanceof JSONObject ? (JSONObject) a : a instanceof String ? byUrn.get((String) a) : null;
+        if (ao != null) {
+          JSONObject mini = ao.optJSONObject("miniProfile"); if (mini == null && ao.has("*miniProfile")) mini = byUrn.get(ao.optString("*miniProfile")); if (mini == null) mini = ao;
+          String fn = mini.optString("firstName", ""), ln = mini.optString("lastName", "");
+          name = (fn + " " + ln).trim(); if (name.isEmpty()) name = liText(mini.opt("name"));
+          headline = mini.optString("occupation", null); if (headline == null) headline = liText(mini.opt("headline"));
+          String pid = mini.optString("publicIdentifier", "");
+          url = !pid.isEmpty() ? "https://www.linkedin.com/in/" + pid + "/" : mini.optString("url", null);
+          photo = liPhoto(mini.opt("picture") != null ? mini.opt("picture") : mini.opt("profilePicture"));
+        }
+      }
+      if (name == null || name.isEmpty() || url == null || !url.startsWith("https://www.linkedin.com/")) continue;
+      url = url.split("[?#]")[0]; if (!url.endsWith("/")) url = url + "/";
+      try {
+        JSONObject p = new JSONObject().put("name", name.length() > 120 ? name.substring(0, 120) : name).put("profileUrl", url);
+        if (headline != null && !headline.isEmpty()) p.put("headline", headline.length() > 200 ? headline.substring(0, 200) : headline);
+        if (type != null) p.put("reaction", type);
+        if (photo != null) p.put("photoUrl", photo);
+        out.put(p);
+      } catch (Exception ignored) {}
+    }
+    return out;
+  }
+  private static void liWalk(Object n, java.util.List<JSONObject> all, java.util.Map<String, JSONObject> byUrn, int d) {
+    if (d > 12 || n == null) return;
+    if (n instanceof JSONArray) { JSONArray a = (JSONArray) n; for (int i = 0; i < a.length(); i++) liWalk(a.opt(i), all, byUrn, d + 1); return; }
+    if (!(n instanceof JSONObject)) return;
+    JSONObject o = (JSONObject) n; all.add(o);
+    String urn = o.optString("entityUrn", ""); if (!urn.isEmpty()) byUrn.put(urn, o);
+    java.util.Iterator<String> it = o.keys();
+    while (it.hasNext()) { Object v = o.opt(it.next()); if (v instanceof JSONObject || v instanceof JSONArray) liWalk(v, all, byUrn, d + 1); }
+  }
+  private static String liText(Object x) { if (x instanceof String) return (String) x; if (x instanceof JSONObject) { String t = ((JSONObject) x).optString("text", null); return t; } return null; }
+  private static String liReactionType(String t) {
+    switch (t.toUpperCase(java.util.Locale.ROOT)) {
+      case "LIKE": return "like"; case "PRAISE": return "celebrate"; case "APPRECIATION": return "support";
+      case "EMPATHY": return "love"; case "INTEREST": return "insightful"; case "ENTERTAINMENT": return "funny";
+      default: return null;
+    }
+  }
+  private static String liPhoto(Object n) { return liPhoto(n, 0); }
+  private static String liPhoto(Object n, int d) {
+    if (n == null || d > 8) return null;
+    if (n instanceof JSONArray) { JSONArray a = (JSONArray) n; for (int i = 0; i < a.length(); i++) { String r = liPhoto(a.opt(i), d + 1); if (r != null) return r; } return null; }
+    if (!(n instanceof JSONObject)) return null;
+    JSONObject o = (JSONObject) n;
+    JSONArray arts = o.optJSONArray("artifacts");
+    if (o.has("rootUrl") && arts != null && arts.length() > 0) {
+      JSONObject best = null; int bd = Integer.MAX_VALUE;
+      for (int i = 0; i < arts.length(); i++) { JSONObject a = arts.optJSONObject(i); if (a == null) continue; int dd = Math.abs(a.optInt("width", 0) - 200); if (dd < bd) { bd = dd; best = a; } }
+      String u = best == null ? null : o.optString("rootUrl") + best.optString("fileIdentifyingUrlPathSegment", "");
+      return u != null && u.startsWith("https://media.licdn.com/") ? u : null;
+    }
+    java.util.Iterator<String> it = o.keys();
+    while (it.hasNext()) { String r = liPhoto(o.opt(it.next()), d + 1); if (r != null) return r; }
+    return null;
+  }
   private LinearLayout liProgressPanel;
   private TextView liCommentsText, liReactionsText;
   private android.widget.ProgressBar liCommentsBar, liReactionsBar;
@@ -1493,7 +1661,13 @@ public class MainActivity extends Activity {
         try {
           JSONObject v = new JSONObject(new JSONArray("[" + raw + "]").getString(0));
           if (v.optBoolean("lost")) { cb.done(null, "The LinkedIn page changed while it was being read"); return; }
-          if (id.equals(liProgressJob)) { liAddPeople(v.optJSONArray("fresh")); liQueuedInPage = v.optInt("queued", 0); }
+          if (id.equals(liProgressJob)) { liAddPeople(v.optJSONArray("fresh")); liQueuedInPage = v.optInt("queued", 0); if (v.optJSONObject("snapshot") != null) liLastSnapshot = v.optJSONObject("snapshot"); }
+          JSONObject pp = v.optJSONObject("partial");
+          JSONObject fr = pp == null ? null : pp.optJSONObject("fastReq");
+          if (fr != null) {
+            pp.remove("fastReq");  // the session headers never leave the phone
+            if (id.equals(liProgressJob) && !id.equals(liNativeJob)) liStartNative(id, fr, pp.isNull("expectedTotal") ? -1 : pp.optInt("expectedTotal", -1));
+          }
           if (v.optBoolean("done")) {
             Object res = v.opt("result");
             if (res instanceof JSONObject) cb.done((JSONObject) res, null);
@@ -1567,7 +1741,7 @@ public class MainActivity extends Activity {
         if (!v.isEmpty()) o.put(k, v.length() > 300 ? v.substring(0, 300) : v);
       }
       o.put("limit", Math.min(2000, Math.max(1, job.optInt("limit", 100))));
-      if (RelayClient.prefs(this).getBoolean("liFastRead", false)) o.put("fastRead", true);
+      if (RelayClient.prefs(this).getBoolean("liFastRead", false)) { o.put("fastRead", true); o.put("nativeFast", true); }
     } catch (Exception ignored) {}
     return o;
   }
@@ -2896,6 +3070,7 @@ public class MainActivity extends Activity {
   }
 
   private void finishLinkedInJob(String id, JSONObject result, String error) {
+    if (id != null && !id.isEmpty()) { if (liFinishedJobs.contains(id)) return; liFinishedJobs.add(id); }
     if (liStopRequested && result != null) { try { result.put("stoppedByUser", true); if ("ok".equals(result.optString("status"))) result.put("status", "partial"); } catch (Exception ignored) {} }
     liStopRequested = false; liStopAt = 0; liProgressJob = null; liUploadedPeople = -1; liLastUpload = 0;
     if (linkedinStopButton != null) linkedinStopButton.setVisibility(View.GONE);
