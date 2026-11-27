@@ -23,7 +23,10 @@ export async function POST(req:NextRequest){
   if(typeof data.id!=='string'||(data.error!==undefined&&typeof data.error!=='string'))return NextResponse.json({error:'Invalid payload'},{status:400});
   if(data.progress===true){
    if(Array.isArray(data.batch))await saveLinkedInBatch(device.id,data.id,Number(data.seq),data.batch);
-   return NextResponse.json(await saveLinkedInProgress(device.id,data.id,data.result));
+   // The reader's live counters (and the phone's own upload counters) travel with the saved progress.
+   const counts=data.counts&&typeof data.counts==='object'&&!Array.isArray(data.counts)&&JSON.stringify(data.counts).length<4000?data.counts:undefined;
+   const result=data.result&&typeof data.result==='object'&&counts?{...data.result,progress:counts}:data.result;
+   return NextResponse.json(await saveLinkedInProgress(device.id,data.id,result));
   }
   const ok=await finishLinkedIn(device.id,data.id,data.result,data.error);
   return NextResponse.json({ok},{status:ok?200:409});
