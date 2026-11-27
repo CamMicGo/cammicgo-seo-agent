@@ -291,7 +291,7 @@
       articles: qsa(document, 'article').length,
       profileLinks: qsa(document, PROFILE_LINK).length,
       permalinkLinks: qsa(document, 'a[href*="/feed/update/"],a[href*="/posts/"]').length,
-      dialogsOpen: qsa(document, '[role=dialog],[aria-modal=true]').filter(vis).length,
+      dialogsOpen: qsa(document, '[role=dialog],[aria-modal=true],dialog[open]').filter(vis).length,
       clicks: clickLog.slice(-20),
     };
     if (extra) for (var k in extra) shape[k] = extra[k];
@@ -595,7 +595,7 @@
   }
 
   // ---------------------------------------------------------------- target post scope
-  function openDialogs() { return qsa(document, '[role=dialog],[aria-modal=true]').filter(vis); }
+  function openDialogs() { return qsa(document, '[role=dialog],[aria-modal=true],dialog[open]').filter(vis); }
   function isReactionsDialog(d) {
     var h = d.querySelector('h1,h2,h3,[role=heading]');
     return /r[eé]actions?|reacciones|reaktionen|reazioni/i.test(txt(h) + ' ' + label(d)) || qsa(d, '[role=tab]').some(function (t) { return /\d/.test(txt(t) + label(t)) && !!classifyReaction(txt(t) + ' ' + label(t) + ' ' + iconMeta(t)); });
@@ -779,7 +779,7 @@
     return (RELEVANT_RX.test(name) || RECENT_RX.test(name)) && name.length < 60 && !OVERFLOW_RX.test([label(e), attr(e, 'data-testid'), attr(e, 'data-control-name'), cls(e)].join(' ')) && !/overflow|ellipsis|three-dots|more-horizontal/i.test(iconMeta(e));
   }
   async function sortCommentsByRecent(scope) {
-    var near = function () { return controls(scope.closest('[role=dialog]') || document.body).filter(function (e) { return vis(e) && (isSortControl(e) || !isOverflow(e)); }); };
+    var near = function () { return controls(scope.closest('[role=dialog],[aria-modal=true],dialog[open]') || document.body).filter(function (e) { return vis(e) && (isSortControl(e) || !isOverflow(e)); }); };
     var cur = near().find(function (e) { return isSortControl(e) && RELEVANT_RX.test((ownText(e) || label(e)).trim()); });
     if (!cur) return near().some(function (e) { return isSortControl(e) && RECENT_RX.test((ownText(e) || label(e)).trim()); }) ? 'already_recent' : 'no_sort_control';
     clickLog.push({ purpose: 'sort_comments', label: (ownText(cur) || label(cur)).slice(0, 80) });
@@ -799,7 +799,7 @@
    */
   var HIDDEN_NOTE_RX = /peuvent ne pas appara[iî]tre|may not appear|pueden no aparecer|m[oö]glicherweise nicht|potrebbero non|podem n[aã]o aparecer/i;
   function noticeRecentLink(scope) {
-    var root = (scope && scope.closest && scope.closest('[role=dialog]')) || document.body;
+    var root = (scope && scope.closest && scope.closest('[role=dialog],[aria-modal=true],dialog[open]')) || document.body;
     var cands = qsa(root, 'a,button,[role=button],[role=link],strong,b,span').filter(function (e) {
       if (!vis(e) || isOverflow(e)) return false;
       var t = (ownText(e) || txt(e) || '').trim();
@@ -844,7 +844,7 @@
       if (!targets.length && expected != null && nBefore >= expected) break;
       if (!targets.length) {
         scrollers(scope).forEach(function (s) { s.scrollTop = s.scrollHeight; });
-        if (scope === document.body || !scope.closest('[role=dialog]')) window.scrollBy(0, Math.round((window.innerHeight || 800) * 0.8));
+        if (scope === document.body || !scope.closest('[role=dialog],[aria-modal=true],dialog[open]')) window.scrollBy(0, Math.round((window.innerHeight || 800) * 0.8));
       }
       await waitFor(function () { invalidate(); return readCommentsNow(scope).some(function(c){return !collected[c.key];}); }, targets.length ? 5000 : 3000, 500);
       var n = capture();
@@ -887,7 +887,7 @@
     var s = resolveScope(o);
     if (!s.scope) return { status: s.how === 'ambiguous' ? 'ambiguous_post' : 'post_not_found', comments: [], candidates: s.candidates || null, diagnostics: { page: pageState(), dom: domShape() } };
     var scope = s.scope;
-    var isDialog = scope.matches('[role=dialog],[aria-modal=true]');
+    var isDialog = scope.matches('[role=dialog],[aria-modal=true],dialog[open]');
     var post = extractPost({ el: isDialog ? (findPosts(scope).posts[0] || { el: scope }).el : scope, vias: {} });
     var opened = 'already_open';
     scope = widenForComments(scope);
@@ -945,7 +945,7 @@
     };
     // Comments still missing: list the reply / load-more controls left on the page (labels only) so the next
     // fix targets what LinkedIn really shows.
-    if (expected != null && comments.length < expected) res.unclickedControls = controls(scope.closest('[role=dialog]') || document.body).filter(function (e) { var t = (ownText(e) || label(e) || '').trim(); return t.length < 60 && /r[eé]ponse|repl|respuesta|antwort|commentaire|comment|more|plus|previous|pr[eé]c[eé]dent/i.test(t) && !/^(r[eé]pondre|reply|responder|antworten|commenter|comment)$/i.test(t) && !isOverflow(e); }).slice(0, 12).map(function (e) { return (ownText(e) || label(e)).trim().slice(0, 60); });
+    if (expected != null && comments.length < expected) res.unclickedControls = controls(scope.closest('[role=dialog],[aria-modal=true],dialog[open]') || document.body).filter(function (e) { var t = (ownText(e) || label(e) || '').trim(); return t.length < 60 && /r[eé]ponse|repl|respuesta|antwort|commentaire|comment|more|plus|previous|pr[eé]c[eé]dent/i.test(t) && !/^(r[eé]pondre|reply|responder|antworten|commenter|comment)$/i.test(t) && !isOverflow(e); }).slice(0, 12).map(function (e) { return (ownText(e) || label(e)).trim().slice(0, 60); });
     if (res.status !== 'ok' || o.diagnose) res.diagnostics = { page: pageState(), dom: domShape({ commentBlocks: commentBlocks(scope).length, replyControls: replyButtons(scope).length, documentCommentBlocks: commentBlocks(document).length, postsOnPage: findPosts().posts.length, replySamples: replyButtons(document).slice(0, 3).map(function (r) { var path = []; for (var q = r; q && q !== document.body && path.length < 14; q = q.parentElement) path.push(q.tagName.toLowerCase() + (attr(q, 'role') ? '[' + attr(q, 'role') + ']' : '') + (q === scope ? '*' : '')); return { label: (label(r) || ownText(r)).slice(0, 40), inScope: scope.contains(r), path: path.join('<') }; }) }) };
     else res.diagnostics = { clicks: clickLog.slice(-20) };
     return res;
@@ -957,7 +957,35 @@
     if (ds.length) return ds[ds.length - 1];
     if (/\/(reactions|likes)\b|reactors/.test(location.pathname)) return document.querySelector('main') || document.body;
     var loose = openDialogs().filter(function (d) { return d !== scopeDialog && !replyButtons(d).length && qsa(d, 'a[href*="/in/"]').length; });
-    return loose.length ? loose[loose.length - 1] : null;
+    if (loose.length) return loose[loose.length - 1];
+    return headedSheet(scopeDialog);
+  }
+  var SHEET_TITLE_RX = /^(r[eé]actions?|reacciones|reaktionen|reazioni|rea[cç][oõ]es)$/i;
+  /**
+   * Mobile layouts open the list in a sheet that is not marked as a dialog: a heading reading exactly
+   * "Reactions" / "Réactions", then rows of people. The sheet is the smallest block holding that heading
+   * and at least two people, outside the post's comments.
+   */
+  function headedSheet(scopeDialog) {
+    var heads = qsa(document, 'h1,h2,h3,h4,[role=heading],header span,header div,div,span').filter(function (e) { return vis(e) && e.children.length <= 2 && SHEET_TITLE_RX.test((ownText(e) || txt(e)).trim()); }).slice(0, 8);
+    for (var i = heads.length - 1; i >= 0; i--) {
+      for (var p = heads[i].parentElement, d = 0; p && p !== document.body && d < 12; p = p.parentElement, d++) {
+        if (scopeDialog && p.contains(scopeDialog)) break;
+        if (personRows(p).length >= 2 && !replyButtons(p).length) return p;
+      }
+    }
+    return null;
+  }
+  /** What the reader sees of a reaction list, without any personal data: for diagnosis only. */
+  function sheetShape(root) {
+    var r = root || document;
+    return {
+      root: root ? (root.tagName + (attr(root, 'role') ? '[role=' + attr(root, 'role') + ']' : '') + (cls(root) ? '.' + cls(root).split(/\s+/).slice(0, 2).join('.') : '')) : null,
+      dialogs: openDialogs().length, nativeDialogs: qsa(document, 'dialog[open]').length,
+      titles: qsa(document, 'h1,h2,h3,[role=heading]').filter(vis).map(function (h) { return txt(h).slice(0, 30); }).slice(0, 6),
+      profileLinks: qsa(r, PROFILE_LINK).length, profilePhotos: qsa(r, PERSON_PHOTO).length,
+      rows: root ? personRows(root).length : null, tabs: qsa(r, '[role=tab]').length, scrollers: root ? scrollers(root).length : null,
+    };
   }
   function findReactionCounter(scope) {
     var cs = controls(scope).filter(function (e) { return !inCommentBlock(e, scope); });
@@ -1007,10 +1035,28 @@
       seen[href] = 1;
       rows.push({ row: row, link: a, href: href });
     });
+    if (!rows.length) rows = photoRows(root);
     return rows;
   }
+  var PERSON_PHOTO = 'img[src*="profile-displayphoto"],img[src*="company-logo"],img[alt*="profil" i],img[alt*="profile" i]';
+  /** People shown as tappable rows without a profile link: one row per profile photo, keyed by name. */
+  function photoRows(root) {
+    var out = [], seen = {};
+    qsa(root, PERSON_PHOTO).filter(vis).forEach(function (img) {
+      if (img.closest('[role=tablist],[role=tab]')) return;
+      var row = img;
+      for (var p = img.parentElement; p && p !== root; p = p.parentElement) { if (qsa(p, PERSON_PHOTO).length > 1) break; row = p; }
+      var name = cleanName(nameLines(row)[0] || '');
+      if (!name || name.length > 80) return;
+      var key = 'name:' + norm(name);
+      if (seen[key]) return;
+      seen[key] = 1;
+      out.push({ row: row, link: null, href: key, photo: img });
+    });
+    return out;
+  }
   function readPerson(r, typeHint) {
-    var info = actorInfo(r.link, r.row);
+    var info = r.link ? actorInfo(r.link, r.row) : { name: cleanName(nameLines(r.row)[0] || ''), photoUrl: r.photo ? (r.photo.currentSrc || attr(r.photo, 'src') || '').slice(0, 600) : null };
     var ls = nameLines(r.row).filter(function (x) { return x !== info.name; });
     var icon = qsa(r.row, 'img,svg,li-icon,[data-test-icon]').filter(function (i) { return isReactionIcon(i) || (!!classifyReaction(iconMeta(i)) && !/dms\/image|profile-displayphoto/.test(attr(i, 'src'))); });
     var fromIcon = icon.map(function (i) { return classifyReaction(iconMeta(i) + ' ' + label(i)); }).filter(Boolean)[0] || null;
@@ -1020,7 +1066,7 @@
     var iu = null;
     if (fromIcon && !ICONS[fromIcon]) ICONS[fromIcon] = iconUrl(icon[0]);
     if (icon[0]) { var im = icon[0].tagName === 'IMG' ? icon[0] : icon[0].querySelector && icon[0].querySelector('img'); var src = im ? (im.currentSrc || attr(im, 'src')) : ''; if (/^https:\/\/[a-z0-9.-]*licdn\.com\//i.test(src)) iu = src.slice(0, 400); }
-    return { name: info.name || null, profileUrl: r.href, photoUrl: info.photoUrl || null, headline: (ls[0] || '').slice(0, 200) || null, reaction: typeHint || fromIcon, reactionFromIcon: fromIcon, reactionIconUrl: iu };
+    return { name: info.name || null, profileUrl: r.link ? r.href : null, photoUrl: info.photoUrl || null, headline: (ls[0] || '').slice(0, 200) || null, reaction: typeHint || fromIcon, reactionFromIcon: fromIcon, reactionIconUrl: iu };
   }
   /** LinkedIn's own reaction picture: an <img> URL, or the SVG itself as a data URL (no external fetch). */
   function iconUrl(i) {
@@ -1044,9 +1090,9 @@
       personRows(root).forEach(function (r) {
         if (seenHere[r.href] && into[r.href]) return;
         var p = readPerson(r, typeHint);
-        seenHere[p.profileUrl] = 1;
-        var old = into[p.profileUrl];
-        if (!old) into[p.profileUrl] = p;
+        seenHere[r.href] = 1;
+        var old = into[r.href];
+        if (!old) into[r.href] = p;
         else { if (typeHint) old.reaction = typeHint; if (!old.reactionIconUrl && p.reactionIconUrl) old.reactionIconUrl = p.reactionIconUrl; if (!old.photoUrl && p.photoUrl) old.photoUrl = p.photoUrl; if (!old.headline && p.headline) old.headline = p.headline; if (!old.reaction && p.reaction) old.reaction = p.reaction; }
       });
       var n = Object.keys(seenHere).length;
@@ -1298,9 +1344,9 @@
       if (link && /linkedin\.com/.test(link.href) && link.href.split('#')[0] !== location.href.split('#')[0]) return { status: 'navigate', url: link.href, expectedTotal: counter.total };
       if (progress) progress({stage:'reaction_open_dialog', expectedTotal:counter.total}, []);
       if (!safeClick(counter.el, 'open_reactions')) return { status: 'reaction_counter_refused', people: [], diagnostics: { dom: domShape() } };
-      var scopeDialog = s.scope.closest('[role=dialog],[aria-modal=true]');
+      var scopeDialog = s.scope.closest('[role=dialog],[aria-modal=true],dialog[open]');
       root = await waitFor(function () { invalidate(); return reactionsRoot(scopeDialog); }, 15000, 300);
-      if (!root) return { status: 'reaction_dialog_not_found', people: [], expectedTotal: counter.total, diagnostics: { page: pageState(), dom: domShape() } };
+      if (!root) return { status: 'reaction_dialog_not_found', people: [], expectedTotal: counter.total, diagnostics: { page: pageState(), dom: domShape(), sheet: sheetShape() } };
     }
     if (progress) progress({stage:'reaction_wait_rows'}, []);
     await waitFor(function () { invalidate(); return personRows(root).length; }, 12000, 300);
@@ -1365,12 +1411,12 @@
     // Still far from LinkedIn's count: close and reopen the list (LinkedIn starts loading again) and keep
     // adding to what is already known, up to two more passes.
     for (var pass = 2; pass <= 3 && !fastDone && counter && s && expectedTotal != null && !stopRequested() && Object.keys(people).length < expectedTotal * 0.97; pass++) {
-      var cb = controls(root.closest('[role=dialog]') || root).find(function (b) { return /^(dismiss|close|fermer|ignorer|cerrar|schlie[ßs]en)\b/i.test(label(b) || ownText(b)); });
+      var cb = controls(root.closest('[role=dialog],[aria-modal=true],dialog[open]') || root).find(function (b) { return /^(dismiss|close|fermer|ignorer|cerrar|schlie[ßs]en)\b/i.test(label(b) || ownText(b)); });
       if (cb) safeClick(cb, 'close');
       await sleep(1500);
       var c2 = findReactionCounter(s.scope);
       if (c2.error || !safeClick(c2.el, 'open_reactions')) break;
-      var root2 = await waitFor(function () { return reactionsRoot(s.scope.closest('[role=dialog],[aria-modal=true]')); }, 9000, 300);
+      var root2 = await waitFor(function () { return reactionsRoot(s.scope.closest('[role=dialog],[aria-modal=true],dialog[open]')); }, 9000, 300);
       if (!root2) break;
       root = root2;
       await waitFor(function () { return personRows(root).length; }, 6000, 300);
@@ -1391,7 +1437,7 @@
     var complete = expectedTotal != null && list.length + anonymous >= expectedTotal;
     if (complete) { missing = []; if (mk) memClear(mk); }
     if (o.close !== false) {
-      var closeBtn = controls(root.closest('[role=dialog]') || root).find(function (b) { return /^(dismiss|close|fermer|ignorer|cerrar|schlie[ßs]en)\b/i.test(label(b) || ownText(b)); });
+      var closeBtn = controls(root.closest('[role=dialog],[aria-modal=true],dialog[open]') || root).find(function (b) { return /^(dismiss|close|fermer|ignorer|cerrar|schlie[ßs]en)\b/i.test(label(b) || ownText(b)); });
       if (closeBtn) safeClick(closeBtn, 'close');
     }
     var res = {
@@ -1414,7 +1460,7 @@
       untyped: list.filter(function (p) { return !p.reaction; }).length,
       note: complete ? 'Every reaction counted by LinkedIn was read.' : (expectedTotal == null ? 'LinkedIn shows no total here: completeness cannot be checked.' : 'Read ' + list.length + (anonymous ? ' (+' + anonymous + ' private members)' : '') + ' of ' + expectedTotal + ' reactions; the rest was not loaded by LinkedIn.'),
     };
-    if (res.status !== 'ok' || o.diagnose) res.diagnostics = { page: pageState(), dom: domShape({ tabs: tabs.length }) };
+    if (res.status !== 'ok' || o.diagnose) res.diagnostics = { page: pageState(), dom: domShape({ tabs: tabs.length }), sheet: sheetShape(root) };
     else res.diagnostics = { clicks: clickLog.slice(-25) };
     return res;
   }
