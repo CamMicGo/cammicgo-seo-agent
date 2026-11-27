@@ -20,7 +20,13 @@
   var memo = new Map(), kindCache = new WeakMap();
   function invalidate() { memo = new Map(); kindCache = new WeakMap(); }
   function cached(key, root, fn) { var m = memo.get(root); if (!m) { m = {}; memo.set(root, m); } if (!(key in m)) m[key] = fn(); return m[key]; }
-  var sleep = function (ms) { invalidate(); return new Promise(function (r) { setTimeout(function () { invalidate(); r(); }, Math.max(0, ms * env.delayScale)); }); };
+  // Android throttles or freezes a page's timers when it thinks the page is in the background (down to one
+  // wake-up a minute, or none). Every pause is therefore also ended by the app's own check of the page,
+  // which runs every 600 ms whatever the page's state (tick, called by runPoll).
+  var sleeping = [];
+  function wake(t) { if (t.done) return; t.done = true; var i = sleeping.indexOf(t); if (i >= 0) sleeping.splice(i, 1); invalidate(); t.r(); }
+  function tick() { var now = Date.now(); sleeping.slice().forEach(function (t) { if (t.due <= now) wake(t); }); }
+  var sleep = function (ms) { invalidate(); var d = Math.max(0, ms * env.delayScale); return new Promise(function (r) { var t = { due: Date.now() + d, r: r, done: false }; sleeping.push(t); setTimeout(function () { wake(t); }, d); }); };
   var norm = function (s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[’‘`]/g, "'").toLowerCase().replace(/\s+/g, ' ').trim(); };
   var attr = function (e, n) { return e && e.getAttribute ? e.getAttribute(n) || '' : ''; };
   var txt = function (e) { if (!e) return ''; var t = e.innerText != null ? e.innerText : e.textContent; return String(t || '').replace(/ /g, ' ').trim(); };
@@ -1028,6 +1034,7 @@
     v.snapshot = snap;
   }
   function runPoll(R, k, max) {
+    tick();
     var v = R && R[k];
     if (!v) return JSON.stringify({ lost: true });
     var fresh = v.q ? v.q.splice(0, max || 300) : [];
@@ -1285,6 +1292,7 @@
     readReactions: pub(readReactions),
     runProgress: runProgress,
     runPoll: runPoll,
+    tick: tick,
     readPostFull: pub(readPostFull),
     findProfile: pub(findProfile),
     fit: fit,
