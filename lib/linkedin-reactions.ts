@@ -506,8 +506,10 @@ export function assistantView(data:unknown,maxChars=60000,maxPeople=300):unknown
   compact:true,
   note:`Large post: this answer is compact (no photo links, no Markdown list). Give the user reportUrl: the report page shows every person with photo and profile link.${people.length>maxPeople?` Only ${maxPeople} of the ${people.length} people who reacted are listed here: classify them as a sample and say so.`:''}`,
   reportUrl:root.reportUrl,status:root.status,postUrl:root.postUrl,uiLang:root.uiLang,consistency:root.consistency,
-  post:post?pick(post,['author','authorProfileUrl','authorHeadline','time','text','reactionCount','commentCount','repostCount','imageCount']):null,
+  // Why a read ended (fast read reason, app finish, time limit): needed to tell a LinkedIn limit from a bug.
+  timedOut:root.timedOut,finishedByApp:root.finishedByApp,stoppedByUser:root.stoppedByUser,
+  post:post?pick(post,['author','authorProfileUrl','authorHeadline','time','text','reactionCount','commentCount','repostCount','imageCount','commentSort']):null,
   comments:cx?{...pick(cx,['status','complete','partial','displayedCount','retrieved','topLevel','replies','note']),comments:comments.map(c=>({...pick(c,['commentId','parentId','author','authorProfileUrl','authorHeadline','time','isReply','isPostAuthor','parentAuthor','reactionCount']),text:str(c.text).slice(0,800)}))}:null,
-  reactions:rx?{...pick(rx,['status','complete','partial','expectedTotal','retrieved','byType','missing','note']),listed:Math.min(people.length,maxPeople),people:people.slice(0,maxPeople).map(p=>pick(p,['profileUrl','name','headline','reaction']))}:null,
+  reactions:rx?{...pick(rx,['status','complete','partial','expectedTotal','retrieved','byType','missing','note','fastRead']),fastReadPass:Array.isArray(rx.perCategory)?(rx.perCategory as Obj[]).find(x=>x&&x.tab==='fast'):undefined,listed:Math.min(people.length,maxPeople),people:people.slice(0,maxPeople).map(p=>pick(p,['profileUrl','name','headline','reaction']))}:null,
  };
 }
