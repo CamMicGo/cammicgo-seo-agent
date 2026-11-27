@@ -120,7 +120,7 @@
     send: /^(send|envoyer|enviar|senden|invia)(\b|$)/i,
   };
   function parseCount(s) {
-    var m = String(s || '').replace(/ | /g, ' ').match(/(\d[\d\s.,]*)\s*([kK])?/);
+    var m = String(s || '').replace(/ | /g, ' ').match(/(\d{1,3}(?:[\s.,]\d{3})+(?!\d)|\d+(?:[.,]\d+)?)\s*([kK])?/); // "1 267 1 267" (label read twice) is 1267
     if (!m) return null;
     var raw = m[1].trim();
     if (m[2]) return Math.round(parseFloat(raw.replace(/\s/g, '').replace(',', '.')) * 1000);
@@ -509,6 +509,15 @@
       var o = window.getComputedStyle(e).overflowY;
       return o === 'auto' || o === 'scroll';
     }).slice(0, 4);
+  }
+  /** Scrolling blocks around a list (the sheet itself often scrolls, not the list inside it). */
+  function scrollParents(e) {
+    var out = [];
+    if (env.noLayout) return out;
+    for (var p = e && e.parentElement; p && p !== document.documentElement && out.length < 3; p = p.parentElement) {
+      if (p.scrollHeight > p.clientHeight + 30) { var o = window.getComputedStyle(p).overflowY; if (o === 'auto' || o === 'scroll') out.push(p); }
+    }
+    return out;
   }
   function scrollMore(root) {
     window.scrollBy(0, Math.round((window.innerHeight || 800) * 1.2));
@@ -1007,7 +1016,8 @@
   }
   function parseTab(t) {
     var s = (ownText(t) + ' ' + label(t)).trim();
-    var count = parseCount(s);
+    var count = parseCount(ownText(t));
+    if (count == null) count = parseCount(label(t));
     var isAll = /^(all|tous|toutes|todos|alle|tutti)\b/i.test(ownText(t).trim() || label(t).trim());
     var type = isAll ? null : classifyReaction(label(t) + ' ' + iconMeta(t) + ' ' + ownText(t));
     return { el: t, label: s.slice(0, 60), count: count, type: type, all: isAll };
@@ -1102,9 +1112,12 @@
       if (expected != null && n >= expected) { end = 'reached'; break; }
       more = controls(root).find(function (b) { return /^(show more|load more|afficher plus|voir plus|charger plus|mostrar m[aá]s|mehr anzeigen)/i.test((ownText(b) || label(b)).trim()) && !isOverflow(b); });
       if (more) safeClick(more, 'more_reactions');
-      var sc = scrollers(root);
+      var sc = scrollers(root).concat(scrollParents(root));
       if (sc.length) sc.forEach(function (s) { s.scrollTop += Math.max(100, Math.floor(s.clientHeight * 0.8)); }); else root.scrollTop += Math.max(100, Math.floor(root.clientHeight * 0.8));
-      if (root === document.body || root.tagName === 'MAIN') window.scrollBy(0, Math.round((window.innerHeight || 800)));
+      // Mobile sheets and full-page lists load the next people when the last row becomes visible.
+      var rws = personRows(root), lastRow = rws.length ? rws[rws.length - 1].row : null;
+      if (lastRow && lastRow.scrollIntoView) try { lastRow.scrollIntoView({ block: 'end' }); } catch (e) { /* old engines */ }
+      if (root === document.body || root.tagName === 'MAIN' || !sc.length) window.scrollBy(0, Math.round((window.innerHeight || 800)));
       await waitFor(function () { invalidate(); return personRows(root).some(function (r) { return !seenHere[r.href]; }); }, 2200, 300);
       if (n === last) {
         // Big lists load slowly: while far from LinkedIn's count, keep trying longer and nudge the list
@@ -1354,6 +1367,7 @@
     var tabs = reactionTabs(root);
     var allTab = tabs.find(function (t) { return t.all; });
     var expectedTotal = allTab && allTab.count != null ? allTab.count : (counter ? counter.total : (o.expectedTotal || null));
+    if (counter && counter.total && expectedTotal && expectedTotal > counter.total * 2) expectedTotal = counter.total;
     var people = {}, perTab = [];
     var mk = memKey(o), lastSave = 0, restored = 0;
     if (mk && o.freshExtraction === true) memClear(mk);
