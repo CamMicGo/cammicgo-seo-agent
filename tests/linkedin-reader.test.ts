@@ -347,3 +347,34 @@ test('fixture: profile search script shipped in MainActivity reads people cards'
   const out=JSON.parse(w.eval(js));
   assert.deepEqual(plain(out.profiles).map((p:Li)=>[p.name,p.profileUrl]),[['Alice Martin','https://www.linkedin.com/in/alice-martin-123/'],['Bruno Lefèvre','https://www.linkedin.com/in/bruno-lefevre/']]);
 });
+
+test('fixture: a big comment list with a "see more" in every comment is read in full (texts unfolded together, one load-more per round)', async ()=>{
+  const paged=`function loadMore(b){window.__page=(window.__page||0)+1;var h='';for(var i=0;i<5;i++){var n=window.__page*5+i;h+=comment('74100000000000'+String(n).padStart(5,'0'),'person-'+n,'Person '+n,'Role '+n,'Long text '+n+' <button>…see more</button>');}
+document.getElementById('more-slot').insertAdjacentHTML('beforebegin',h);if(window.__page>=12)b.remove();}`;
+  const html=fixture('post-comments-desktop-en.html').replace('7 comments on','65 comments on').replace('>7 comments<','>65 comments<').replace(/function loadMore\(b\)\{[^\n]*\n/,paged+'\n');
+  const {w,li}=page('','https://www.linkedin.com/feed/update/urn:li:activity:7322222222222222222/',{html});
+  const r=await li.readComments({postUrl:'https://www.linkedin.com/feed/update/urn:li:activity:7322222222222222222/'});
+  assert.equal(r.displayedCount,65);
+  assert.equal(r.comments.length,65,JSON.stringify({n:r.comments.length,clicks:r.expandClicks}));
+  assert.equal(r.complete,true);
+  noForbiddenClicks(w);
+});
+
+test('unit: progress hands people over once, in small pieces, and the final answer waits for the queue', ()=>{
+  const {li}=page('search-no-results.html','https://www.linkedin.com/feed/');
+  const R:Li={k:{done:false}};
+  const people=Array.from({length:700},(_,i)=>({name:'P'+i,profileUrl:'https://www.linkedin.com/in/p'+i+'/',reaction:i%2?'like':null,reactionIconUrl:'data:image/svg+xml;base64,AAAA'}));
+  li.runProgress(R.k,{reactionsRead:700},{status:'partial',comments:{comments:[{text:'x'}]},reactions:{people}});
+  li.runProgress(R.k,{reactionsRead:700},{status:'partial',reactions:{people}});
+  assert.equal(R.k.snapshot.reactions.people.length,0,'the snapshot never carries the people');
+  assert.equal(R.k.snapshot.reactions.retrieved,700);
+  const a=JSON.parse(li.runPoll(R,'k',300));
+  assert.equal(a.fresh.length,300);assert.equal(a.queued,400);assert.equal(a.fresh[0].reactionIconUrl,undefined,'no picture per person');
+  people[0].reaction='love';
+  li.runProgress(R.k,{},{reactions:{people}});
+  R.k.done=true;R.k.result={ok:1};
+  const b=JSON.parse(li.runPoll(R,'k',300));assert.equal(b.done,false,'queue first');assert.equal(b.fresh.length,300);
+  const c=JSON.parse(li.runPoll(R,'k',300));assert.equal(c.done,true);assert.equal(c.fresh.length,101,'the updated person is sent again');
+  assert.equal(c.fresh.at(-1).reaction,'love');
+  assert.equal(R.k,undefined);
+});

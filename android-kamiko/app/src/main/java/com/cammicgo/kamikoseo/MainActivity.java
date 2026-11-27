@@ -1161,7 +1161,7 @@ public class MainActivity extends Activity {
     String id = job.optString("id");
     String op = job.optString("operation");
     liStopRequested = false; liStopAt = 0; liUploadedPeople = -1; liLastUpload = 0;
-    liSentPeople.clear(); liBatchSeq = 0; liLastPeople = null;
+    liSentPeople.clear(); liBatchSeq = 0; liLastPeople = null; liPeopleIndex.clear();
     liProgressJob = "post_comments".equals(op) ? id : null;
     if (linkedinStopButton != null) { linkedinStopButton.setVisibility("post_comments".equals(op) ? View.VISIBLE : View.GONE); linkedinStopButton.setEnabled(true); linkedinStopButton.setText(I18n.t(this, "li_stop_report")); }
     if (!foreground || !linkedinMcpEnabled || linkedinWeb == null || id.isEmpty()) {
@@ -1391,6 +1391,29 @@ public class MainActivity extends Activity {
   private final java.util.HashSet<String> liSentPeople = new java.util.HashSet<>();
   private int liBatchSeq = 0;
   private JSONArray liLastPeople = null;
+  private final java.util.HashMap<String, Integer> liPeopleIndex = new java.util.HashMap<>();
+
+  /**
+   * People handed over by the reader since the last check, added to everything read for this job.
+   * A person seen again with a field learned later (reaction, headline, photo) is updated and sent again.
+   */
+  private synchronized void liAddPeople(JSONArray fresh) {
+    if (fresh == null || fresh.length() == 0) return;
+    if (liLastPeople == null) liLastPeople = new JSONArray();
+    for (int i = 0; i < fresh.length(); i++) {
+      JSONObject p = fresh.optJSONObject(i);
+      String k = liPersonKey(p);
+      if (p == null || k.equals("name:")) continue;
+      Integer at = liPeopleIndex.get(k);
+      if (at == null) { liPeopleIndex.put(k, liLastPeople.length()); liLastPeople.put(p); continue; }
+      JSONObject old = liLastPeople.optJSONObject(at);
+      boolean learned = false;
+      try {
+        for (String f : new String[]{"name", "headline", "reaction", "photoUrl"}) if ((!old.has(f) || old.isNull(f)) && p.has(f) && !p.isNull(f)) { old.put(f, p.opt(f)); learned = true; }
+      } catch (Exception ignored) {}
+      if (learned) liSentPeople.remove(k);
+    }
+  }
 
   /** The read-only reader shipped as an asset (also run by the Node fixture tests). */
   private String liLib() {
@@ -1415,8 +1438,8 @@ public class MainActivity extends Activity {
     String key = "k" + System.nanoTime();
     String q = JSONObject.quote(key);
     String js = lib + "\n;window.__cmgLiStop=" + (liStopRequested ? "true" : "false") + ";(function(){var R=window.__cmgLiRuns=window.__cmgLiRuns||{};var k=" + q + ";R[k]={done:false};"
-      + "Promise.resolve().then(function(){return window.__cmgLi." + fn + "(" + opts.toString() + ",function(p,snapshot){var v=R[k];if(v&&!v.done){v.partial=p;if(snapshot)v.snapshot=snapshot;}});})"
-      + ".then(function(v){R[k]={done:true,result:(v&&typeof v==='object'&&window.__cmgLi.fit)?window.__cmgLi.fit(v):v};},function(e){R[k]={done:true,error:String(e&&e.message||e)};});return 'started';})()";
+      + "Promise.resolve().then(function(){return window.__cmgLi." + fn + "(" + opts.toString() + ",function(p,snapshot){var v=R[k];if(v&&!v.done){if(window.__cmgLi.runProgress)window.__cmgLi.runProgress(v,p,snapshot);else{v.partial=p;if(snapshot)v.snapshot=snapshot;}}});})"
+      + ".then(function(x){var v=R[k]||(R[k]={});v.result=(x&&typeof x==='object'&&window.__cmgLi.fit)?window.__cmgLi.fit(x):x;v.done=true;},function(e){var v=R[k]||(R[k]={});v.error=String(e&&e.message||e);v.done=true;});return 'started';})()";
     linkedinWeb.evaluateJavascript(js, started -> pollLi(id, key, System.currentTimeMillis() + timeoutMs, System.currentTimeMillis() + (timeoutMs >= 120000 ? 3600000 : timeoutMs), cb));
   }
 
@@ -1424,10 +1447,11 @@ public class MainActivity extends Activity {
     ui.postDelayed(() -> {
       if (linkedinWeb == null) { cb.done(null, "LinkedIn page unavailable"); return; }
       String q = JSONObject.quote(key);
-      linkedinWeb.evaluateJavascript("(function(){var R=window.__cmgLiRuns,v=R&&R[" + q + "];if(!v)return JSON.stringify({lost:true});if(v.done)delete R[" + q + "];return JSON.stringify(v);})()", raw -> {
+      linkedinWeb.evaluateJavascript("(function(){var R=window.__cmgLiRuns,L=window.__cmgLi;if(L&&L.runPoll)return L.runPoll(R," + q + ",300);var v=R&&R[" + q + "];if(!v)return JSON.stringify({lost:true});if(v.done)delete R[" + q + "];return JSON.stringify(v);})()", raw -> {
         try {
           JSONObject v = new JSONObject(new JSONArray("[" + raw + "]").getString(0));
           if (v.optBoolean("lost")) { cb.done(null, "The LinkedIn page changed while it was being read"); return; }
+          if (id.equals(liProgressJob)) liAddPeople(v.optJSONArray("fresh"));
           if (v.optBoolean("done")) {
             Object res = v.opt("result");
             if (res instanceof JSONObject) cb.done((JSONObject) res, null);
@@ -1445,7 +1469,6 @@ public class MainActivity extends Activity {
           if (liStopRequested && liStopAt > 0 && System.currentTimeMillis() - liStopAt > 25000) {
             // The reader did not wind down in time: keep what it had read.
             JSONObject partial = v.optJSONObject("snapshot");
-            if (partial != null && partial.optJSONObject("reactions") != null && partial.optJSONObject("reactions").optJSONArray("people") != null) liLastPeople = partial.optJSONObject("reactions").optJSONArray("people");
             partial = partial == null ? new JSONObject() : compactSnapshot(partial);
             partial.remove("inProgress");
             partial.put("status", "partial"); partial.put("stoppedByUser", true);
@@ -1460,7 +1483,7 @@ public class MainActivity extends Activity {
             JSONObject partial = v.optJSONObject("snapshot");
             boolean hasSnapshot = partial != null;
             if (!hasSnapshot) partial = new JSONObject();
-            else if (id.equals(liProgressJob)) { JSONObject rxp = partial.optJSONObject("reactions"); if (rxp != null && rxp.optJSONArray("people") != null) liLastPeople = rxp.optJSONArray("people"); partial = compactSnapshot(partial); partial.remove("inProgress"); }
+            else if (id.equals(liProgressJob)) { partial = compactSnapshot(partial); partial.remove("inProgress"); }
             partial.put("status", hasSnapshot ? "partial" : "timeout");
             partial.put("timedOut", true);
             if (prog != null) partial.put("progress", prog);
@@ -2567,6 +2590,11 @@ public class MainActivity extends Activity {
       } catch (Exception e) { android.util.Log.w("CamMicGoLinkedIn", "Reader thumbnails", e); }
       // Every person read is saved in batches first; the final answer may then shed people to fit the relay
       // limit (the server merges the batches back), keeping the ones that have a thumbnail.
+      if (id.equals(liProgressJob)) try {
+        JSONObject frx = data.optJSONObject("reactions");
+        JSONArray fp = frx == null ? null : frx.optJSONArray("people");
+        if (fp != null) { JSONArray slim = new JSONArray(); for (int i = 0; i < fp.length(); i++) { JSONObject p = fp.optJSONObject(i); if (p == null) continue; JSONObject q = new JSONObject(); for (String f : new String[]{"name", "profileUrl", "headline", "reaction", "photoUrl"}) if (p.has(f) && !p.isNull(f)) q.put(f, p.opt(f)); slim.put(q); } liAddPeople(slim); }
+      } catch (Exception ignored) {}
       liFlushBatches(id);
       liFitFinal(data, id.equals(liProgressJob));
       ui.post(() -> finishLinkedInJob(id, data, null));
@@ -2655,10 +2683,7 @@ public class MainActivity extends Activity {
   private void liUploadProgress(String id, JSONObject snapshot, JSONObject prog) {
     if (id == null || !id.equals(liProgressJob) || liUploadBusy) return;
     long now = System.currentTimeMillis();
-    JSONObject rx = snapshot == null ? null : snapshot.optJSONObject("reactions");
-    JSONArray people = rx == null ? null : rx.optJSONArray("people");
-    if (people != null) liLastPeople = people;
-    JSONArray batch = liUnsentPeople(people, 100);
+    JSONArray batch = liUnsentPeople(liLastPeople, 100);
     boolean sendBatch = batch.length() >= 50;
     if (!sendBatch && now - liLastUpload < 15000) return;
     liUploadBusy = true; liLastUpload = now;
@@ -2667,7 +2692,7 @@ public class MainActivity extends Activity {
     try {
       body.put("id", id); body.put("progress", true);
       if (prog != null) body.put("counts", prog);
-      if (snapshot != null) body.put("result", compactSnapshot(snapshot));
+      if (snapshot != null) { JSONObject cs = compactSnapshot(snapshot); JSONObject crx = cs.optJSONObject("reactions"); if (crx != null && liLastPeople != null) { crx.put("savedInBatches", liLastPeople.length()); crx.put("retrieved", liLastPeople.length()); } body.put("result", cs); }
       if (sendBatch) { body.put("batch", batch); body.put("seq", seq); }
     } catch (Exception ignored) {}
     worker.execute(() -> {
@@ -2679,7 +2704,7 @@ public class MainActivity extends Activity {
       boolean s2 = stop, ok = sent;
       ui.post(() -> {
         liUploadBusy = false;
-        if (ok && sendBatch) { liBatchSeq = seq + 1; for (int i = 0; i < batch.length(); i++) liSentPeople.add(liPersonKey(batch.optJSONObject(i))); }
+        if (ok && sendBatch) { liBatchSeq = seq + 1; synchronized (MainActivity.this) { for (int i = 0; i < batch.length(); i++) liSentPeople.add(liPersonKey(batch.optJSONObject(i))); } }
         if (s2 && !liStopRequested) { liStopRequested = true; if (linkedinStopButton != null) { linkedinStopButton.setEnabled(false); linkedinStopButton.setText(I18n.t(this, "li_stopping")); } }
       });
     });
@@ -2692,7 +2717,7 @@ public class MainActivity extends Activity {
   }
 
   /** People of the list not yet saved on the server (name, link, headline, reaction, photo link only). */
-  private JSONArray liUnsentPeople(JSONArray people, int max) {
+  private synchronized JSONArray liUnsentPeople(JSONArray people, int max) {
     JSONArray out = new JSONArray();
     if (people == null) return out;
     for (int i = 0; i < people.length() && out.length() < max; i++) {
@@ -2716,7 +2741,7 @@ public class MainActivity extends Activity {
         JSONObject body = new JSONObject().put("id", id).put("progress", true).put("batch", batch).put("seq", liBatchSeq);
         RelayClient.request("POST", "/api/devices/linkedin", RelayClient.token(this), body.toString());
         liBatchSeq++;
-        for (int i = 0; i < batch.length(); i++) liSentPeople.add(liPersonKey(batch.optJSONObject(i)));
+        synchronized (this) { for (int i = 0; i < batch.length(); i++) liSentPeople.add(liPersonKey(batch.optJSONObject(i))); }
       } catch (Exception e) { android.util.Log.w("CamMicGoLinkedIn", "Batch flush failed", e); return; }
     }
   }
