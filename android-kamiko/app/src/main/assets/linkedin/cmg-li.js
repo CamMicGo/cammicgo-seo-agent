@@ -356,6 +356,48 @@
     return { posts: posts, strategies: strategies, primaries: primaries.length };
   }
 
+  // Video posts: the player's own controls ("Play", "Pause", "Fullscreen", "0:12 / 1:30", "Loaded: 45%")
+  // are not the post text, and they change while the video plays.
+  var PLAYER_SEL = 'video,[class*="video-js"],[class*="vjs-"],[data-vjs-player],[class*="media-player"],[class*="video-player"],[class*="player-controls"],[class*="media-controls"],[data-view-name*="video-player"],[data-testid*="video-player"]';
+  var PLAYER_LINE_RX = /^(play|pause|replay|lire|lecture|lancer la vid[eé]o|mettre en pause|reprendre|rejouer|fullscreen|full screen|non-fullscreen|exit full ?screen|plein [eé]cran|quitter le (mode )?plein [eé]cran|mute|unmute|couper le son|activer le son|r[eé]activer le son|volume.*|captions?.*|sous-titres?.*|subtitles?.*|settings|param[eè]tres|playback (speed|rate).*|vitesse de lecture.*|loaded.*|charg[eé].*|current time.*|temps (actuel|[eé]coul[eé]).*|remaining time.*|temps restant.*|duration.*|dur[eé]e.*|stream type.*|live|direct|seek to live.*|picture[- ]in[- ]picture|incrustation.*|\d+(?:[.,]\d+)?\s*x|normal|close modal dialog|this is a modal window.*|beginning of dialog window.*|end of dialog window.*|video player|lecteur vid[eé]o|progress bar|barre de progression|-?\d{1,2}:\d{2}(?::\d{2})?(?:\s*\/\s*-?\d{1,2}:\d{2}(?::\d{2})?)?|\d{1,3}(?:[.,]\d+)?\s*%)$/i;
+  function hasPlayer(c) { return !!(c && c.querySelector && c.querySelector(PLAYER_SEL)); }
+  /** The player blocks of a post: player elements inside it, with short text (controls), not the whole post. */
+  function players(c) { return qsa(c, PLAYER_SEL).filter(function (e) { return e !== c && txt(e).length < 600; }); }
+  function inPlayer(e, c) { return players(c).some(function (pl) { return pl === e || pl.contains(e); }); }
+  function cleanPostText(t, video) {
+    var ls = lines(t);
+    if (video) ls = ls.filter(function (x) { return !PLAYER_LINE_RX.test(x.trim()); });
+    return ls.join('\n');
+  }
+  /** What identifies a post when it has no URN: author + its text without anything that moves (timers, counters). */
+  function postKey(x) {
+    return x.urn || norm(x.author || '') + '|' + textKey(x);
+  }
+  function textKey(x) {
+    var t = norm(String(x.text || '')).replace(/\d{1,2}:\d{2}(?::\d{2})?/g, ' ').replace(/\d+(?:[.,]\d+)?\s*%/g, ' ').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+    return t.slice(0, 160);
+  }
+  /** Same post read twice (scrolling, a playing video, a second layout): same URN, or same author and same text start, or same author, counters and time with no text to compare. */
+  function samePost(a, b) {
+    if (a.urn && b.urn) return sameTarget(a.urn, b.urn);
+    if (norm(a.author || '') !== norm(b.author || '')) return false;
+    var ka = textKey(a), kb = textKey(b), n = Math.min(ka.length, kb.length, 80);
+    if (n >= 20 && ka.slice(0, n) === kb.slice(0, n)) return true;
+    if (n < 20 && a.reactionCount != null && a.reactionCount === b.reactionCount && a.commentCount === b.commentCount && (a.time || '') === (b.time || '')) return true;
+    return false;
+  }
+  function mergePosts(list) {
+    var out = [];
+    list.forEach(function (x) {
+      var d = out.find(function (y) { return samePost(x, y); });
+      if (!d) { out.push(x); return; }
+      ['urn', 'postUrl', 'authorProfileUrl', 'authorPhotoUrl', 'authorHeadline', 'time', 'reactionCount', 'commentCount', 'repostCount'].forEach(function (k) { if (d[k] == null || d[k] === '') d[k] = x[k]; });
+      if ((x.text || '').length > (d.text || '').length) d.text = x.text;
+      d.duplicatesMerged = (d.duplicatesMerged || 0) + 1;
+    });
+    return out;
+  }
+
   var BODY_SEL = '[class*="commentary"],[class*="update-components-text"],[class*="feed-shared-text"],[class*="feed-shared-inline-show-more-text"],[data-view-name*="commentary"],[data-testid*="commentary"],[data-test-id*="commentary"],[dir="ltr"],[dir="auto"]';
   function extractPost(p) {
     var c = p.el;
@@ -373,20 +415,22 @@
     var headline = headLines.filter(function (x) { return x !== info.name && !BADGE_RX.test(x) && !TIME_RX.test(x.replace(/^[•·]\s*/, '')) && !/^(follow|suivre|\+ follow|\+ suivre)$/i.test(x); })[0] || '';
     var timeEl = c.querySelector('time');
     var time = timeEl ? (attr(timeEl, 'datetime') || txt(timeEl)) : (headLines.map(function (x) { return x.replace(/^[•·]\s*/, ''); }).find(function (x) { return TIME_RX.test(x); }) || '');
-    var bodies = qsa(c, BODY_SEL).filter(function (b) { return !(actorBox && actorBox.contains(b)) && !(actor && b.contains(actor)) && !inCommentBlock(b, c) && repliesIn(b, c) === 0 && txt(b).length > 0; });
-    bodies.sort(function (x, y) { return txt(y).length - txt(x).length; });
-    var text = bodies.length ? txt(bodies[0]) : '';
+    var video = hasPlayer(c);
+    var bodies = qsa(c, BODY_SEL).filter(function (b) { return !(actorBox && actorBox.contains(b)) && !(actor && b.contains(actor)) && !inCommentBlock(b, c) && repliesIn(b, c) === 0 && !(video && inPlayer(b, c)) && cleanPostText(txt(b), video).length > 0; });
+    bodies.sort(function (x, y) { return cleanPostText(txt(y), video).length - cleanPostText(txt(x), video).length; });
+    var text = bodies.length ? cleanPostText(txt(bodies[0]), video) : '';
     if (!text) {
       // What is left once the header, action bars, counters and comments are set aside.
       var avoid = (headRoot ? [headRoot] : []).concat(qsa(c, PROFILE_LINK).filter(function (a) { return profileUrl(a.href || attr(a, 'href')) === info.profileUrl; }))
         .concat(commentBlocks(c).map(function (x) { return x.block; }))
+        .concat(video ? players(c) : [])
         .concat(controls(c).filter(function (e) { var k = actionKind(e); return k && k !== 'overflow'; }).map(function (e) { return e.parentElement && e.parentElement !== c ? e.parentElement : e; }));
       var parts = [];
       var walk = function (n) { arr(n.children).forEach(function (ch) { if (avoid.some(function (x) { return x === ch || x.contains(ch); })) return; if (avoid.some(function (x) { return ch.contains(x); })) { walk(ch); return; } if (vis(ch)) parts.push(txt(ch)); }); };
       walk(c);
       var skip = {};
       headLines.forEach(function (x) { skip[x] = 1; });
-      text = lines(parts.join('\n')).filter(function (x) { return !skip[x] && !ACTION_LINE_RX.test(x) && !RX.reactionCount.test(x) && !RX.commentCount.test(x) && !TIME_RX.test(x); }).join('\n');
+      text = lines(cleanPostText(parts.join('\n'), video)).filter(function (x) { return !skip[x] && !ACTION_LINE_RX.test(x) && !RX.reactionCount.test(x) && !RX.commentCount.test(x) && !TIME_RX.test(x); }).join('\n');
     }
     var imgs = qsa(c, 'img').filter(function (i) {
       if (isReactionIcon(i) || (actorBox && actorBox.contains(i)) || inCommentBlock(i, c)) return false;
@@ -422,6 +466,7 @@
       commentCount: counts.comments,
       repostCount: counts.reposts,
       detectedBy: Object.keys(p.vias || {}),
+      video: video || undefined,
     };
   }
   /** "Marie Curie and 13 others" → 14; "14 reactions" → 14; a bare "14" next to reaction icons → 14. */
@@ -477,12 +522,15 @@
     var st = pageState();
     if (st.signedOut) return { status: 'signed_out', posts: [], diagnostics: { page: st } };
     await waitFor(function () { return findPosts().posts.length || noResults(); }, o.firstWait || 12000, 400);
-    var byKey = {}, order = [];
+    var byKey = {}, order = [], elKey = new WeakMap();
     for (var i = 0; i <= rounds; i++) {
       var f = findPosts();
       f.posts.forEach(function (p) {
         var x = extractPost(p);
-        var key = x.urn || norm(x.author + '|' + x.text.slice(0, 160));
+        // The same element is the same post, whatever its text shows now (a playing video changes it).
+        var key = elKey.get(p.el) || postKey(x);
+        if (!byKey[key]) { var twin = order.find(function (k) { return samePost(byKey[k], x); }); if (twin) { key = twin; if (!elKey.has(p.el)) byKey[twin].duplicatesMerged = (byKey[twin].duplicatesMerged || 0) + 1; } }
+        elKey.set(p.el, key);
         if (!byKey[key]) { order.push(key); byKey[key] = x; } else if (x.text.length > byKey[key].text.length) byKey[key] = x;
         if (o.mark && !p.el.hasAttribute('data-cmg-post')) p.el.setAttribute('data-cmg-post', key.slice(0, 60));
       });
@@ -491,7 +539,7 @@
       if (o.stopWhen && order.some(function (k) { return o.stopWhen(byKey[k]); })) break;
       if (i < rounds) { scrollMore(); invalidate(); await waitFor(function () { return countNew(byKey) > 0; }, 1800, 500); }
     }
-    var posts = order.map(function (k) { return byKey[k]; });
+    var posts = mergePosts(order.map(function (k) { return byKey[k]; }));
     var page = pageState(), status;
     if (posts.length) status = 'ok';
     else if (page.noResults) status = 'no_results';
@@ -502,7 +550,7 @@
     return out;
   }
   function countNew(byKey) {
-    return findPosts().posts.filter(function (p) { var x = extractPost(p); return !byKey[x.urn || norm(x.author + '|' + x.text.slice(0, 160))]; }).length;
+    return findPosts().posts.filter(function (p) { var x = extractPost(p); return !byKey[postKey(x)]; }).length;
   }
 
   async function searchPosts(o, progress) {
@@ -575,6 +623,7 @@
     if (posts.length === 1) return { scope: posts[0].el, how: 'single_post' };
     if (want.keywords || want.author || want.authorProfileUrl) {
       var ranked = posts.map(function (p) { return { p: p, m: matchScore(extractPost(p), want) }; }).filter(function (x) { return (want.author || want.authorProfileUrl) ? x.m.authorMatch : x.m.keywordHits > 0; }).sort(function (a, b) { return b.m.score - a.m.score; });
+      if (ranked.length > 1) { var top = extractPost(ranked[0].p); ranked = ranked.filter(function (x, i) { return i === 0 || !samePost(top, extractPost(x.p)); }); }
       if (ranked.length === 1 || (ranked.length > 1 && ranked[0].m.score > ranked[1].m.score)) return { scope: ranked[0].p.el, how: 'match' };
       if (ranked.length > 1) return { scope: null, how: 'ambiguous', candidates: ranked.slice(0, 5).map(function (x) { var e = extractPost(x.p); return { author: e.author, text: e.text.slice(0, 140), postUrl: e.postUrl, score: x.m.score }; }) };
     }
@@ -1508,6 +1557,6 @@
     readPostFull: pub(readPostFull),
     findProfile: pub(findProfile),
     fit: fit,
-    _test: { apiPeople: apiPeople, apiReadReactions: apiReadReactions, installTap: installTap, actionKind: actionKind, isOverflow: isOverflow, refusal: refusal, safeClick: safeClick, classifyReaction: classifyReaction, parseCount: parseCount, reactionTotal: reactionTotal, cleanName: cleanName, urnFromString: urnFromString, clickLog: clickLog, matchScore: matchScore },
+    _test: { apiPeople: apiPeople, apiReadReactions: apiReadReactions, installTap: installTap, actionKind: actionKind, isOverflow: isOverflow, refusal: refusal, safeClick: safeClick, classifyReaction: classifyReaction, parseCount: parseCount, reactionTotal: reactionTotal, cleanName: cleanName, urnFromString: urnFromString, clickLog: clickLog, matchScore: matchScore, samePost: samePost, mergePosts: mergePosts, cleanPostText: cleanPostText, postKey: postKey },
   };
 })();
