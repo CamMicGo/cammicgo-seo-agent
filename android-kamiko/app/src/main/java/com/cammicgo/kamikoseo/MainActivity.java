@@ -1695,6 +1695,8 @@ public class MainActivity extends Activity {
           }
           long nextDeadline = deadline;
           if (prog != null && !prog.toString().equals(lastLiHeartbeat)) { lastLiHeartbeat = prog.toString(); nextDeadline = Math.min(hardDeadline, System.currentTimeMillis() + 600000); }
+          // While the app itself reads the reaction list, the page only waits: that is not a stalled read.
+          if (id.equals(liNativeJob) && liNativeDone == null) nextDeadline = Math.min(hardDeadline, System.currentTimeMillis() + 600000);
           if (System.currentTimeMillis() > Math.min(nextDeadline, hardDeadline)) {
             JSONObject partial = v.optJSONObject("snapshot");
             boolean hasSnapshot = partial != null;
@@ -3071,6 +3073,8 @@ public class MainActivity extends Activity {
 
   private void finishLinkedInJob(String id, JSONObject result, String error) {
     if (id != null && !id.isEmpty()) { if (liFinishedJobs.contains(id)) return; liFinishedJobs.add(id); }
+    // The page must not go on reading for a job that is over (it would scroll for nothing).
+    if (linkedinWeb != null && id != null && id.equals(liProgressJob)) linkedinWeb.evaluateJavascript("window.__cmgLiStop=true;", null);
     if (liStopRequested && result != null) { try { result.put("stoppedByUser", true); if ("ok".equals(result.optString("status"))) result.put("status", "partial"); } catch (Exception ignored) {} }
     liStopRequested = false; liStopAt = 0; liProgressJob = null; liUploadedPeople = -1; liLastUpload = 0;
     if (linkedinStopButton != null) linkedinStopButton.setVisibility(View.GONE);
