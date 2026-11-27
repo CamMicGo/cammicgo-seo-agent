@@ -49,3 +49,12 @@ test('people saved by the app reach the total: the extraction becomes complete (
   const st=mergeReactionPeople({status:'partial',stoppedByUser:true,comments:{complete:true},reactions:{people:[],expectedTotal:3}},saved) as Record<string,any>;
   assert.equal(st.status,'partial');
 });
+
+test('a gap of one private member out of 2 609 is reported as not listed by LinkedIn, the reactions count as complete', ()=>{
+  const saved=Array.from({length:2608},(_,i)=>({name:'P'+i,profileUrl:'https://www.linkedin.com/in/p'+i+'/',reaction:'like'}));
+  const r=mergeReactionPeople({status:'partial',comments:{complete:true},reactions:{status:'no_people_read',note:'Read 0 of 2609',people:[],expectedTotal:2609}},saved) as Record<string,any>;
+  assert.equal(r.reactions.complete,true);assert.equal(r.reactions.status,'ok');assert.equal(r.reactions.notListedByLinkedIn,1);
+  assert.match(r.reactions.note,/2608 of 2609/);assert.equal(r.status,'ok');
+  const far=mergeReactionPeople({status:'partial',reactions:{people:[],expectedTotal:3000}},saved) as Record<string,any>;
+  assert.equal(far.reactions.complete,undefined);assert.match(far.reactions.note,/Read 2608 of 3000/);
+});

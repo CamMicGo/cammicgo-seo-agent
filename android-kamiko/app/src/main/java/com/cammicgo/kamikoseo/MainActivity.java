@@ -3091,9 +3091,42 @@ public class MainActivity extends Activity {
         if (error != null) body.put("error", error);
         // Diagnostics travel with failures too (what LinkedIn showed), never file contents.
         if (result != null) body.put("result", result);
-        RelayClient.request("POST", "/api/devices/linkedin", RelayClient.token(this), body.toString());
+        String resp = RelayClient.request("POST", "/api/devices/linkedin", RelayClient.token(this), body.toString());
+        String reportUrl = new JSONObject(resp).optString("reportUrl", "");
+        if (reportUrl.startsWith("https://")) ui.post(() -> liSaveReportUrl(id, reportUrl));
       } catch (Exception e) { android.util.Log.w("CamMicGoLinkedIn", "Relay result failed", e); }
     });
+  }
+
+  /** The report link of a finished extraction, kept with the request in the activity list. */
+  private void liSaveReportUrl(String id, String url) {
+    try {
+      SharedPreferences prefs = RelayClient.prefs(this);
+      JSONArray list = new JSONArray(prefs.getString("linkedinAssistantHistory", "[]"));
+      for (int i = 0; i < list.length(); i++) { JSONObject o = list.optJSONObject(i); if (o != null && id.equals(o.optString("id"))) o.put("reportUrl", url); }
+      prefs.edit().putString("linkedinAssistantHistory", list.toString()).apply();
+      historyShown = null; if (historyList != null) refreshHistory(prefs);
+      Toast.makeText(this, I18n.t(this, "li_report_ready"), Toast.LENGTH_LONG).show();
+    } catch (Exception ignored) {}
+  }
+
+  /** Open the report (browser) or save its self-contained HTML export in Downloads. */
+  private void liReportActions(String jobId, String url, String details) {
+    new AlertDialog.Builder(this).setTitle(I18n.t(this, "li_report_title"))
+      .setItems(new String[]{I18n.t(this, "li_report_open"), I18n.t(this, "li_report_save"), I18n.t(this, "li_report_details")}, (d, which) -> {
+        try {
+          if (which == 0) startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+          else if (which == 1) {
+            android.app.DownloadManager dm = (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+            String name = "rapport-linkedin-" + (jobId.length() > 8 ? jobId.substring(0, 8) : jobId) + ".html";
+            android.app.DownloadManager.Request r = new android.app.DownloadManager.Request(Uri.parse(url + (url.contains("?") ? "&" : "?") + "download=html"))
+              .setTitle(name).setMimeType("text/html")
+              .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+              .setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, name);
+            if (dm != null) { dm.enqueue(r); Toast.makeText(this, I18n.t(this, "li_report_saving"), Toast.LENGTH_LONG).show(); }
+          } else showDiagnostic("Demande LinkedIn MCP", details);
+        } catch (Exception e) { Toast.makeText(this, String.valueOf(e.getMessage()), Toast.LENGTH_LONG).show(); }
+      }).show();
   }
 
   /** Recipient (or search words) and file name shown in the activity list; never message text. */
@@ -3956,6 +3989,7 @@ public class MainActivity extends Activity {
         entry.put("error", job.optString("error", ""));
         entry.put("jobId", job.optString("id", ""));
         entry.put("agentName", job.optString("agentName", ""));
+        entry.put("reportUrl", job.optString("reportUrl", ""));
         h.put(entry);
       }
       JSONArray calls = new JSONArray(mcpDebugRaw);
@@ -4098,7 +4132,7 @@ public class MainActivity extends Activity {
       row.addView(texts, new LinearLayout.LayoutParams(0, -2, 1));
       final String vid = e.optString("videoId");
       final long at = e.optLong("at");
-      row.setOnClickListener(v -> { if (linkedinEntry) { showDiagnostic("Demande LinkedIn MCP", "ID : " + e.optString("jobId") + "\nÉtat : " + e.optString("status") + "\nErreur : " + e.optString("error", "aucune")); } else if (mcpDebugEntry) { JSONObject debug = e.optJSONObject("requestDebug"); showDiagnostic("Diagnostic identité MCP (données masquées)", debug == null ? "Métadonnées absentes pour cette requête." : prettyJson(debug.toString())); } else if (notebookEntry) selectTab(2); else startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=" + vid))); });
+      row.setOnClickListener(v -> { if (linkedinEntry) { String det = "ID : " + e.optString("jobId") + "\nÉtat : " + e.optString("status") + "\nErreur : " + e.optString("error", "aucune") + (e.optString("reportUrl", "").isEmpty() ? "" : "\nRapport : " + e.optString("reportUrl")); if (e.optString("reportUrl", "").startsWith("https://")) liReportActions(e.optString("jobId"), e.optString("reportUrl"), det); else showDiagnostic("Demande LinkedIn MCP", det); } else if (mcpDebugEntry) { JSONObject debug = e.optJSONObject("requestDebug"); showDiagnostic("Diagnostic identité MCP (données masquées)", debug == null ? "Métadonnées absentes pour cette requête." : prettyJson(debug.toString())); } else if (notebookEntry) selectTab(2); else startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=" + vid))); });
       if (waitingEntry) {
         // Live server state, not local history: nothing to remove.
         historyList.addView(row);

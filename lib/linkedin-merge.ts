@@ -26,7 +26,14 @@ export function mergeReactionPeople(result:unknown,saved:O[]):unknown{
  rx.byType=by;rx.retrieved=people.length;rx.restoredFromBatches=added;
  const exp=typeof rx.expectedTotal==='number'?rx.expectedTotal:null;
  const anon=typeof rx.anonymousRows==='number'?rx.anonymousRows:0;
- if(exp!=null&&people.length+anon>=exp&&rx.stopped!==true){rx.complete=true;rx.partial=false;rx.missing=[];
+ // LinkedIn counts private members and some deleted accounts it never lists: a gap of at most 0.2 %
+ // (at least 2 people) is reported as such, not as a partial read.
+ const gap=exp==null?null:exp-(people.length+anon);
+ const hiddenOk=gap!=null&&gap>0&&gap<=Math.max(2,Math.round(exp!*0.002));
+ rx.status='ok';
+ rx.note=exp==null?`${people.length} reactions read.`:gap!<=0?'Every reaction counted by LinkedIn was read.':hiddenOk?`${people.length} of ${exp} reactions read; the ${gap} left are not listed by LinkedIn (private members or deleted accounts).`:`Read ${people.length} of ${exp} reactions.`;
+ if(hiddenOk)rx.notListedByLinkedIn=gap;
+ if(exp!=null&&(gap!<=0||hiddenOk)&&rx.stopped!==true){rx.complete=true;rx.partial=false;rx.missing=[];
   // Every reaction is there and the comments are complete too: the extraction is complete, not partial.
   const cm=root.comments&&typeof root.comments==='object'?root.comments as O:null;
   if(root.status==='partial'&&root.stoppedByUser!==true&&(!cm||cm.complete!==false))root.status='ok';}

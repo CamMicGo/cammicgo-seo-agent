@@ -291,6 +291,20 @@ async function takeSavedPeople(userId:string,id:string):Promise<Array<Record<str
  return out;
 }
 
+/**
+ * Builds the report of a finished post extraction right away (the phone shows its link and can save it);
+ * an assistant checking the job later gets the same report, never a second one.
+ */
+export async function buildJobReport(userId:string,id:string):Promise<string|undefined>{
+ if(!/^[0-9a-f-]{36}$/i.test(id))return undefined;
+ const rows=await sb<Array<{result:unknown}>>('/rest/v1/cmg_linkedin_jobs?id=eq.'+id+'&user_id=eq.'+userId+'&status=eq.done&operation=eq.post_comments&select=result').catch(()=>[]);
+ const r=rows[0]?.result;
+ if(!r||typeof r!=='object')return undefined;
+ await hostThumbnails(userId,r);
+ await keepDeliveredResult(userId,id,r);
+ const u=(r as Record<string,unknown>).reportUrl;
+ return typeof u==='string'?u:undefined;
+}
 /** The delivered result (hosted photos, report link) replaces the raw one, so a later check reuses it. */
 export async function keepDeliveredResult(userId:string,id:string,result:unknown){
  if(!/^[0-9a-f-]{36}$/i.test(id)||!result||typeof result!=='object')return;
