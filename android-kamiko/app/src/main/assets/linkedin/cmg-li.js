@@ -998,6 +998,138 @@
    * Reaction list memory in the LinkedIn page's own storage (this phone only, 6 hours): everyone read is kept
    * as the list is scrolled, across passes and across a new run on the same post, then sent in one result.
    */
+  // ---------------------------------------------------------------- fast read (opt-in, off by default)
+  /**
+   * The LinkedIn page asks its own service for each new piece of the reaction list. When the user turned
+   * "fast read" on in the app, the reader notes that request (address and headers, as the page sent it)
+   * and asks for the next pieces the same way, with the same piece size, a 2-4 s pause between pieces,
+   * a daily cap, and a stop at the first error or check. Nothing is hard-coded: if LinkedIn changes, the
+   * reader falls back to reading the page.
+   */
+  var REACTION_REQ = /voyager\/api\/.*reaction|reactions?.*(start|count)[=:]/i;
+  function installTap() {
+    var T = window.__cmgLiTap;
+    if (T) return T;
+    T = window.__cmgLiTap = { reactions: null, fetch: window.fetch && window.fetch.bind(window) };
+    var keep = function (url, method, headers, body) {
+      if (!url || !REACTION_REQ.test(url) || !/[?&(,]start[=:]\d+/.test(url) || !/[?&(,]count[=:]\d+/.test(url)) return;
+      if (String(method || 'GET').toUpperCase() !== 'GET') return;
+      var abs = url; try { abs = new URL(url, location.href).href; } catch (e) { /* keep */ }
+      if (!/^https:\/\/([a-z0-9-]+\.)?linkedin\.com\//i.test(abs)) return;
+      T.reactions = { url: abs, headers: headers || {}, body: body || null, at: Date.now() };
+    };
+    if (T.fetch) {
+      window.fetch = function (input, init) {
+        try {
+          var url = typeof input === 'string' ? input : (input && input.url) || '';
+          var h = {}, src = (init && init.headers) || (input && input.headers);
+          if (src && typeof src.forEach === 'function') src.forEach(function (v, k) { h[k] = v; }); else if (src) Object.keys(src).forEach(function (k) { h[k] = src[k]; });
+          keep(url, (init && init.method) || (input && input.method), h);
+        } catch (e) { /* never break the page */ }
+        return T.fetch.apply(window, arguments);
+      };
+    }
+    var X = window.XMLHttpRequest && window.XMLHttpRequest.prototype;
+    if (X && !X.__cmgTap) {
+      var open = X.open, setH = X.setRequestHeader, send = X.send;
+      X.open = function (m, u) { this.__cmg = { m: m, u: u, h: {} }; return open.apply(this, arguments); };
+      X.setRequestHeader = function (k, v) { if (this.__cmg) this.__cmg.h[k] = v; return setH.apply(this, arguments); };
+      X.send = function () { try { if (this.__cmg) keep(this.__cmg.u, this.__cmg.m, this.__cmg.h); } catch (e) { /* page first */ } return send.apply(this, arguments); };
+      X.__cmgTap = true;
+    }
+    return T;
+  }
+  function apiText(x) { return typeof x === 'string' ? x : (x && typeof x.text === 'string' ? x.text : null); }
+  function apiPhoto(o) {
+    var best = null;
+    (function walk(n, d) {
+      if (!n || typeof n !== 'object' || d > 8 || best) return;
+      if (typeof n.rootUrl === 'string' && Array.isArray(n.artifacts) && n.artifacts.length) {
+        var a = n.artifacts.slice().sort(function (x, y) { return Math.abs((x.width || 0) - 200) - Math.abs((y.width || 0) - 200); })[0];
+        if (a && a.fileIdentifyingUrlPathSegment) best = n.rootUrl + a.fileIdentifyingUrlPathSegment;
+        return;
+      }
+      Object.keys(n).forEach(function (k) { walk(n[k], d + 1); });
+    })(o, 0);
+    return best && /^https:\/\/media\.licdn\.com\//.test(best) ? best : null;
+  }
+  /** People of one answer of LinkedIn's reaction service (both its older and newer shapes). */
+  function apiPeople(json) {
+    var all = [], byUrn = {};
+    (function walk(n, d) {
+      if (!n || typeof n !== 'object' || d > 12) return;
+      if (Array.isArray(n)) { n.forEach(function (x) { walk(x, d + 1); }); return; }
+      all.push(n);
+      if (typeof n.entityUrn === 'string') byUrn[n.entityUrn] = n;
+      Object.keys(n).forEach(function (k) { if (n[k] && typeof n[k] === 'object') walk(n[k], d + 1); });
+    })(json, 0);
+    var out = [];
+    all.forEach(function (o) {
+      if (typeof o.reactionType !== 'string') return;
+      var type = classifyReaction(o.reactionType.toLowerCase()) || null;
+      var lk = o.reactorLockup, p = null;
+      if (lk && typeof lk === 'object') {
+        p = { name: apiText(lk.title), headline: apiText(lk.subtitle), profileUrl: lk.navigationUrl || null, photoUrl: apiPhoto(lk.image) };
+      } else {
+        var a = o.actor || o['*actor'] || o.actorUrn || o.reactor || o['*reactor'];
+        if (typeof a === 'string') a = byUrn[a];
+        if (a && typeof a === 'object') {
+          var mini = a.miniProfile || a['*miniProfile'] && byUrn[a['*miniProfile']] || a;
+          var nm = [mini.firstName, mini.lastName].filter(Boolean).join(' ') || apiText(mini.name) || null;
+          var pid = mini.publicIdentifier;
+          p = { name: nm, headline: mini.occupation || apiText(mini.headline) || null, profileUrl: pid ? 'https://www.linkedin.com/in/' + pid + '/' : (mini.url || null), photoUrl: apiPhoto(mini.picture || mini.profilePicture || mini.logo) };
+        }
+      }
+      if (!p || !p.profileUrl || !p.name) return;
+      var u = profileUrl(p.profileUrl) || p.profileUrl;
+      out.push({ name: p.name.slice(0, 120), profileUrl: u, photoUrl: p.photoUrl, headline: p.headline ? String(p.headline).slice(0, 200) : null, reaction: type, reactionFromIcon: type, reactionIconUrl: null, fromApi: true });
+    });
+    return out;
+  }
+  function apiDay() {
+    var d = new Date().toISOString().slice(0, 10), v = null;
+    try { v = JSON.parse(localStorage.getItem('cmgLiApiDay') || 'null'); } catch (e) { /* off */ }
+    return v && v.d === d ? v : { d: d, posts: 0, people: 0 };
+  }
+  function apiDaySave(v) { try { localStorage.setItem('cmgLiApiDay', JSON.stringify(v)); } catch (e) { /* off */ } }
+  var API_LIMITS = { postsPerDay: 6, peoplePerDay: 8000 };
+  /** Asks for the next pieces of the reaction list the way the page did. Returns what happened. */
+  async function apiReadReactions(people, expected, progress) {
+    var T = window.__cmgLiTap, req = T && T.reactions;
+    if (!req) return { used: false, reason: 'no_request_seen' };
+    var c = req.url.match(/[?&(,]count[=:](\d+)/), st = req.url.match(/[?&(,]start[=:](\d+)/);
+    var count = c ? parseInt(c[1], 10) : 0;
+    if (!count || !st || count > 100) return { used: false, reason: 'no_paging' };
+    var day = apiDay();
+    if (day.posts >= API_LIMITS.postsPerDay || day.people >= API_LIMITS.peoplePerDay) return { used: false, reason: 'daily_cap', day: day };
+    day.posts++; apiDaySave(day);
+    var headers = {}; Object.keys(req.headers || {}).forEach(function (k) { headers[k] = req.headers[k]; });
+    if (!Object.keys(headers).some(function (k) { return /^csrf-token$/i.test(k); })) { var js = (document.cookie.match(/JSESSIONID="?([^";]+)/) || [])[1]; if (js) headers['csrf-token'] = js; }
+    var start = 0, pages = 0, empty = 0, added = 0, reason = 'end', t0 = Date.now();
+    while (pages < 300) {
+      if (stopRequested()) { reason = 'stopped'; break; }
+      if (expected != null && start >= expected + count) break;
+      var url = req.url.replace(/([?&(,]start[=:])\d+/, '$1' + start);
+      var json = null;
+      try {
+        var res = await T.fetch(url, { method: 'GET', headers: headers, credentials: 'include' });
+        if (!res.ok) { reason = 'http_' + res.status; break; }
+        var ct = (res.headers && res.headers.get && res.headers.get('content-type')) || '';
+        if (ct && !/json/i.test(ct)) { reason = 'not_json'; break; }
+        json = await res.json();
+      } catch (e) { reason = 'network'; break; }
+      var got = apiPeople(json), fresh = 0;
+      got.forEach(function (p) { var k = p.profileUrl; if (!people[k]) { people[k] = p; fresh++; } else { var old = people[k]; ['photoUrl', 'headline', 'reaction', 'name'].forEach(function (f) { if (!old[f] && p[f]) old[f] = p[f]; }); } });
+      added += fresh; pages++;
+      day.people += fresh; apiDaySave(day);
+      if (progress) progress({ stage: 'reaction_fast', reactionsRead: Object.keys(people).length, expectedTotal: expected, page: pages, beat: pages }, Object.keys(people).map(function (k) { return people[k]; }));
+      if (!got.length) { if (++empty >= 2) { reason = 'no_more'; break; } } else empty = 0;
+      if (day.people >= API_LIMITS.peoplePerDay) { reason = 'daily_cap'; break; }
+      start += count;
+      await sleep(2000 + Math.floor(Math.random() * 2000));
+    }
+    return { used: true, reason: reason, pages: pages, added: added, pieceSize: count, seconds: Math.round((Date.now() - t0) / 1000) };
+  }
   function memKey(o) { var m = String((o && o.postUrl) || location.href).match(/(activity|ugcPost|share)[:-](\d{8,22})/i); return m ? 'cmgLiPeople:' + m[2] : null; }
   function memLoad(k) { try { var v = JSON.parse(localStorage.getItem(k) || 'null'); if (v && Date.now() - v.t < 6 * 3600e3 && v.p) return v.p; } catch (e) { /* storage off */ } return {}; }
   function memSave(k, people) {
@@ -1048,6 +1180,7 @@
     o = o || {};
     var st = pageState();
     if (st.signedOut) return { status: 'signed_out', people: [], diagnostics: { page: st } };
+    if (o.fastRead === true) installTap();
     invalidate();
     if (progress) progress({stage:'reaction_detect_dialog'}, []);
     var root = reactionsRoot(null);
@@ -1083,9 +1216,23 @@
     window.__cmgLiExpected = expectedTotal;
     if (allTab) { safeClick(allTab.el, 'tab'); await sleep(600); }
     if (progress) progress({stage:'reaction_collect', expectedTotal:expectedTotal, reactionsRead:Object.keys(people).length}, Object.keys(people).map(function(k){return people[k];}));
+    var fast = null;
+    if (o.fastRead === true) {
+      // The first piece is asked for by the page when the list opens: give it a moment, scroll once if needed.
+      await waitFor(function () { return window.__cmgLiTap && window.__cmgLiTap.reactions; }, 4000, 300);
+      if (!(window.__cmgLiTap && window.__cmgLiTap.reactions)) { (scrollers(root)[0] || root).scrollTop += 2000; await waitFor(function () { return window.__cmgLiTap && window.__cmgLiTap.reactions; }, 5000, 300); }
+      fast = await apiReadReactions(people, expectedTotal, progress2);
+      perTab.push(Object.assign({ tab: 'fast' }, fast, { total: Object.keys(people).length }));
+    }
     var d1 = {};
+    if (fast && fast.used && expectedTotal != null && Object.keys(people).length >= expectedTotal * 0.97) {
+      // Fast read got (nearly) everything: the page list is not scrolled again.
+      perTab.push({ tab: 'all', expected: expectedTotal, read: 0, skipped: 'fast_read', total: Object.keys(people).length });
+    } else {
     var readAll = await collectPeople(root, null, expectedTotal, people, progress2, d1);
     perTab.push(Object.assign({ tab: 'all', expected: expectedTotal, read: readAll, total: Object.keys(people).length }, d1));
+    }
+    if (readAll == null) readAll = Object.keys(people).length;
     var cats = tabs.filter(function (t) { return !t.all && t.type; });
     var fromIcons = function (type) { return Object.keys(people).filter(function (k) { return people[k].reaction === type; }).length; };
     for (var i = 0; i < cats.length; i++) {
@@ -1146,6 +1293,7 @@
       perCategory: perTab,
       missing: missing,
       restoredFromMemory: restored || undefined,
+      fastRead: fast || undefined,
       passes: perTab.filter(function (x) { return x.tab === 'all'; }).length,
       complete: complete && !stopRequested(),
       partial: !complete || stopRequested(),
@@ -1296,6 +1444,6 @@
     readPostFull: pub(readPostFull),
     findProfile: pub(findProfile),
     fit: fit,
-    _test: { actionKind: actionKind, isOverflow: isOverflow, refusal: refusal, safeClick: safeClick, classifyReaction: classifyReaction, parseCount: parseCount, reactionTotal: reactionTotal, cleanName: cleanName, urnFromString: urnFromString, clickLog: clickLog, matchScore: matchScore },
+    _test: { apiPeople: apiPeople, apiReadReactions: apiReadReactions, installTap: installTap, actionKind: actionKind, isOverflow: isOverflow, refusal: refusal, safeClick: safeClick, classifyReaction: classifyReaction, parseCount: parseCount, reactionTotal: reactionTotal, cleanName: cleanName, urnFromString: urnFromString, clickLog: clickLog, matchScore: matchScore },
   };
 })();

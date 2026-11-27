@@ -1060,6 +1060,21 @@ public class MainActivity extends Activity {
     toolsRow.addView(exportJson, toolLp(-2, 0, true));
     root.addView(toolsRow, new LinearLayout.LayoutParams(-1, -2));
     exportJson.setOnClickListener(v -> exportLinkedInThreadJson());
+    // Fast read (off by default): the reader asks LinkedIn's own service for the next pieces of a reaction
+    // list, the way the page does, with pauses and a daily cap. The user turns it on, knowing the risk.
+    boolean fastOn = RelayClient.prefs(this).getBoolean("liFastRead", false);
+    Button fastRead = toolButton(I18n.t(this, fastOn ? "li_fast_on" : "li_fast_off"), UiIcons.Kind.DOWNLOAD);
+    setToggleState(fastRead, fastOn);
+    fastRead.setOnClickListener(v -> {
+      boolean on = RelayClient.prefs(this).getBoolean("liFastRead", false);
+      if (on) { RelayClient.prefs(this).edit().putBoolean("liFastRead", false).apply(); fastRead.setText(I18n.t(this, "li_fast_off")); setToggleState(fastRead, false); return; }
+      new AlertDialog.Builder(this).setTitle(I18n.t(this, "li_fast_title")).setMessage(I18n.t(this, "li_fast_warning"))
+        .setNegativeButton(android.R.string.cancel, null)
+        .setPositiveButton(android.R.string.ok, (d, w) -> { RelayClient.prefs(this).edit().putBoolean("liFastRead", true).apply(); fastRead.setText(I18n.t(this, "li_fast_on")); setToggleState(fastRead, true); }).show();
+    });
+    LinearLayout fastRow = toolbarRow();
+    fastRow.addView(fastRead, toolLp(0, 1, true));
+    root.addView(fastRow, new LinearLayout.LayoutParams(-1, -2));
     // Shown while a post extraction runs: stops reading and builds the report from what was read.
     linkedinStopButton = toolButton(I18n.t(this, "li_stop_report"), UiIcons.Kind.DOC);
     linkedinStopButton.setVisibility(View.GONE);
@@ -1552,6 +1567,7 @@ public class MainActivity extends Activity {
         if (!v.isEmpty()) o.put(k, v.length() > 300 ? v.substring(0, 300) : v);
       }
       o.put("limit", Math.min(2000, Math.max(1, job.optInt("limit", 100))));
+      if (RelayClient.prefs(this).getBoolean("liFastRead", false)) o.put("fastRead", true);
     } catch (Exception ignored) {}
     return o;
   }
