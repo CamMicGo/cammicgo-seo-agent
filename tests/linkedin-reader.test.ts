@@ -378,3 +378,16 @@ test('unit: progress hands people over once, in small pieces, and the final answ
   assert.equal(c.fresh.at(-1).reaction,'love');
   assert.equal(R.k,undefined);
 });
+
+test('unit: a pause in the reader also ends when the app checks the page (frozen page timers)', async ()=>{
+  const {w,li}=page('search-no-results.html','https://www.linkedin.com/feed/');
+  // Freeze the page's timers, as Android does for a page it thinks is hidden.
+  const real=w.setTimeout;w.setTimeout=()=>0;
+  const R:Li={k:{done:false}};
+  let ended=false;
+  const pending=li.readComments({firstWait:2000}).then(()=>{ended=true;});
+  for(let i=0;i<400&&!ended;i++){await new Promise(r=>setTimeout(r,5));li.runPoll(R,'k',10);}
+  w.setTimeout=real;
+  await pending;
+  assert.equal(ended,true,'the reader finished with frozen timers, driven by the checks alone');
+});
