@@ -1064,6 +1064,18 @@ public class MainActivity extends Activity {
     LinearLayout stopRow = toolbarRow();
     stopRow.addView(linkedinStopButton, toolLp(0, 1, true));
     root.addView(stopRow, new LinearLayout.LayoutParams(-1, -2));
+    // Live counters of a post extraction: comments and reactions read against LinkedIn's totals.
+    liProgressPanel = new LinearLayout(this);
+    liProgressPanel.setOrientation(LinearLayout.VERTICAL);
+    liProgressPanel.setPadding(dp(12), dp(4), dp(12), dp(6));
+    liProgressPanel.setVisibility(View.GONE);
+    liCommentsText = new TextView(this); liCommentsText.setTextSize(13);
+    liCommentsBar = new android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal); liCommentsBar.setMax(1000);
+    liReactionsText = new TextView(this); liReactionsText.setTextSize(13);
+    liReactionsBar = new android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal); liReactionsBar.setMax(1000);
+    liProgressPanel.addView(liCommentsText); liProgressPanel.addView(liCommentsBar, new LinearLayout.LayoutParams(-1, dp(8)));
+    liProgressPanel.addView(liReactionsText); liProgressPanel.addView(liReactionsBar, new LinearLayout.LayoutParams(-1, dp(8)));
+    root.addView(liProgressPanel, new LinearLayout.LayoutParams(-1, -2));
     linkedinWeb.setWebChromeClient(new WebChromeClient() {
       @Override public boolean onShowFileChooser(WebView view, android.webkit.ValueCallback<Uri[]> callback, FileChooserParams params) {
         if (linkedinPendingAttachment != null && linkedinPendingAttachmentJob != null) {
@@ -1162,8 +1174,10 @@ public class MainActivity extends Activity {
     String op = job.optString("operation");
     liStopRequested = false; liStopAt = 0; liUploadedPeople = -1; liLastUpload = 0;
     liSentPeople.clear(); liBatchSeq = 0; liLastPeople = null; liPeopleIndex.clear(); liUploadsOk = 0; liUploadsFailed = 0; liQueuedInPage = 0; liUploadError = ""; liUploadBusy = false;
+    liCommentsRead = 0; liCommentsTotal = -1; liReactionsRead = 0; liReactionsTotal = -1; liStage = "";
     liProgressJob = "post_comments".equals(op) ? id : null;
     if (linkedinStopButton != null) { linkedinStopButton.setVisibility("post_comments".equals(op) ? View.VISIBLE : View.GONE); linkedinStopButton.setEnabled(true); linkedinStopButton.setText(I18n.t(this, "li_stop_report")); }
+    liDrawCounts();
     if (!foreground || !linkedinMcpEnabled || linkedinWeb == null || id.isEmpty()) {
       if (!id.isEmpty()) finishLinkedInJob(id, null, "LinkedIn control unavailable before execution");
       else linkedinPollBusy = false;
@@ -1392,6 +1406,11 @@ public class MainActivity extends Activity {
   private int liBatchSeq = 0;
   private JSONArray liLastPeople = null;
   private final java.util.HashMap<String, Integer> liPeopleIndex = new java.util.HashMap<>();
+  private LinearLayout liProgressPanel;
+  private TextView liCommentsText, liReactionsText;
+  private android.widget.ProgressBar liCommentsBar, liReactionsBar;
+  private int liCommentsRead = 0, liCommentsTotal = -1, liReactionsRead = 0, liReactionsTotal = -1;
+  private String liStage = "";
   // Uploads of a running extraction have their own thread: nothing else in the app can hold them up.
   private final ExecutorService liUploadWorker = Executors.newSingleThreadExecutor();
   private int liUploadsOk = 0, liUploadsFailed = 0, liQueuedInPage = 0;
@@ -2673,7 +2692,41 @@ public class MainActivity extends Activity {
   }
 
   /** Counter on the stop button: reactions read / LinkedIn's total (or comments read). */
+  /** Keeps the latest known counters (each reader message carries only part of them) and draws the panel. */
+  private void liTrackCounts(JSONObject prog) {
+    if (prog == null) return;
+    if (prog.has("commentsVisible")) liCommentsRead = Math.max(liCommentsRead, prog.optInt("commentsVisible"));
+    if (prog.has("commentsRead")) liCommentsRead = prog.optInt("commentsRead");
+    if (prog.has("commentsExpected") && !prog.isNull("commentsExpected")) liCommentsTotal = prog.optInt("commentsExpected");
+    if (prog.has("reactionsRead")) liReactionsRead = Math.max(liReactionsRead, prog.optInt("reactionsRead"));
+    if (prog.has("expectedTotal") && !prog.isNull("expectedTotal")) liReactionsTotal = prog.optInt("expectedTotal");
+    if (prog.has("stage")) liStage = prog.optString("stage");
+    liDrawCounts();
+  }
+  private void liDrawCounts() {
+    if (liProgressPanel == null) return;
+    if (liProgressJob == null) { liProgressPanel.setVisibility(View.GONE); return; }
+    liProgressPanel.setVisibility(View.VISIBLE);
+    int received = liLastPeople == null ? 0 : liLastPeople.length(), saved;
+    synchronized (this) { saved = liSentPeople.size(); }
+    int rx = Math.max(liReactionsRead, received);
+    liCommentsText.setText(I18n.t(this, "li_progress_comments", liCommentsRead, liCommentsTotal < 0 ? "?" : String.valueOf(liCommentsTotal)));
+    liCommentsBar.setProgress(liCommentsTotal > 0 ? Math.min(1000, liCommentsRead * 1000 / liCommentsTotal) : 0);
+    liReactionsText.setText(I18n.t(this, "li_progress_reactions", rx, liReactionsTotal < 0 ? "?" : String.valueOf(liReactionsTotal), saved));
+    liReactionsBar.setProgress(liReactionsTotal > 0 ? Math.min(1000, rx * 1000 / liReactionsTotal) : 0);
+    liReactionsBar.setSecondaryProgress(liReactionsTotal > 0 ? Math.min(1000, saved * 1000 / liReactionsTotal) : 0);
+  }
+  /** The same counters, sent to the server with every progress message (read by linkedin_job_status). */
+  private JSONObject liCountsJson() throws Exception {
+    int received = liLastPeople == null ? 0 : liLastPeople.length(), saved;
+    synchronized (this) { saved = liSentPeople.size(); }
+    JSONObject o = new JSONObject();
+    o.put("stage", liStage).put("commentsRead", liCommentsRead).put("commentsTotal", liCommentsTotal < 0 ? JSONObject.NULL : liCommentsTotal)
+      .put("reactionsRead", Math.max(liReactionsRead, received)).put("reactionsSaved", saved).put("reactionsTotal", liReactionsTotal < 0 ? JSONObject.NULL : liReactionsTotal);
+    return o;
+  }
   private void liShowProgress(JSONObject prog) {
+    liTrackCounts(prog);
     if (linkedinStopButton == null || linkedinStopButton.getVisibility() != View.VISIBLE || liStopRequested) return;
     String count = prog.has("reactionsRead") ? I18n.t(this, "li_reactions_count", prog.optInt("reactionsRead"), prog.isNull("expectedTotal") || !prog.has("expectedTotal") ? "?" : String.valueOf(prog.optInt("expectedTotal")))
       : prog.has("commentsRead") ? I18n.t(this, "li_comments_count", prog.optInt("commentsRead")) : "";
@@ -2692,7 +2745,8 @@ public class MainActivity extends Activity {
     if (id == null || !id.equals(liProgressJob) || liUploadBusy) return;
     JSONArray batch = liUnsentPeople(liLastPeople, 100);
     boolean sendBatch = batch.length() >= 50;
-    if (!sendBatch && now - liLastUpload < 15000) return;
+    // Every 5 s at least, so an assistant checking the job sees the counters move.
+    if (!sendBatch && now - liLastUpload < 5000) return;
     liUploadBusy = true; liLastUpload = now; liUploadBusySince = now;
     JSONObject body = new JSONObject();
     final int seq = liBatchSeq;
@@ -2705,6 +2759,7 @@ public class MainActivity extends Activity {
       synchronized (this) { saved = liSentPeople.size(); }
       phone.put("reactionsReceived", received).put("reactionsSaved", saved).put("waitingInPage", liQueuedInPage).put("uploadsOk", liUploadsOk).put("uploadsFailed", liUploadsFailed).put("batches", liBatchSeq).put("lastUploadError", liUploadError).put("at", now);
       counts.put("phone", phone);
+      counts.put("counters", liCountsJson());
       body.put("counts", counts);
       if (snapshot != null) { JSONObject cs = compactSnapshot(snapshot); JSONObject crx = cs.optJSONObject("reactions"); if (crx != null) { crx.put("savedInBatches", saved); crx.put("retrieved", received); } body.put("result", cs); }
       if (sendBatch) { body.put("batch", batch); body.put("seq", seq); }
@@ -2721,6 +2776,7 @@ public class MainActivity extends Activity {
       ui.post(() -> {
         liUploadBusy = false;
         if (ok) { liUploadsOk++; } else { liUploadsFailed++; liUploadError = e2.length() > 160 ? e2.substring(0, 160) : e2; }
+        if (ok && sendBatch) ui.post(this::liDrawCounts);
         if (ok && sendBatch) { liBatchSeq = seq + 1; synchronized (MainActivity.this) { for (int i = 0; i < batch.length(); i++) liSentPeople.add(liPersonKey(batch.optJSONObject(i))); } }
         if (s2 && !liStopRequested) { liStopRequested = true; if (linkedinStopButton != null) { linkedinStopButton.setEnabled(false); linkedinStopButton.setText(I18n.t(this, "li_stopping")); } }
       });
@@ -2797,6 +2853,7 @@ public class MainActivity extends Activity {
     if (liStopRequested && result != null) { try { result.put("stoppedByUser", true); if ("ok".equals(result.optString("status"))) result.put("status", "partial"); } catch (Exception ignored) {} }
     liStopRequested = false; liStopAt = 0; liProgressJob = null; liUploadedPeople = -1; liLastUpload = 0;
     if (linkedinStopButton != null) linkedinStopButton.setVisibility(View.GONE);
+    if (liProgressPanel != null) liProgressPanel.setVisibility(View.GONE);
     String extractionStatus = result == null ? "" : result.optString("status");
     recordLinkedInActivity(id, "", error != null || "timeout".equals(extractionStatus) || "failed".equals(extractionStatus) ? "failed" : "partial".equals(extractionStatus) ? "partial" : "done", error == null ? "" : error, "");
     if (id != null && id.equals(linkedinBusyJob)) linkedinBusyJob = null;
