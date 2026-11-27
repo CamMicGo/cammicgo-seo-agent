@@ -227,6 +227,26 @@ test('filters work in a real browser with scripts OFF: bars, donut legend, compa
  }}finally{await b.close();}
 });
 
+test('comments and reaction lists scroll in their own boxes; the comment search keeps only matching comments', async t=>{
+ const b=await browser();if(!b){t.skip('playwright not installed');return;}
+ const {writeFileSync,mkdtempSync}=await import('node:fs');const {tmpdir}=await import('node:os');const {join}=await import('node:path');
+ const file=join(mkdtempSync(join(tmpdir(),'rep-')),'r.html');writeFileSync(file,reportHtml(built(),B,{nonce:'n1'}));
+ try{
+  const p=await (await b.newContext({viewport:{width:390,height:800}})).newPage();p.setDefaultTimeout(5000);
+  await p.goto('file://'+file);
+  assert.equal(await p.evaluate(`getComputedStyle(document.querySelector('#cp .cards')).overflowY`),'auto');
+  assert.equal(await p.evaluate(`getComputedStyle(document.querySelector('#pp-reaction .cards')).overflowY`),'auto');
+  const shown=()=>p.evaluate(`[...document.querySelectorAll('#cp .cm')].filter(e=>getComputedStyle(e).display!=='none').length`);
+  const all=await shown();
+  const word=await p.evaluate(`(document.querySelector('#cp .cm .txt')||document.querySelector('#cp .cm')).textContent.trim().split(/\\s+/).filter(w=>w.length>4)[0]`) as string;
+  await p.fill('#cq',word.toUpperCase());
+  const some=await shown();assert.ok(some>=1&&some<=all,'matching comments only');
+  await p.fill('#cq','zzzzqqq');assert.equal(await shown(),0);assert.equal(await p.evaluate(`document.getElementById('cqn').hidden`),false,'"no comment matches" shown');
+  await p.fill('#cq','');assert.equal(await shown(),all);
+  await p.context().close();
+ }finally{await b.close();}
+});
+
 test('PDF print rules and self-contained HTML export', ()=>{
  const html=reportHtml(built(),B,{nonce:'n1'});
  const print=html.slice(html.indexOf('@media print'));
@@ -234,7 +254,8 @@ test('PDF print rules and self-contained HTML export', ()=>{
  assert.match(print,/\.wait \.cards\{display:block!important\}/);
  assert.match(print,/print-color-adjust:exact/);
  assert.match(html,/\.panel \.pcount::before\{content:"" counter\(n\) " profil\(s\) affiché\(s\)"\}/,'visible count made by CSS counters');
- assert.match(print,/\.tools,\.reset,\.hint,\.phd\{display:none!important\}/);
+ assert.match(print,/\.tools,\.reset,\.hint,\.phd,\.cq,\.nomsg\{display:none!important\}/);
+ assert.match(print,/\.panel \.cards,\.cpanel \.cards\{max-height:none!important;overflow:visible!important\}/,'print shows the scroll boxes in full');
  assert.match(html,/addEventListener\('beforeprint',function\(\)\{document\.querySelectorAll\('details'\)/,'glossary opened for the PDF');
  const file=reportHtml(built(),B,{images:{[B+'/api/linkedin/thumb/0.jpg']:'data:image/jpeg;base64,AAA'},reactionImg:()=>'data:image/png;base64,BBB',interactive:true});
  assert.match(file,/<a class="bar" href="#f-reaction-funny"/,'export keeps the filters (CSS)');

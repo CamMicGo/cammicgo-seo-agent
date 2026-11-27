@@ -436,3 +436,15 @@ test('unit: fast read gives up on a request that never answers (one retry), so p
   const r=await li._test.apiReadReactions({},100,null);
   assert.equal(r.reason,'timeout');assert.equal(r.added,1);assert.equal(n,3,'first page, then the hanging one tried twice');
 });
+
+test('fixture: mobile note "select Most recent" under the list is used to switch the sort, then the hidden comments are read', async ()=>{
+  const extra=`<article id="hid" hidden class="comments-comment-entity" data-id="urn:li:comment:(activity:7322222222222222222,7499999999999999999)"><a href="https://www.linkedin.com/in/zoe-hidden/"><img src="https://media.licdn.com/dms/image/v2/zoe/profile-displayphoto/0.jpg" alt="View Zoe Hidden’s profile"></a><div class="comments-comment-meta"><a href="https://www.linkedin.com/in/zoe-hidden/"><span>Zoe Hidden</span></a><div>Analyst</div><time>1h</time></div><div class="comments-comment-item__main-content" dir="ltr">Only in most recent.</div><div><button aria-label="React Like to Zoe’s comment">Like</button><button aria-label="Reply to Zoe’s comment">Reply</button></div></article>`;
+  const note=`<p>Some comments may not appear in <b>Most relevant</b>. To see them, select <a href="#" onclick="document.getElementById('hid').hidden=false;this.closest('p').remove();return false;">Most recent</a>.</p>`;
+  const html=fixture('post-comments-desktop-en.html').replace('7 comments on','8 comments on').replace('>7 comments<','>8 comments<').replace('<div id="more-slot"></div>','<div id="more-slot"></div>'+extra).replace('</main>',note+'</main>');
+  const {w,li}=page('','https://www.linkedin.com/feed/update/urn:li:activity:7322222222222222222/',{html});
+  const r=await li.readComments({postUrl:'https://www.linkedin.com/feed/update/urn:li:activity:7322222222222222222/'});
+  assert.equal(r.post.commentSort,'recent_from_notice');
+  assert.ok(r.comments.some((c:Li)=>c.author==='Zoe Hidden'),JSON.stringify(r.comments.map((c:Li)=>c.author)));
+  assert.equal(r.comments.length,8);
+  noForbiddenClicks(w);
+});

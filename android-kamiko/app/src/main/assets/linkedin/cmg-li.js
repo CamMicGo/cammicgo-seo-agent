@@ -744,6 +744,32 @@
     await sleep(500);
     return 'recent';
   }
+  /**
+   * Mobile layout: no sort menu, but a note under the list ("Some comments may not appear in Most relevant.
+   * To see them, select Most recent.") whose "Most recent" words are the switch. Never a menu.
+   */
+  var HIDDEN_NOTE_RX = /peuvent ne pas appara[iî]tre|may not appear|pueden no aparecer|m[oö]glicherweise nicht|potrebbero non|podem n[aã]o aparecer/i;
+  function noticeRecentLink(scope) {
+    var root = (scope && scope.closest && scope.closest('[role=dialog]')) || document.body;
+    var cands = qsa(root, 'a,button,[role=button],[role=link],strong,b,span').filter(function (e) {
+      if (!vis(e) || isOverflow(e)) return false;
+      var t = (ownText(e) || txt(e) || '').trim();
+      if (!RECENT_RX.test(t) || t.length > 40) return false;
+      var box = e.closest('p,div,section,li') || e.parentElement;
+      return !!box && HIDDEN_NOTE_RX.test(txt(box));
+    });
+    return cands.map(function (e) { return clickable(e); })[0] || null;
+  }
+  async function sortFromNotice(scope) {
+    var link = noticeRecentLink(scope);
+    if (!link) return null;
+    clickLog.push({ purpose: 'sort_comments', label: 'notice: ' + (ownText(link) || txt(link)).slice(0, 60) });
+    var before = commentBlocks(scope).length;
+    try { link.click(); invalidate(); } catch (x) { return 'refused'; }
+    await waitFor(function () { invalidate(); return commentBlocks(scope).length !== before || !noticeRecentLink(scope); }, 5000, 300);
+    await sleep(600);
+    return 'recent_from_notice';
+  }
   /** Set by the app (window.__cmgLiStop) when the user or the assistant asks to stop and keep what was read. */
   function stopRequested() { return !!window.__cmgLiStop; }
   async function expandComments(scope, maxRounds, progress, expected) {
@@ -832,11 +858,25 @@
     }
     var limit = Math.max(1, Math.min(2000, o.limit || 100));
     var sorted = await sortCommentsByRecent(scope);
+    // A "Most recent" link inside the note is not a sign that the list is already sorted that way.
+    if (sorted !== 'recent' && (sorted !== 'already_recent' || noticeRecentLink(scope))) { var ns = await sortFromNotice(scope); if (ns) sorted = ns; else if (sorted === 'already_recent') sorted = 'no_sort_control'; }
     var rounds = o.maxRounds || Math.min(600, Math.max(40, Math.ceil((post.commentCount || 0) / 2) + 20));
     var exp = await expandComments(scope, rounds, progress, post.commentCount);
-    var comments = exp.comments.slice(0, limit);
+    var all = {}; exp.comments.forEach(function (c) { all[c.key] = c; });
+    // The note that switches to "Most recent" often shows only at the end of the "Most relevant" list:
+    // switch there and read again, keeping everything already read.
+    if (!/recent/.test(sorted) && (post.commentCount == null || Object.keys(all).length < post.commentCount)) {
+      var ns2 = await sortFromNotice(scope);
+      if (ns2) {
+        sorted = ns2;
+        var exp2 = await expandComments(scope, rounds, progress, post.commentCount);
+        exp2.comments.forEach(function (c) { if (!all[c.key]) all[c.key] = c; });
+        exp.clicks = (exp.clicks || 0) + (exp2.clicks || 0);
+      }
+    }
+    var comments = Object.keys(all).map(function (k) { return all[k]; }).slice(0, limit);
     var expected = post.commentCount;
-    if (o.diagnose || sorted !== 'recent') post.commentSort = sorted;
+    post.commentSort = sorted;
     var complete = expected != null ? comments.length >= expected : null;
     var res = {
       status: comments.length ? 'ok' : (expected === 0 ? 'no_comments' : (opened === 'no_comment_control' ? 'comment_control_missing' : 'extraction_failed')),

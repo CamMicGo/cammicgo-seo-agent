@@ -1,6 +1,6 @@
 import {NextRequest,NextResponse} from 'next/server';
 import {deviceFromAuthorization,sb,touchDevice} from '@/lib/device-relay';
-import {claimLinkedIn,finishLinkedIn,saveLinkedInBatch,saveLinkedInProgress} from '@/lib/linkedin-relay';
+import {buildJobReport,claimLinkedIn,finishLinkedIn,saveLinkedInBatch,saveLinkedInProgress} from '@/lib/linkedin-relay';
 export const runtime='nodejs';
 export async function GET(req:NextRequest){
  try{
@@ -29,6 +29,8 @@ export async function POST(req:NextRequest){
    return NextResponse.json(await saveLinkedInProgress(device.id,data.id,result));
   }
   const ok=await finishLinkedIn(device.id,data.id,data.result,data.error);
-  return NextResponse.json({ok},{status:ok?200:409});
+  // A post extraction gets its report now: the app shows the link (open, save as HTML).
+  const reportUrl=ok&&!data.error?await buildJobReport(device.user_id,data.id).catch(()=>undefined):undefined;
+  return NextResponse.json({ok,...(reportUrl?{reportUrl}:{})},{status:ok?200:409});
  }catch(e){return NextResponse.json({error:e instanceof Error?e.message:'Unavailable'},{status:503});}
 }
