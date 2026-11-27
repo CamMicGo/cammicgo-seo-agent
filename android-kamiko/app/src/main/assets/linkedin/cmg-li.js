@@ -770,7 +770,7 @@
       // LinkedIn keeps the same "load more" button for every page: only clicks that bring nothing count
       // towards giving up on it.
       if (clicked && n > nBefore) retries.set(clicked, 0);
-      if (progress) progress({ commentsVisible: n, expandClicks: clicks, beat:round });
+      if (progress) progress({ stage: 'comments', commentsVisible: n, commentsExpected: expected == null ? null : expected, expandClicks: clicks, beat:round });
       if (n === last && !targets.length) { if (++stable >= (expected != null && n < expected ? 6 : 2)) break; } else stable = 0;
       last = n;
     }
@@ -1240,7 +1240,7 @@
     var c, r;
     try { c = await readComments(o, progress); } catch (e) { c = { status: 'error', error: String(e && e.message || e), comments: [] }; }
     if (c.status === 'navigate') return { status: 'navigate', stage: 'comments', url: c.url };
-    if (progress) progress({ stage: 'reactions', commentsRead: (c.comments || []).length }, { status: 'partial', post: c.post || null, postUrl: c.postUrl || null, comments: c, reactions: { people: [], complete: false, partial: true } });
+    if (progress) progress({ stage: 'reactions', commentsRead: (c.comments || []).length, commentsExpected: c.displayedCount == null ? null : c.displayedCount }, { status: 'partial', post: c.post || null, postUrl: c.postUrl || null, comments: c, reactions: { people: [], complete: false, partial: true } });
     if (stopRequested()) r = { status: 'stopped', stopped: true, people: [], retrieved: 0, complete: false, partial: true, missing: [], note: 'Stopped on request before the reactions were read.' };
     else try { r = await readReactions(Object.assign({}, o, { postUrl: o.postUrl || c.postUrl || '', freshExtraction: o.freshExtraction === true }), function (p, people) { if (progress) progress(p, { status: 'partial', post: c.post || null, postUrl: c.postUrl || null, comments: c, reactions: { people: people || [], retrieved: (people || []).length, complete: false, partial: true } }); }); } catch (e2) { r = { status: 'error', error: String(e2 && e2.message || e2), people: [] }; }
     var post = c.post || null;
