@@ -199,7 +199,15 @@
     s = String(s || '').replace(/\s+/g, ' ').trim();
     var m = s.match(/^(?:view|voir|visit|photo de profil de|profile picture of|profil de)\s+(?:le profil de\s+|the profile of\s+)?(.+?)(?:['’]s profile|['’]s profile picture|\s*,.*)?$/i);
     if (m && m[1]) s = m[1];
-    s = s.replace(/['’]s (profile|photo).*$/i, '').replace(/\s*[•·].*$/, '').replace(/\s+(?:\(?(?:1er|2e|3e|1st|2nd|3rd)\+?\)?)$/i, '').trim();
+    s = s.replace(/['’]s (profile|photo).*$/i, '').replace(/\s*[•·].*$/, '').trim();
+    // Mobile headers put badges and the degree on the name line: "Ivan P. Vérifié Profil 3e et +".
+    for (var i = 0; i < 6; i++) {
+      var t = s.replace(/\s+(?:\(?(?:1er|2e|3e|1st|2nd|3rd)(?:\s*(?:et|and|y|und|e)\s*)?\+?\)?)$/i, '')
+        .replace(/\s+(?:v[eé]rifi[eé]e?|verified|premium|profil|profile|suivi|following|auteur|author|(?:open|ouvert) to work)$/i, '').trim();
+      if (t === s) break;
+      s = t;
+    }
+    s = s.replace(/,\s*(?:à l.écoute de nouvelles opportunités|open to work|recrute|hiring|disponible).*$/i, '').trim();
     return s.slice(0, 150);
   }
   function nameLines(e) {
@@ -707,7 +715,8 @@
       text = lines(parts.join('\n')).filter(function (x) { return !skip[x] && !ACTION_LINE_RX.test(x) && !TIME_RX.test(x) && !BADGE_RX.test(x) && x !== info.name; }).join('\n');
     }
     text = text.replace(/\n?(…\s*)?(see more|voir plus)$/i, '').trim();
-    var headline = head.filter(function (x) { var y = x.replace(/^[•·]\s*/, ''); return y !== info.name && !BADGE_RX.test(y) && !TIME_RX.test(y) && y.indexOf(info.name) !== 0; })[0] || '';
+    if (!text) text = textAfterTime(b, scope, info);
+    var headline = head.filter(function (x) { var y = x.replace(/^[•·]\s*/, ''); return y !== info.name && !BADGE_RX.test(y) && !TIME_RX.test(y) && y.indexOf(info.name) !== 0 && cleanName(y) !== info.name && (!text || text.indexOf(y) < 0); })[0] || '';
     var timeEl = qsa(b.block, 'time').filter(own)[0];
     var time = timeEl ? (attr(timeEl, 'datetime') || txt(timeEl)) : (lines(txt(headerRoot || b.block)).map(function (x) { return x.replace(/^[•·]\s*/, ''); }).find(function (x) { return TIME_RX.test(x); }) || '');
     var reactions = null;
@@ -747,6 +756,32 @@
     }
     var min = Math.min.apply(null, depth.length ? depth : [0]);
     return depth.map(function (d) { return d - min > 0 ? 1 : 0; });
+  }
+  /**
+   * Mobile comment cards: one block (sometimes inside the author link) holding name, headline, time, then
+   * the text. The text is what follows the time line, without action bar, counters and nested replies.
+   */
+  function textAfterTime(b, scope, info) {
+    var avoid = (b.reply ? [b.reply.parentElement] : []).concat(commentBlocks(scope).filter(function (x) { return x !== b && b.block.contains(x.block); }).map(function (x) { return x.block; }));
+    var parts = [];
+    var walk = function (n) { arr(n.children).forEach(function (ch) { if (avoid.some(function (a) { return a === ch || a.contains(ch); })) return; if (avoid.some(function (a) { return ch.contains(a); }) || ch.children.length) { walk(ch); return; } if (vis(ch)) parts.push(txt(ch)); }); if (!n.children.length && vis(n)) parts.push(txt(n)); };
+    walk(b.block);
+    var ls = lines(parts.join('\n')).map(function (x) { return x.trim(); }).filter(Boolean);
+    var t = -1;
+    for (var i = 0; i < ls.length; i++) if (TIME_RX.test(ls[i].replace(/^[•·]\s*/, '')) || /^[•·]?\s*\d+\s*(j|h|min|sem|mois|an|d|w|mo|y)\b/i.test(ls[i])) { t = i; break; }
+    if (t < 0) return '';
+    return ls.slice(t + 1).filter(function (x) { return !ACTION_LINE_RX.test(x) && !BADGE_RX.test(x) && !/^\d+$/.test(x) && !/^[•·|]$/.test(x) && x !== info.name && !/^(modifi[eé]|edited)$/i.test(x); }).join('\n');
+  }
+  /** Shape of a block without its text (tags, roles, a few class names, text lengths): to adapt the reader to a new layout. */
+  function skeleton(e, depth) {
+    if (!e || e.nodeType !== 1) return '';
+    depth = depth || 0;
+    if (depth > 9) return '…';
+    var tag = e.tagName.toLowerCase(), r = attr(e, 'role'), c = cls(e).split(/\s+/).filter(function (x) { return x && x.length < 30; }).slice(0, 2).join('.');
+    var a = tag === 'a' ? '[' + ((attr(e, 'href') || '').match(/\/(in|company|feed|posts|school)\//) || ['', 'x'])[1] + ']' : '';
+    var kids = arr(e.children).slice(0, 8).map(function (ch) { return skeleton(ch, depth + 1); }).filter(Boolean);
+    var own = arr(e.childNodes).filter(function (n) { return n.nodeType === 3 && n.data.trim(); }).map(function (n) { return n.data.trim().length; });
+    return tag + (r ? '[role=' + r + ']' : '') + a + (c ? '.' + c : '') + (own.length ? '"' + own.join(',') + '"' : '') + (kids.length ? '{' + kids.join(' ') + '}' : '');
   }
   function readCommentsNow(scope) {
     var blocks = commentBlocks(scope);
@@ -957,6 +992,9 @@
     if (expected != null && comments.length < expected) res.unclickedControls = controls(scope.closest('[role=dialog],[aria-modal=true],dialog[open]') || document.body).filter(function (e) { var t = (ownText(e) || label(e) || '').trim(); return t.length < 60 && /r[eé]ponse|repl|respuesta|antwort|commentaire|comment|more|plus|previous|pr[eé]c[eé]dent/i.test(t) && !/^(r[eé]pondre|reply|responder|antworten|commenter|comment)$/i.test(t) && !isOverflow(e); }).slice(0, 12).map(function (e) { return (ownText(e) || label(e)).trim().slice(0, 60); });
     if (res.status !== 'ok' || o.diagnose) res.diagnostics = { page: pageState(), dom: domShape({ commentBlocks: commentBlocks(scope).length, replyControls: replyButtons(scope).length, documentCommentBlocks: commentBlocks(document).length, postsOnPage: findPosts().posts.length, replySamples: replyButtons(document).slice(0, 3).map(function (r) { var path = []; for (var q = r; q && q !== document.body && path.length < 14; q = q.parentElement) path.push(q.tagName.toLowerCase() + (attr(q, 'role') ? '[' + attr(q, 'role') + ']' : '') + (q === scope ? '*' : '')); return { label: (label(r) || ownText(r)).slice(0, 40), inScope: scope.contains(r), path: path.join('<') }; }) }) };
     else res.diagnostics = { clicks: clickLog.slice(-20) };
+    // Comments read without text: keep the shape (no text, no names) of the first block to fix the layout.
+    var emptyTexts = comments.filter(function (c) { return !c.text; }).length;
+    if (emptyTexts) { var fb = commentBlocks(scope)[0]; res.diagnostics.emptyTexts = emptyTexts; res.diagnostics.commentLayout = fb ? skeleton(fb.outer).slice(0, 3000) : null; }
     return res;
   }
 
@@ -1067,7 +1105,7 @@
   }
   function readPerson(r, typeHint) {
     var info = r.link ? actorInfo(r.link, r.row) : { name: cleanName(nameLines(r.row)[0] || ''), photoUrl: r.photo ? (r.photo.currentSrc || attr(r.photo, 'src') || '').slice(0, 600) : null };
-    var ls = nameLines(r.row).filter(function (x) { return x !== info.name; });
+    var ls = nameLines(r.row).filter(function (x) { return x !== info.name && !(info.name && x.indexOf(info.name) === 0) && cleanName(x) !== info.name; });
     var icon = qsa(r.row, 'img,svg,li-icon,[data-test-icon]').filter(function (i) { return isReactionIcon(i) || (!!classifyReaction(iconMeta(i)) && !/dms\/image|profile-displayphoto/.test(attr(i, 'src'))); });
     var fromIcon = icon.map(function (i) { return classifyReaction(iconMeta(i) + ' ' + label(i)); }).filter(Boolean)[0] || null;
     // One reaction picture per type is enough (the server shows its own): a picture per person made the
@@ -1159,7 +1197,9 @@
     var T = window.__cmgLiTap;
     if (T) return T;
     T = window.__cmgLiTap = { reactions: null, fetch: window.fetch && window.fetch.bind(window) };
+    T.seen = [];
     var keep = function (url, method, headers, body) {
+      try { var pth = new URL(url, location.href); if (/linkedin\.com$/.test(pth.hostname)) { var k = String(method || 'GET').toUpperCase() + ' ' + pth.pathname.slice(0, 120); if (T.seen.indexOf(k) < 0) { T.seen.push(k); if (T.seen.length > 40) T.seen.shift(); } } } catch (e) { /* ignore */ }
       if (!url || !REACTION_REQ.test(url) || !/[?&(,]start[=:]\d+/.test(url) || !/[?&(,]count[=:]\d+/.test(url)) return;
       if (String(method || 'GET').toUpperCase() !== 'GET') return;
       var abs = url; try { abs = new URL(url, location.href).href; } catch (e) { /* keep */ }
@@ -1476,6 +1516,9 @@
     };
     if (res.status !== 'ok' || o.diagnose) res.diagnostics = { page: pageState(), dom: domShape({ tabs: tabs.length }), sheet: sheetShape(root) };
     else res.diagnostics = { clicks: clickLog.slice(-25) };
+    var fr = personRows(root)[0];
+    res.diagnostics.rowLayout = fr ? skeleton(fr.row).slice(0, 2000) : null;
+    if (o.fastRead === true && window.__cmgLiTap) res.diagnostics.requestsSeen = (window.__cmgLiTap.seen || []).slice(-20);
     return res;
   }
 
