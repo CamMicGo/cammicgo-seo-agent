@@ -119,7 +119,10 @@ public class MainActivity extends Activity {
   private boolean linkedinMcpEnabled = false;
   private boolean linkedinPollBusy = false;
   private final ExecutorService linkedinPollWorker = Executors.newSingleThreadExecutor();
-  /** Read by the background relay: notify only when the app cannot pick LinkedIn commands up itself. */
+  /**
+   * Read by the background relay: notify only when the app cannot pick LinkedIn commands up itself.
+   * The app picks them up while it is open (also in the background) with "LinkedIn MCP" allowed.
+   */
   static volatile boolean foreground = false, linkedinControlOn = false;
   private String linkedinBusyJob;
   private long linkedinBusySince;
@@ -127,7 +130,8 @@ public class MainActivity extends Activity {
   private String linkedinLastPollError = "";
   private final Runnable linkedinPoll = new Runnable() {
     @Override public void run() {
-      linkedinControlOn = foreground && linkedinMcpEnabled && linkedinWeb != null;
+      // The user's explicit "LinkedIn MCP" consent is the guard; the screen does not need to show the app.
+      linkedinControlOn = linkedinMcpEnabled && linkedinWeb != null;
       if (!linkedinControlOn) return;
       // Watchdog: a job that never reports back (page frozen, callback lost) must not block the queue forever.
       // A post extraction counts from its last progress (it may legitimately run for many minutes).
@@ -1185,7 +1189,7 @@ public class MainActivity extends Activity {
     });
   }
 
-  /** Run only on the foreground Activity's WebView, after explicit opt-in. */
+  /** Run on the Activity's WebView (foreground or background), only after the explicit opt-in. */
   private void executeLinkedInJob(JSONObject job) {
     cleanLinkedInAttachmentCache(false);
     String id = job.optString("id");
@@ -1196,7 +1200,7 @@ public class MainActivity extends Activity {
     liProgressJob = "post_comments".equals(op) ? id : null;
     if (linkedinStopButton != null) { linkedinStopButton.setVisibility("post_comments".equals(op) ? View.VISIBLE : View.GONE); linkedinStopButton.setEnabled(true); linkedinStopButton.setText(I18n.t(this, "li_stop_report")); }
     liDrawCounts();
-    if (!foreground || !linkedinMcpEnabled || linkedinWeb == null || id.isEmpty()) {
+    if (!linkedinMcpEnabled || linkedinWeb == null || id.isEmpty()) {
       if (!id.isEmpty()) finishLinkedInJob(id, null, "LinkedIn control unavailable before execution");
       else linkedinPollBusy = false;
       return;
@@ -4308,8 +4312,8 @@ public class MainActivity extends Activity {
     SharedPreferences p=RelayClient.prefs(this);
     recoverRelayIfNeeded();
     ui.post(refresher);
-    // Preserve the explicit LinkedIn permission within this Activity session.
-    // Polling is suspended while the Activity is not in the foreground.
+    // Preserve the explicit LinkedIn permission within this Activity session; polling also goes on in the
+    // background, this only restarts it if Android had stopped the loop.
     if (linkedinMcpEnabled && linkedinWeb != null) {
       ui.removeCallbacks(linkedinPoll);
       ui.post(linkedinPoll);
@@ -4318,9 +4322,9 @@ public class MainActivity extends Activity {
   }
   @Override protected void onPause() {
     foreground = false;
-    linkedinControlOn = false;
     ui.removeCallbacks(refresher);
-    ui.removeCallbacks(linkedinPoll);
+    // LinkedIn commands keep being picked up in the background while "LinkedIn MCP" is allowed:
+    // the poll loop is not stopped here (only when the Activity is destroyed or consent is withdrawn).
     // Do not revoke the user's explicit consent on tab switches or temporary pauses.
     // A fresh Activity starts with linkedinMcpEnabled=false, requiring consent again.
     super.onPause();

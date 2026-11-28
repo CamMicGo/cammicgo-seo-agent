@@ -401,7 +401,7 @@ async function handler(req:NextRequest){
     }
     return asText({status:'pending',state:controlActive?'running_or_queued':'queued',jobId:job.id,expiresInMinutes:10,
      messageForUser:controlActive?'The phone is working on it: check the result with linkedin_job_status in a few seconds.'
-      :'The command is waiting for the phone: the CamMicGo app is not open on its LinkedIn tab with "LinkedIn MCP" allowed (a notification on the phone invites the user to open it). It runs as soon as the app is open, within 10 minutes; after that it expires and is never run. Check with linkedin_job_status.',
+      :'The command is waiting for the phone: the CamMicGo app is not open with "LinkedIn MCP" allowed (a notification on the phone invites the user to open it; the app may then stay in the background). It runs as soon as the app is open, within 10 minutes; after that it expires and is never run. Check with linkedin_job_status.',
      instructions:'Relay messageForUser in the user\'s language. Never repeat the command while it is queued or running: that would run it twice.'});
    };
    // LinkedIn comment access is mediated by the user's authenticated, opt-in Android WebView.
@@ -564,7 +564,7 @@ async function handler(req:NextRequest){
    server.registerTool('linkedin_navigate_back',{title:'Return to LinkedIn inbox on Android',annotations:{readOnlyHint:true},description:'Navigate back to the LinkedIn inbox.',inputSchema:z.object({})},async()=>linkedinDevice('back'));
    const jobStatus=async(a:{jobId:string;waitSeconds:number})=>{const liRelay=await import('@/lib/linkedin-relay');let row=await liRelay.getLinkedIn(user.id,a.jobId);if(!row)return asText({error:'Job not found'});if(row.payload?.nextJobId){a={...a,jobId:row.payload.nextJobId};row=await liRelay.getLinkedIn(user.id,a.jobId);if(!row)return asText({error:'Job not found'});}const until=Date.now()+a.waitSeconds*1000;while((row.status==='pending'||row.status==='claimed')&&Date.now()<until){await new Promise(r=>setTimeout(r,1500));row=await liRelay.getLinkedIn(user.id,a.jobId);if(!row)return asText({error:'Job not found'});}
     const phase=liRelay.jobState(row);
-    const state={...row,state:phase,messageForUser:phase==='queued'?'Waiting for the phone: open the CamMicGo app (LinkedIn tab, LinkedIn MCP allowed). It expires at '+row.expires_at+' and is then never run.'
+    const state={...row,state:phase,messageForUser:phase==='queued'?'Waiting for the phone: open the CamMicGo app with LinkedIn MCP allowed (it may stay in the background). It expires at '+row.expires_at+' and is then never run.'
      :phase==='running'?'The phone picked up the command at '+row.claimed_at+' and is working on it.'
      :phase==='stalled'?'The phone picked up the command at '+row.claimed_at+' but never reported back (app closed or interrupted). Check LinkedIn on the phone before trying again.'
      :phase==='expired'?'The phone never picked up this command before it expired: nothing was done.':undefined};
