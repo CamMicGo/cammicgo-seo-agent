@@ -582,6 +582,6 @@ export function assistantView(data:unknown,maxChars=60000,maxPeople=300):unknown
   comments:cx?{...pick(cx,['status','complete','partial','displayedCount','retrieved','topLevel','replies','note']),comments:comments.map(c=>({...pick(c,['commentId','parentId','author','authorProfileUrl','authorHeadline','time','isReply','isPostAuthor','parentAuthor','reactionCount']),text:str(c.text).slice(0,800)}))}:null,
   // Layout shape (no names, no texts) when the reader missed something: needed to adapt it to a new LinkedIn layout.
   layout:layoutDiag(cx,rx),
-  reactions:rx?{...pick(rx,['status','complete','partial','expectedTotal','retrieved','byType','missing','note','fastRead']),fastReadPass:Array.isArray(rx.perCategory)?(rx.perCategory as Obj[]).find(x=>x&&x.tab==='fast'):undefined,listed:Math.min(people.length,maxPeople),people:people.slice(0,maxPeople).map(p=>pick(p,['profileUrl','name','headline','reaction']))}:null,
+  reactions:rx?{...pick(rx,['status','complete','partial','expectedTotal','retrieved','byType','missing','note','fastRead']),perCategory:Array.isArray(rx.perCategory)?(rx.perCategory as Obj[]).slice(0,10).map(x=>pick(x,['tab','read','expected','end','rounds','stalls','seconds','moreButtonLeft','reason'])):undefined,fastReadPass:Array.isArray(rx.perCategory)?(rx.perCategory as Obj[]).find(x=>x&&x.tab==='fast'):undefined,listed:Math.min(people.length,maxPeople),people:people.slice(0,maxPeople).map(p=>pick(p,['profileUrl','name','headline','reaction']))}:null,
  };
 }
