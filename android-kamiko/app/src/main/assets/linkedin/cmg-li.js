@@ -273,7 +273,36 @@
       bodyLength: t.length,
       signedOut: !!document.querySelector('input[name=session_key],form[action*="login"]') || /\/(login|authwall|checkpoint|uas)\b/.test(location.pathname),
       noResults: noResults(),
+      errorPage: errorPage(),
     };
+  }
+  /**
+   * LinkedIn error screens and pop-ups ("Cette page est introuvable", "This page could not be found",
+   * "Something went wrong") stop a read. A pop-up is closed with its close control; a full error page is
+   * reported (errorPage) so the app loads another address.
+   */
+  var ERROR_RX = /(page (est )?introuvable|cette page n.existe pas|n.a pas pu [eê]tre trouv[eé]e|page (could not|cannot|can.t) be found|could not be found|page not found|this page doesn.t exist|page doesn.t exist|un probl[eè]me est survenu|une erreur s.est produite|something went wrong|try again later|r[eé]essayez plus tard|p[aá]gina no encontrada|seite nicht gefunden|pagina non trovata|p[aá]gina n[aã]o encontrada)/i;
+  var CLOSE_RX = /^(fermer|close|dismiss|ignorer|annuler|cancel|ok|compris|got it|cerrar|schlie[sß]en|chiudi|fechar|×|✕|x)$/i;
+  function blockerBoxes() {
+    return qsa(document, '[role=dialog],[role=alertdialog],[role=alert],[aria-modal=true],dialog[open],[class*="toast"],[class*="modal"],[class*="error"]').filter(function (e) {
+      if (!vis(e)) return false;
+      var t = txt(e);
+      return t.length > 0 && t.length < 500 && ERROR_RX.test(t);
+    });
+  }
+  function errorPage() {
+    var t = txt(document.body);
+    if (t.length > 3000 || !ERROR_RX.test(t)) return false;
+    return !blockerBoxes().length || findPosts().posts.length === 0;
+  }
+  function dismissBlockers() {
+    var closed = 0;
+    blockerBoxes().forEach(function (box) {
+      var c = controls(box).find(function (e) { var l = (label(e) || ownText(e) || txt(e) || attr(e, 'title') || '').trim(); return vis(e) && !isOverflow(e) && (CLOSE_RX.test(l) || /^(fermer|close|dismiss|ignorer)\b/i.test(l)); });
+      if (c && safeClick(c, 'close')) closed++;
+    });
+    if (closed) invalidate();
+    return { closed: closed, errorPage: errorPage() };
   }
   function noResults() {
     if (document.querySelector('[class*="no-results"],[data-view-name*="no-results"],[data-test-id*="no-results"]')) return true;
@@ -538,7 +567,8 @@
     var limit = Math.max(1, Math.min(60, o.limit || 20)), rounds = o.scrolls == null ? 6 : o.scrolls;
     var st = pageState();
     if (st.signedOut) return { status: 'signed_out', posts: [], diagnostics: { page: st } };
-    await waitFor(function () { return findPosts().posts.length || noResults(); }, o.firstWait || 12000, 400);
+    dismissBlockers();
+    await waitFor(function () { if (blockerBoxes().length) dismissBlockers(); return findPosts().posts.length || noResults() || errorPage(); }, o.firstWait || 12000, 400);
     var byKey = {}, order = [], elKey = new WeakMap();
     for (var i = 0; i <= rounds; i++) {
       var f = findPosts();
@@ -554,12 +584,13 @@
       if (progress) progress({ posts: order.length });
       if (order.length >= (o.enough || limit) || noResults()) break;
       if (o.stopWhen && order.some(function (k) { return o.stopWhen(byKey[k]); })) break;
-      if (i < rounds) { scrollMore(); invalidate(); await waitFor(function () { return countNew(byKey) > 0; }, 1800, 500); }
+      if (i < rounds) { if (blockerBoxes().length) dismissBlockers(); scrollMore(); invalidate(); await waitFor(function () { return countNew(byKey) > 0; }, 1800, 500); }
     }
     var posts = mergePosts(order.map(function (k) { return byKey[k]; }));
     var page = pageState(), status;
     if (posts.length) status = 'ok';
     else if (page.noResults) status = 'no_results';
+    else if (page.errorPage) status = 'error_page';
     else if (page.bodyLength < 400) status = 'not_loaded';
     else status = 'extraction_failed';
     var out = { status: status, posts: posts, retrieved: posts.length, diagnostics: { page: page } };
@@ -1664,6 +1695,7 @@
   window.__cmgLi = {
     version: VERSION,
     pageState: pub(pageState),
+    dismissBlockers: pub(dismissBlockers),
     domShape: pub(domShape),
     findPosts: function (root) { invalidate(); return findPosts(root).posts.map(extractPost); },
     collectPosts: pub(collectPosts),
