@@ -1240,7 +1240,7 @@ public class MainActivity extends Activity {
       ui.postDelayed(() -> runLinkedInCommentJob(id, action, job, 0), 4200);
     } else if ("feed".equals(op)) {
       int limit = Math.min(50, Math.max(1, job.optInt("limit", 20)));
-      liLoad(id, "https://www.linkedin.com/feed/", () -> extractLinkedInFeed(id, limit, 0, null));
+      liLoad(id, "https://www.linkedin.com/feed/", () -> extractLinkedInFeed(id, limit, 0, null, null));
     } else if ("job_search".equals(op)) {
       try {
         String keywords = job.optString("keywords", "").trim(), location = job.optString("location", "").trim();
@@ -1269,8 +1269,8 @@ public class MainActivity extends Activity {
       String slug = job.optString("company", "").trim();
       if (!slug.matches("[A-Za-z0-9%._-]{1,150}")) { finishLinkedInJob(id, null, "Invalid company page"); return; }
       boolean posts = "company_posts".equals(op);
-      linkedinWeb.loadUrl("https://www.linkedin.com/company/" + slug + (posts ? "/posts/" : "/about/"));
-      if (posts) ui.postDelayed(() -> extractLinkedInFeed(id, Math.min(30, Math.max(1, job.optInt("limit", 10))), 0, null), 2500);
+      if (!posts) linkedinWeb.loadUrl("https://www.linkedin.com/company/" + slug + "/about/");
+      if (posts) extractCompanyFeed(id, slug, Math.min(30, Math.max(1, job.optInt("limit", 10))), 0);
       else ui.postDelayed(() -> extractLinkedInCompanyProfile(id, slug, 0), 3500);
     } else if ("person_profile".equals(op)) {
       String slug = job.optString("profile", "").trim();
@@ -1388,19 +1388,34 @@ public class MainActivity extends Activity {
   private static final String LI_SIGNED_OUT_JS = "(!!document.querySelector('input[name=session_key],form[action*=\\\"login\\\"]')||/\\/(login|authwall|checkpoint|uas)/.test(location.pathname))";
 
   /** Reads feed or company posts with the shared reader (several detection strategies, scrolling, diagnostics). */
-  private void extractLinkedInFeed(String id, int limit, int attempt, JSONObject best) {
+  /**
+   * Company posts: the posts page, then once more if LinkedIn showed an error screen or did not load
+   * ("Cette page est introuvable"), then the company's main page, which lists the posts too.
+   */
+  private void extractCompanyFeed(String id, String slug, int limit, int attempt) {
+    String url = "https://www.linkedin.com/company/" + slug + (attempt >= 2 ? "/" : "/posts/");
+    liLoad(id, url, () -> extractLinkedInFeed(id, limit, attempt, null, attempt < 2 ? () -> extractCompanyFeed(id, slug, limit, attempt + 1) : null));
+  }
+
+  private void extractLinkedInFeed(String id, int limit, int attempt, JSONObject best, Runnable retry) {
     if (!linkedinMcpEnabled) { finishLinkedInJob(id, null, "LinkedIn navigation disabled"); return; }
     dismissLinkedInAppPrompt();
     JSONObject opts = new JSONObject();
     try { opts.put("limit", limit); opts.put("scrolls", 6); } catch (Exception ignored) {}
     runLi(id, "collectPosts", opts, 75000, (r, err) -> {
+      if (r == null && retry != null) { retry.run(); return; }
       if (r == null) { finishLinkedInJob(id, null, err == null ? "Feed page could not be read" : err); return; }
+      String st0 = r.optString("status");
+      boolean empty = r.optJSONArray("posts") == null || r.optJSONArray("posts").length() == 0;
+      if (retry != null && empty && ("not_loaded".equals(st0) || "error_page".equals(st0) || "extraction_failed".equals(st0))) { liStep(id, "retry_" + st0); retry.run(); return; }
       try {
         r.put("url", linkedinWeb.getUrl() == null ? "" : android.net.Uri.parse(linkedinWeb.getUrl()).getPath());
         String st = r.optString("status");
         if ("signed_out".equals(st)) r.put("note", "LinkedIn is not signed in inside the CamMicGo app: open the LinkedIn tab and sign in.");
         else if ("extraction_failed".equals(st)) r.put("note", "The page shows content but no post could be recognised: LinkedIn probably changed its layout. diagnostics.dom describes the page structure. This is NOT an empty feed.");
         else if ("not_loaded".equals(st)) r.put("note", "The feed did not finish loading. This is NOT an empty feed.");
+        else if ("error_page".equals(st)) r.put("note", "LinkedIn showed an error page (page not found / something went wrong) on every address tried. This is NOT an empty feed.");
+        if (attempt > 0) r.put("attempts", attempt + 1);
       } catch (Exception ignored) {}
       finishLinkedInJob(id, r, "signed_out".equals(r.optString("status")) ? "LinkedIn not signed in" : (r.optJSONArray("posts") == null || r.optJSONArray("posts").length() == 0) && "extraction_failed".equals(r.optString("status")) ? "LinkedIn feed extraction failed (layout not recognised); see diagnostics" : null);
     });
@@ -1648,7 +1663,7 @@ public class MainActivity extends Activity {
     String key = "k" + System.nanoTime();
     String q = JSONObject.quote(key);
     String js = lib + "\n;window.__cmgLiStop=" + (liStopRequested ? "true" : "false") + ";(function(){var R=window.__cmgLiRuns=window.__cmgLiRuns||{};var k=" + q + ";R[k]={done:false};"
-      + "Promise.resolve().then(function(){return window.__cmgLi." + fn + "(" + opts.toString() + ",function(p,snapshot){var v=R[k];if(v&&!v.done){if(window.__cmgLi.runProgress)window.__cmgLi.runProgress(v,p,snapshot);else{v.partial=p;if(snapshot)v.snapshot=snapshot;}}});})"
+      + "Promise.resolve().then(function(){try{if(window.__cmgLi.dismissBlockers)window.__cmgLi.dismissBlockers();}catch(e){}return window.__cmgLi." + fn + "(" + opts.toString() + ",function(p,snapshot){var v=R[k];if(v&&!v.done){if(window.__cmgLi.runProgress)window.__cmgLi.runProgress(v,p,snapshot);else{v.partial=p;if(snapshot)v.snapshot=snapshot;}}});})"
       + ".then(function(x){var v=R[k]||(R[k]={});v.result=(x&&typeof x==='object'&&window.__cmgLi.fit)?window.__cmgLi.fit(x):x;v.done=true;},function(e){var v=R[k]||(R[k]={});v.error=String(e&&e.message||e);v.done=true;});return 'started';})()";
     linkedinWeb.evaluateJavascript(js, started -> pollLi(id, key, System.currentTimeMillis() + timeoutMs, System.currentTimeMillis() + (timeoutMs >= 120000 ? 3600000 : timeoutMs), cb));
   }
@@ -1756,6 +1771,7 @@ public class MainActivity extends Activity {
       case "signed_out": return "LinkedIn not signed in";
       case "extraction_failed": return "LinkedIn page shows content but nothing could be extracted (layout not recognised); see diagnostics";
       case "not_loaded": return "LinkedIn page did not load";
+      case "error_page": return "LinkedIn showed an error page";
       case "post_not_found": return "Target post not found on the page";
       case "ambiguous_post": return "Several posts match: give the post URL or more precise keywords/author";
       case "comment_control_missing": return "Comment control not found on the target post";

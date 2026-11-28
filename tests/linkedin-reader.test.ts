@@ -329,6 +329,20 @@ test('fixture: mobile reaction rows give the job title, not "Name • 3e et +"',
   assert.ok(!/Personne|Studium/.test(r.diagnostics.rowLayout));
 });
 
+test('fixture: a LinkedIn error pop-up over the page is closed, a full error page is reported', async ()=>{
+  const pop=`<div role="dialog"><h2>Cette page est introuvable</h2><p>This page could not be found.</p><button aria-label="Fermer" onclick="this.closest('[role=dialog]').remove();window.__closed=true">×</button></div>`;
+  const html=fixture('search-sdui-fr.html').replace('</body>',pop+'</body>');
+  const a=page('','https://www.linkedin.com/company/mistralai/posts/',{html});
+  const r=await a.li.collectPosts({scrolls:0});
+  assert.equal(a.w.__closed,true,'the pop-up was closed');
+  assert.ok(r.posts.length>0);
+  noForbiddenClicks(a.w);
+  const b=page('','https://www.linkedin.com/company/mistralai/posts/',{html:'<!doctype html><html><body><main><h1>Cette page est introuvable</h1><p>Vérifiez l’adresse.</p><a href="/feed/">Accueil</a></main></body></html>'});
+  const r2=await b.li.collectPosts({scrolls:0,firstWait:300});
+  assert.equal(r2.status,'error_page');
+  assert.equal(r2.diagnostics.page.errorPage,true);
+});
+
 test('fixture: reactions never claim completeness when LinkedIn lists fewer people than it counts', async ()=>{
   const {li}=page('post-reactions-fr.html','https://www.linkedin.com/feed/update/urn:li:activity:7333333333333333333/',{before:w=>{w.__hiddenReactors=1;}});
   const r=await li.readReactions({});
