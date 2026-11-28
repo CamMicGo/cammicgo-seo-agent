@@ -292,6 +292,43 @@ test('fixture: a mobile sheet titled "Réactions" without dialog role or profile
   noForbiddenClicks(w);
 });
 
+test('unit: mobile name lines lose badges, degree and open-to-work notes', ()=>{
+  const {li}=page('search-no-results.html','https://www.linkedin.com/feed/');
+  const c=li._test.cleanName;
+  assert.equal(c('Ivan Pakhomov Vérifié Profil 3e et +'),'Ivan Pakhomov');
+  assert.equal(c('Kavya Sri 3e et +'),'Kavya Sri');
+  assert.equal(c('Damon Wild Premium Profil 3e et +'),'Damon Wild');
+  assert.equal(c('Gaetan Duchateau, À l’écoute de nouvelles opportunités Premium Profil 3e et +'),'Gaetan Duchateau');
+  assert.equal(c('Sysmind GmbH'),'Sysmind GmbH');
+  assert.equal(c('Matteo Leo, Ph.D.'),'Matteo Leo, Ph.D.');
+});
+
+test('fixture: mobile comment cards with the text inside the author link keep their text and headline', async ()=>{
+  const card=(slug:string,name:string,head:string,txt:string)=>`<article class="cm" data-id="urn:li:comment:(ugcPost:7524136070750429185,75317055515299${slug.charCodeAt(0)})"><a href="https://www.linkedin.com/in/${slug}/"><img src="https://media.licdn.com/dms/image/v2/${slug}/profile-displayphoto/0.jpg" alt=""><div><span>${name}</span> <span>Vérifié</span> <span>Profil</span> <span>3e et +</span></div><div>${head}</div><div>1 j</div><div><span dir="ltr">${txt}</span></div></a><div><button aria-label="Réagir avec J’aime" onclick="window.__likeClicked=true">J’aime</button><span>1</span><button>Répondre</button></div></article>`;
+  const html=`<!doctype html><html lang="fr"><body><main><div componentkey="urn:li:activity:7344444444444444444"><div><a href="https://www.linkedin.com/company/mistralai/">Mistral AI</a></div><div><span dir="ltr">Découvrez Mistral Studio.</span></div><div><button aria-label="2 commentaires">2 commentaires</button></div>
+   <section>${card('kavya','Kavya Sri','Corporate trainer AWS','Great platform for agents!')}${card('ivanp','Ivan Pakhomov','CTO at Example','Does it run on-premises?')}</section></div></main></body></html>`;
+  const {w,li}=page('','https://www.linkedin.com/feed/update/urn:li:activity:7344444444444444444/',{html});
+  const r=await li.readComments({});
+  assert.equal(r.comments.length,2,JSON.stringify(r.diagnostics));
+  const k=r.comments.find((c:Li)=>/kavya/.test(c.authorProfileUrl));
+  assert.equal(k.author,'Kavya Sri');
+  assert.equal(k.text,'Great platform for agents!');
+  assert.equal(k.authorHeadline,'Corporate trainer AWS');
+  assert.equal(r.comments.find((c:Li)=>/ivanp/.test(c.authorProfileUrl)).text,'Does it run on-premises?');
+  noForbiddenClicks(w);
+});
+
+test('fixture: mobile reaction rows give the job title, not "Name • 3e et +"', async ()=>{
+  const row=(i:number)=>`<li><a href="https://www.linkedin.com/in/p-${i}/"><img src="https://media.licdn.com/dms/image/v2/p${i}/profile-displayphoto/0.jpg" alt=""><div><div>Personne ${i} • 3e et +</div><div>Studium Elektrotechnik ${i}</div></div></a>${LIKE}<button>+ Suivre</button></li>`;
+  const html=`<!doctype html><html lang="fr"><body>${bgPost}<dialog open><h2>Réactions</h2><div><button>Tous les 2</button></div><ul>${row(1)}${row(2)}</ul></dialog></body></html>`;
+  const {li}=page('','https://www.linkedin.com/feed/update/urn:li:activity:7344444444444444444/',{html});
+  const r=await li.readReactions({close:false});
+  assert.equal(r.people[0].name,'Personne 1');
+  assert.equal(r.people[0].headline,'Studium Elektrotechnik 1');
+  assert.match(r.diagnostics.rowLayout,/^li\{a\[in\]/,'row shape kept for diagnosis, without text');
+  assert.ok(!/Personne|Studium/.test(r.diagnostics.rowLayout));
+});
+
 test('fixture: reactions never claim completeness when LinkedIn lists fewer people than it counts', async ()=>{
   const {li}=page('post-reactions-fr.html','https://www.linkedin.com/feed/update/urn:li:activity:7333333333333333333/',{before:w=>{w.__hiddenReactors=1;}});
   const r=await li.readReactions({});

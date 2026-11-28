@@ -495,6 +495,12 @@ footer{color:var(--muted);font-size:12px;margin:24px 0}
  * answering. Over `maxChars` the answer keeps only what the analysis needs (ids, names, headlines,
  * reactions, comment texts), at most `maxPeople` reacting people; the report page keeps everything.
  */
+function layoutDiag(cx:Obj|null,rx:Obj|null):Obj|undefined{
+ const d=(x:Obj|null)=>x&&x.diagnostics&&typeof x.diagnostics==='object'?x.diagnostics as Obj:{};
+ const c=d(cx),r=d(rx);
+ const out=Object.fromEntries(Object.entries({commentLayout:c.commentLayout,emptyTexts:c.emptyTexts,rowLayout:r.rowLayout,requestsSeen:r.requestsSeen,sheet:r.sheet}).filter(([,v])=>v!=null));
+ return Object.keys(out).length?out:undefined;
+}
 export function assistantView(data:unknown,maxChars=60000,maxPeople=300):unknown{
  if(!data||typeof data!=='object'||Array.isArray(data))return data;
  const root=data as Obj;
@@ -513,6 +519,8 @@ export function assistantView(data:unknown,maxChars=60000,maxPeople=300):unknown
   timedOut:root.timedOut,finishedByApp:root.finishedByApp,stoppedByUser:root.stoppedByUser,
   post:post?pick(post,['author','authorProfileUrl','authorHeadline','time','text','reactionCount','commentCount','repostCount','imageCount','commentSort']):null,
   comments:cx?{...pick(cx,['status','complete','partial','displayedCount','retrieved','topLevel','replies','note']),comments:comments.map(c=>({...pick(c,['commentId','parentId','author','authorProfileUrl','authorHeadline','time','isReply','isPostAuthor','parentAuthor','reactionCount']),text:str(c.text).slice(0,800)}))}:null,
+  // Layout shape (no names, no texts) when the reader missed something: needed to adapt it to a new LinkedIn layout.
+  layout:layoutDiag(cx,rx),
   reactions:rx?{...pick(rx,['status','complete','partial','expectedTotal','retrieved','byType','missing','note','fastRead']),fastReadPass:Array.isArray(rx.perCategory)?(rx.perCategory as Obj[]).find(x=>x&&x.tab==='fast'):undefined,listed:Math.min(people.length,maxPeople),people:people.slice(0,maxPeople).map(p=>pick(p,['profileUrl','name','headline','reaction']))}:null,
  };
 }
