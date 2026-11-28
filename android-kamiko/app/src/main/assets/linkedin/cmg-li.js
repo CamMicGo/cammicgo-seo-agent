@@ -199,6 +199,9 @@
     s = String(s || '').replace(/\s+/g, ' ').trim();
     var m = s.match(/^(?:view|voir|visit|photo de profil de|profile picture of|profil de)\s+(?:le profil de\s+|the profile of\s+)?(.+?)(?:['’]s profile|['’]s profile picture|\s*,.*)?$/i);
     if (m && m[1]) s = m[1];
+    // Image links of reaction rows: "Lien graphique pour voir le cadre de Alex Zhang, a réagi par : LIKE, visuel".
+    var g = s.match(/^(?:lien graphique pour voir (?:le cadre|le profil) de|graphic link to view(?: the)? (?:profile|frame) of|view)\s+(.+?),\s*(?:a r[eé]agi|reacted)\b/i);
+    if (g && g[1]) s = g[1];
     s = s.replace(/['’]s (profile|photo).*$/i, '').replace(/\s*[•·].*$/, '').trim();
     // Mobile headers put badges and the degree on the name line: "Ivan P. Vérifié Profil 3e et +".
     for (var i = 0; i < 6; i++) {
@@ -1665,7 +1668,8 @@
     if (c.status === 'navigate') return { status: 'navigate', stage: 'comments', url: c.url };
     if (progress) progress({ stage: 'reactions', commentsRead: (c.comments || []).length, commentsExpected: c.displayedCount == null ? null : c.displayedCount }, { status: 'partial', post: c.post || null, postUrl: c.postUrl || null, comments: c, reactions: { people: [], complete: false, partial: true } });
     if (stopRequested()) r = { status: 'stopped', stopped: true, people: [], retrieved: 0, complete: false, partial: true, missing: [], note: 'Stopped on request before the reactions were read.' };
-    else try { r = await readReactions(Object.assign({}, o, { postUrl: o.postUrl || c.postUrl || '', freshExtraction: o.freshExtraction === true }), function (p, people) { if (progress) progress(p, { status: 'partial', post: c.post || null, postUrl: c.postUrl || null, comments: c, reactions: { people: people || [], retrieved: (people || []).length, complete: false, partial: true } }); }); } catch (e2) { r = { status: 'error', error: String(e2 && e2.message || e2), people: [] }; }
+    // The post's own reaction counter (read with the comments) is the target when the list shows no total.
+    else try { r = await readReactions(Object.assign({}, o, { postUrl: o.postUrl || c.postUrl || '', freshExtraction: o.freshExtraction === true, expectedTotal: o.expectedTotal || (c.post && c.post.reactionCount) || null }), function (p, people) { if (progress) progress(p, { status: 'partial', post: c.post || null, postUrl: c.postUrl || null, comments: c, reactions: { people: people || [], retrieved: (people || []).length, complete: false, partial: true } }); }); } catch (e2) { r = { status: 'error', error: String(e2 && e2.message || e2), people: [] }; }
     var post = c.post || null;
     // The reaction list's own total is LinkedIn's real count; the number read on the post can be a
     // comment's counter once the comments are expanded.

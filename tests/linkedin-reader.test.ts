@@ -301,6 +301,8 @@ test('unit: mobile name lines lose badges, degree and open-to-work notes', ()=>{
   assert.equal(c('Gaetan Duchateau, À l’écoute de nouvelles opportunités Premium Profil 3e et +'),'Gaetan Duchateau');
   assert.equal(c('Sysmind GmbH'),'Sysmind GmbH');
   assert.equal(c('Matteo Leo, Ph.D.'),'Matteo Leo, Ph.D.');
+  assert.equal(c('Lien graphique pour voir le cadre de Alex Zhang, a réagi par : LIKE, visuel'),'Alex Zhang');
+  assert.equal(c('Graphic link to view the profile of Nadine Adjami, reacted with LIKE'),'Nadine Adjami');
 });
 
 test('fixture: mobile comment cards with the text inside the author link keep their text and headline', async ()=>{
