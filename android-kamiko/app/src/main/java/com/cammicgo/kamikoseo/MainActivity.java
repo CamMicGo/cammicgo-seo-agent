@@ -3116,18 +3116,20 @@ public class MainActivity extends Activity {
         // Diagnostics travel with failures too (what LinkedIn showed), never file contents.
         if (result != null) body.put("result", result);
         String resp = RelayClient.request("POST", "/api/devices/linkedin", RelayClient.token(this), body.toString());
-        String reportUrl = new JSONObject(resp).optString("reportUrl", "");
-        if (reportUrl.startsWith("https://")) ui.post(() -> liSaveReportUrl(id, reportUrl));
+        JSONObject rj = new JSONObject(resp);
+        String reportUrl = rj.optString("reportUrl", "");
+        String reportFile = rj.optString("reportFile", "");
+        if (reportUrl.startsWith("https://")) ui.post(() -> liSaveReportUrl(id, reportUrl, reportFile));
       } catch (Exception e) { android.util.Log.w("CamMicGoLinkedIn", "Relay result failed", e); }
     });
   }
 
   /** The report link of a finished extraction, kept with the request in the activity list. */
-  private void liSaveReportUrl(String id, String url) {
+  private void liSaveReportUrl(String id, String url, String file) {
     try {
       SharedPreferences prefs = RelayClient.prefs(this);
       JSONArray list = new JSONArray(prefs.getString("linkedinAssistantHistory", "[]"));
-      for (int i = 0; i < list.length(); i++) { JSONObject o = list.optJSONObject(i); if (o != null && id.equals(o.optString("id"))) o.put("reportUrl", url); }
+      for (int i = 0; i < list.length(); i++) { JSONObject o = list.optJSONObject(i); if (o != null && id.equals(o.optString("id"))) { o.put("reportUrl", url); if (file != null && file.matches("[a-z0-9-]{1,120}\\.html")) o.put("reportFile", file); } }
       prefs.edit().putString("linkedinAssistantHistory", list.toString()).apply();
       historyShown = null; if (historyList != null) refreshHistory(prefs);
       Toast.makeText(this, I18n.t(this, "li_report_ready"), Toast.LENGTH_LONG).show();
@@ -3135,6 +3137,19 @@ public class MainActivity extends Activity {
   }
 
   /** Open the report (browser) or save its self-contained HTML export in Downloads. */
+  /** Download name sent by the server (author + first words of the post), else one built from the job id. */
+  private String liReportFileFor(String jobId) {
+    try {
+      JSONArray list = new JSONArray(RelayClient.prefs(this).getString("linkedinAssistantHistory", "[]"));
+      for (int i = 0; i < list.length(); i++) {
+        JSONObject o = list.optJSONObject(i);
+        String f = o == null ? "" : o.optString("reportFile", "");
+        if (o != null && jobId.equals(o.optString("id")) && f.matches("[a-z0-9-]{1,120}\\.html")) return f;
+      }
+    } catch (Exception ignored) {}
+    return "rapport-linkedin-" + (jobId.length() > 8 ? jobId.substring(0, 8) : jobId) + ".html";
+  }
+
   private void liReportActions(String jobId, String url, String details) {
     new AlertDialog.Builder(this).setTitle(I18n.t(this, "li_report_title"))
       .setItems(new String[]{I18n.t(this, "li_report_open"), I18n.t(this, "li_report_save"), I18n.t(this, "li_report_details")}, (d, which) -> {
@@ -3142,7 +3157,7 @@ public class MainActivity extends Activity {
           if (which == 0) startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
           else if (which == 1) {
             android.app.DownloadManager dm = (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
-            String name = "rapport-linkedin-" + (jobId.length() > 8 ? jobId.substring(0, 8) : jobId) + ".html";
+            String name = liReportFileFor(jobId);
             android.app.DownloadManager.Request r = new android.app.DownloadManager.Request(Uri.parse(url + (url.contains("?") ? "&" : "?") + "download=html"))
               .setTitle(name).setMimeType("text/html")
               .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)

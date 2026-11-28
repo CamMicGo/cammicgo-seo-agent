@@ -30,7 +30,7 @@ export async function POST(req:NextRequest){
   }
   const ok=await finishLinkedIn(device.id,data.id,data.result,data.error);
   // A post extraction gets its report now: the app shows the link (open, save as HTML).
-  const reportUrl=ok&&!data.error?await buildJobReport(device.user_id,data.id).catch(()=>undefined):undefined;
-  return NextResponse.json({ok,...(reportUrl?{reportUrl}:{})},{status:ok?200:409});
+  const rep=ok&&!data.error?await buildJobReport(device.user_id,data.id).catch(()=>undefined):undefined;
+  return NextResponse.json({ok,...(rep?{reportUrl:rep.url,...(rep.file?{reportFile:rep.file}:{})}:{})},{status:ok?200:409});
  }catch(e){return NextResponse.json({error:e instanceof Error?e.message:'Unavailable'},{status:503});}
 }

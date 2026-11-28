@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {sb} from '@/lib/device-relay';
 import {proxyMissingPhotos} from '@/lib/linkedin-photo';
 import {mergeReactionPeople} from '@/lib/linkedin-merge';
-import {addReport,cleanAnalysis,decorateReactions,preferHostedPhotos,reportPayload} from '@/lib/linkedin-reactions';
+import {addReport,cleanAnalysis,decorateReactions,extendGroups,preferHostedPhotos,reportFileName,reportPayload} from '@/lib/linkedin-reactions';
 export type LinkedInOperation='inbox'|'open'|'thread'|'back'|'feed'|'search'|'send'|'company_search'|'network_suggestions'|'invite'|'attach'|'job_search'|'job_details'|'recommended_jobs'|'company_profile'|'company_posts'|'person_profile'|'post_comments'|'comment_post'|'reply_comment';
 export async function enqueueLinkedIn(userId:string,operation:LinkedInOperation,payload:Record<string,string>={}){
  const rows=await sb<Array<{id:string}>>('/rest/v1/cmg_linkedin_jobs',{method:'POST',body:JSON.stringify({user_id:userId,operation,payload}),prefer:'return=representation'});
@@ -59,6 +59,7 @@ async function saveReport(userId:string,root:Record<string,unknown>,base:string)
   const id=randomUUID();
   await sb('/storage/v1/object/'+REPORT_BUCKET+'/'+userId+'/reports/'+id+'.json',{method:'POST',body:JSON.stringify(report)});
   root.reportUrl=base+'/api/linkedin/report/'+userId+'.'+id;
+  root.reportFile=reportFileName(report);
  }catch{/* the Markdown report stays available */}
 }
 /** Deletes a report and the hosted photos it references (they belong to this user only). */
@@ -95,6 +96,11 @@ export async function saveReportAnalysis(userId:string,reportUrl:string,analysis
  const r=await loadReport(m[1],m[2]);
  if(!r)return {error:'expired_report' as const};
  r.analysis=cleanAnalysis(analysis,agent);
+ // Keywords of each group applied to every person of the report (reactions and comment authors).
+ const rx=r.reactions as {people?:Array<{url?:string;name?:string;headline?:string}>}|null;
+ const cx=r.comments as {items?:Array<{url?:string;authorUrl?:string;author?:string;headline?:string}>}|null;
+ const people=[...(rx&&Array.isArray(rx.people)?rx.people:[]),...(cx&&Array.isArray(cx.items)?cx.items.map(c=>({url:c.authorUrl||c.url,name:c.author,headline:c.headline})):[])];
+ r.analysis=extendGroups(r.analysis as ReturnType<typeof cleanAnalysis>,people);
  await sb('/storage/v1/object/'+REPORT_BUCKET+'/'+m[1]+'/reports/'+m[2]+'.json',{method:'PUT',body:JSON.stringify(r)});
  return {ok:true as const,reportUrl:reportUrl.split('?')[0]};
 }
@@ -295,15 +301,15 @@ async function takeSavedPeople(userId:string,id:string):Promise<Array<Record<str
  * Builds the report of a finished post extraction right away (the phone shows its link and can save it);
  * an assistant checking the job later gets the same report, never a second one.
  */
-export async function buildJobReport(userId:string,id:string):Promise<string|undefined>{
+export async function buildJobReport(userId:string,id:string):Promise<{url:string;file?:string}|undefined>{
  if(!/^[0-9a-f-]{36}$/i.test(id))return undefined;
  const rows=await sb<Array<{result:unknown}>>('/rest/v1/cmg_linkedin_jobs?id=eq.'+id+'&user_id=eq.'+userId+'&status=eq.done&operation=eq.post_comments&select=result').catch(()=>[]);
  const r=rows[0]?.result;
  if(!r||typeof r!=='object')return undefined;
  await hostThumbnails(userId,r);
  await keepDeliveredResult(userId,id,r);
- const u=(r as Record<string,unknown>).reportUrl;
- return typeof u==='string'?u:undefined;
+ const u=(r as Record<string,unknown>).reportUrl, f=(r as Record<string,unknown>).reportFile;
+ return typeof u==='string'?{url:u,...(typeof f==='string'?{file:f}:{})}:undefined;
 }
 /** The delivered result (hosted photos, report link) replaces the raw one, so a later check reuses it. */
 export async function keepDeliveredResult(userId:string,id:string,result:unknown){
