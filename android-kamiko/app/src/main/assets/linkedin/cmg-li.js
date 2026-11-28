@@ -822,21 +822,31 @@
     var name = (ownText(e) || label(e) || '').trim();
     return (RELEVANT_RX.test(name) || RECENT_RX.test(name)) && name.length < 60 && !OVERFLOW_RX.test([label(e), attr(e, 'data-testid'), attr(e, 'data-control-name'), cls(e)].join(' ')) && !/overflow|ellipsis|three-dots|more-horizontal/i.test(iconMeta(e));
   }
-  async function sortCommentsByRecent(scope) {
+  /** Which sort the comment list shows now: 'relevant', 'recent' or null (no sort control: LinkedIn's default is relevant). */
+  function currentCommentSort(scope) {
+    var near = controls(scope.closest('[role=dialog],[aria-modal=true],dialog[open]') || document.body).filter(function (e) { return vis(e) && isSortControl(e); });
+    if (near.some(function (e) { return RELEVANT_RX.test((ownText(e) || label(e)).trim()); })) return 'relevant';
+    if (near.some(function (e) { return RECENT_RX.test((ownText(e) || label(e)).trim()); })) return 'recent';
+    return null;
+  }
+  /** Switch the sort menu to "Most recent" (toRecent) or "Most relevant". */
+  async function sortComments(scope, toRecent) {
+    var FROM = toRecent ? RELEVANT_RX : RECENT_RX, TO = toRecent ? RECENT_RX : RELEVANT_RX, name = toRecent ? 'recent' : 'relevant';
     var near = function () { return controls(scope.closest('[role=dialog],[aria-modal=true],dialog[open]') || document.body).filter(function (e) { return vis(e) && (isSortControl(e) || !isOverflow(e)); }); };
-    var cur = near().find(function (e) { return isSortControl(e) && RELEVANT_RX.test((ownText(e) || label(e)).trim()); });
-    if (!cur) return near().some(function (e) { return isSortControl(e) && RECENT_RX.test((ownText(e) || label(e)).trim()); }) ? 'already_recent' : 'no_sort_control';
+    var cur = near().find(function (e) { return isSortControl(e) && FROM.test((ownText(e) || label(e)).trim()); });
+    if (!cur) return near().some(function (e) { return isSortControl(e) && TO.test((ownText(e) || label(e)).trim()); }) ? 'already_' + name : 'no_sort_control';
     clickLog.push({ purpose: 'sort_comments', label: (ownText(cur) || label(cur)).slice(0, 80) });
     try { cur.click(); invalidate(); } catch (x) { return 'refused'; }
     var opt = null;
-    await waitFor(function () { opt = qsa(document, '[role=option],[role=menuitem],[role=menuitemradio],li,button,a,div[tabindex]').find(function (e) { return vis(e) && e !== cur && !isOverflow(e) && RECENT_RX.test((ownText(e) || txt(e)).trim()); }); return !!opt; }, 3000, 200);
+    await waitFor(function () { opt = qsa(document, '[role=option],[role=menuitem],[role=menuitemradio],li,button,a,div[tabindex]').find(function (e) { return vis(e) && e !== cur && !isOverflow(e) && TO.test((ownText(e) || txt(e)).trim()); }); return !!opt; }, 3000, 200);
     if (!opt) return 'option_missing';
     var before = commentBlocks(scope).length;
     safeClick(clickable(opt), 'sort_comments');
     await waitFor(function () { return commentBlocks(scope).length !== before; }, 4000, 300);
     await sleep(500);
-    return 'recent';
+    return name;
   }
+  function sortCommentsByRecent(scope) { return sortComments(scope, true); }
   /**
    * Mobile layout: no sort menu, but a note under the list ("Some comments may not appear in Most relevant.
    * To see them, select Most recent.") whose "Most recent" words are the switch. Never a menu.
@@ -950,26 +960,37 @@
       }, 9000, 350);
     }
     var limit = Math.max(1, Math.min(2000, o.limit || 100));
-    var sorted = await sortCommentsByRecent(scope);
-    // A "Most recent" link inside the note is not a sign that the list is already sorted that way.
-    if (sorted !== 'recent' && (sorted !== 'already_recent' || noticeRecentLink(scope))) { var ns = await sortFromNotice(scope); if (ns) sorted = ns; else if (sorted === 'already_recent') sorted = 'no_sort_control'; }
+    // Both sorts: "Most relevant" hides some comments, "Most recent" can stop early on big posts.
+    // First the sort shown (LinkedIn's default is "Most relevant"), then the other one; merged by comment.
     var rounds = o.maxRounds || Math.min(600, Math.max(40, Math.ceil((post.commentCount || 0) / 2) + 20));
+    var first = currentCommentSort(scope) || 'relevant';
+    // The note "select Most recent" means the list is not in "Most recent", whatever a control shows.
+    if (first === 'recent' && noticeRecentLink(scope)) first = 'relevant';
     var exp = await expandComments(scope, rounds, progress, post.commentCount);
     var all = {}; exp.comments.forEach(function (c) { all[c.key] = c; });
-    // The note that switches to "Most recent" often shows only at the end of the "Most relevant" list:
-    // switch there and read again, keeping everything already read.
-    if (!/recent/.test(sorted) && (post.commentCount == null || Object.keys(all).length < post.commentCount)) {
-      var ns2 = await sortFromNotice(scope);
-      if (ns2) {
-        sorted = ns2;
-        var exp2 = await expandComments(scope, rounds, progress, post.commentCount);
-        exp2.comments.forEach(function (c) { if (!all[c.key]) all[c.key] = c; });
-        exp.clicks = (exp.clicks || 0) + (exp2.clicks || 0);
+    var passes = [{ sort: first, read: exp.comments.length, added: exp.comments.length }];
+    var sorted = first;
+    if (!(post.commentCount != null && Object.keys(all).length >= post.commentCount) && !stopRequested()) {
+      var sw;
+      if (first === 'recent') sw = await sortComments(scope, false);
+      else {
+        sw = await sortComments(scope, true);
+        // Mobile: no sort menu, the "Most recent" words of the note at the end of the list are the switch.
+        if (!/^recent$/.test(sw)) { var ns = await sortFromNotice(scope); if (ns) sw = ns; }
       }
+      if (sw === 'recent' || sw === 'relevant' || sw === 'recent_from_notice') {
+        var exp2 = await expandComments(scope, rounds, progress, post.commentCount);
+        var added = 0;
+        exp2.comments.forEach(function (c) { if (!all[c.key]) { all[c.key] = c; added++; } });
+        exp.clicks = (exp.clicks || 0) + (exp2.clicks || 0);
+        passes.push({ sort: sw === 'recent_from_notice' ? 'recent' : sw, read: exp2.comments.length, added: added });
+        sorted = 'both';
+      } else passes.push({ sort: first === 'recent' ? 'relevant' : 'recent', skipped: sw || 'no_switch' });
     }
     var comments = Object.keys(all).map(function (k) { return all[k]; }).slice(0, limit);
     var expected = post.commentCount;
     post.commentSort = sorted;
+    post.commentPasses = passes;
     var complete = expected != null ? comments.length >= expected : null;
     var res = {
       status: comments.length ? 'ok' : (expected === 0 ? 'no_comments' : (opened === 'no_comment_control' ? 'comment_control_missing' : 'extraction_failed')),

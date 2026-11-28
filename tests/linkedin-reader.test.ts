@@ -393,16 +393,21 @@ test('fixture: stop on request keeps what was read, marks it partial and stopped
   assert.equal(none.status,'failed','stopped before anything was read: nothing to keep');
   noForbiddenClicks(w);
 });
-test('fixture: comments switched to "Most recent" through the sort dropdown (never a menu); reaction tabs not re-read when the pictures already give every type', async ()=>{
-  const html=fixture('post-reactions-fr.html').replace('<button>3 commentaires</button>','<button>1 commentaire</button>')
+test('fixture: comments read in "Most relevant" then "Most recent" through the sort dropdown (never a menu), merged; reaction tabs not re-read when the pictures already give every type', async ()=>{
+  const html=fixture('post-reactions-fr.html').replace('<button>3 commentaires</button>','<button>2 commentaires</button>')
     .replace('</main>','<div class="cm"><div><a href="https://www.linkedin.com/in/tom-ricard/"><img src="https://media.licdn.com/dms/image/v2/tom/profile-displayphoto/0.jpg" alt="Tom Ricard"></a><a href="https://www.linkedin.com/in/tom-ricard/">Tom Ricard</a><div>Lead</div><div>2 h</div></div><p>Bravo pour l’analyse.</p><div><button>J’aime</button><button>Répondre</button></div></div></main>');
   const sortUi='<button id="srt" aria-haspopup="true">Les plus pertinents</button><ul id="mnu" style="display:none"><li role="option">Les plus pertinents</li><li role="option" id="rec">Les plus récents</li></ul>';
   const {w,li}=page('','https://www.linkedin.com/feed/update/urn:li:activity:7333333333333333333/',{html:html.replace('</main>',sortUi+'</main>')});
   w.document.getElementById('srt').addEventListener('click',()=>{w.document.getElementById('mnu').setAttribute('style','');});
-  w.document.getElementById('rec').addEventListener('click',()=>{w.__sortedRecent=true;w.document.getElementById('srt').textContent='Les plus récents';});
+  w.document.getElementById('rec').addEventListener('click',()=>{w.__sortedRecent=true;w.document.getElementById('srt').textContent='Les plus récents';
+    // A comment hidden from "Most relevant" shows up in "Most recent".
+    const cm=w.document.querySelector('.cm');const extra=cm.cloneNode(true) as HTMLElement;extra.innerHTML=extra.innerHTML.replace(/tom-ricard/g,'lea-dupont').replace(/Tom Ricard/g,'Léa Dupont').replace('Bravo pour l’analyse.','Commentaire masqué des plus pertinents.');cm.after(extra);});
   const r=await li.readPostFull({postUrl:'https://www.linkedin.com/feed/update/urn:li:activity:7333333333333333333/'});
   assert.equal(w.__sortedRecent,true,'"Les plus récents" was chosen: '+JSON.stringify({sort:r.comments.post&&r.comments.post.commentSort,clicks:r.comments.diagnostics}).slice(0,1500));
-  assert.equal(r.comments.comments.length,1);
+  assert.equal(r.comments.comments.length,2,'both sorts merged');
+  assert.equal(r.comments.post.commentSort,'both');
+  assert.deepEqual(plain(r.comments.post.commentPasses.map((x:Li)=>x.sort)),['relevant','recent']);
+  assert.equal(r.comments.post.commentPasses[1].added,1);
   assert.equal(r.reactions.retrieved,14);
   noForbiddenClicks(w);
 });
@@ -564,7 +569,8 @@ test('fixture: mobile note "select Most recent" under the list is used to switch
   const html=fixture('post-comments-desktop-en.html').replace('7 comments on','8 comments on').replace('>7 comments<','>8 comments<').replace('<div id="more-slot"></div>','<div id="more-slot"></div>'+extra).replace('</main>',note+'</main>');
   const {w,li}=page('','https://www.linkedin.com/feed/update/urn:li:activity:7322222222222222222/',{html});
   const r=await li.readComments({postUrl:'https://www.linkedin.com/feed/update/urn:li:activity:7322222222222222222/'});
-  assert.equal(r.post.commentSort,'recent_from_notice');
+  assert.equal(r.post.commentSort,'both');
+  assert.equal(r.post.commentPasses[1].sort,'recent');
   assert.ok(r.comments.some((c:Li)=>c.author==='Zoe Hidden'),JSON.stringify(r.comments.map((c:Li)=>c.author)));
   assert.equal(r.comments.length,8);
   noForbiddenClicks(w);

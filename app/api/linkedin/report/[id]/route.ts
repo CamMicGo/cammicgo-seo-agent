@@ -2,7 +2,7 @@ import {randomBytes} from 'node:crypto';
 import {NextRequest,NextResponse} from 'next/server';
 import {sb} from '@/lib/device-relay';
 import {deleteReport,loadReport,THUMB_TTL_MS} from '@/lib/linkedin-relay';
-import {reportHtml} from '@/lib/linkedin-reactions';
+import {reportFileName,reportHtml} from '@/lib/linkedin-reactions';
 import {CAMMICGO_LOGO_PNG,LINKEDIN_LOGO_PNG,REACTION_PNG} from '@/lib/linkedin-reaction-icons';
 export const runtime='nodejs';
 
@@ -31,7 +31,7 @@ export async function GET(req:NextRequest,{params}:{params:Promise<{id:string}>}
    for(const r of rows)images[base+'/api/linkedin/thumb/'+r.id+'.jpg']='data:image/jpeg;base64,'+r.jpeg_b64;
   }
   const html=reportHtml(report,base,{logo,brandLogo,images,reactionImg,interactive:true});
-  return new NextResponse(html,{headers:{'Content-Type':'text/html; charset=utf-8','Content-Disposition':'attachment; filename="rapport-post-linkedin.html"','Cache-Control':'private, no-store','X-Robots-Tag':'noindex, nofollow'}});
+  return new NextResponse(html,{headers:{'Content-Type':'text/html; charset=utf-8','Content-Disposition':'attachment; filename="'+reportFileName(report)+'"','Cache-Control':'private, no-store','X-Robots-Tag':'noindex, nofollow'}});
  }
  const nonce=randomBytes(16).toString('base64');
  const html=reportHtml(report,base,{logo,brandLogo,nonce,downloadUrl:req.nextUrl.pathname+'?download=html',reactionImg});

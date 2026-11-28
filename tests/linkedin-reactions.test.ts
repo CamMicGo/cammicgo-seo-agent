@@ -51,7 +51,7 @@ test('report page: blue header with title and post id, PDF button with nonce, se
   const payload=reportPayload({postUrl:'https://www.linkedin.com/feed/update/urn:li:activity:7530372844606803968/',post:{author:'Alice',text:'x'},
     reactions:{byType:{like:1},people:[{name:'Eve',profileUrl:'https://www.linkedin.com/in/eve/',photoUrl:B+'/api/linkedin/thumb/11111111-1111-1111-1111-111111111111.jpg',reaction:'like'}]}},B)!;
   const page=reportHtml(payload,B,{logo:'data:image/png;base64,LOGO',brandLogo:'data:image/png;base64,CMG',nonce:'abc',downloadUrl:'/api/linkedin/report/x?download=html'});
-  assert.match(page,/<h1>Rapport de post LinkedIn <span class="stp (complete|partial)">/);
+  assert.match(page,/<div class="pid">Rapport de post LinkedIn<\/div><h1>[^<]+ <span class="stp (complete|partial)">/);
   assert.match(page,/Identifiant du post : urn:li:activity:7530372844606803968/);
   assert.match(page,/<script nonce="abc">/);
   assert.match(page,/Exporter en HTML/);
@@ -74,7 +74,7 @@ test('report language follows the app language (English, Arabic right-to-left), 
   assert.match(en.reportMarkdown,/### Reactions — 2/);
   const pageEn=reportHtml(reportPayload(en,B)!,B,{nonce:'n'});
   assert.match(pageEn,/<html lang="en">/);
-  assert.match(pageEn,/<h1>LinkedIn post report <span class="stp/);
+  assert.match(pageEn,/<div class="pid">LinkedIn post report<\/div><h1>[^<]+ <span class="stp/);
   assert.match(pageEn,/Export PDF/);
   assert.ok(!pageEn.includes('Exporter'));
   const ar=JSON.parse(JSON.stringify({...base,uiLang:'ar'}));
@@ -352,4 +352,43 @@ test('status Complete / Partial / Failed are distinct; a stop on request shows r
  const none=reportPayload({...fixture(),status:'failed',comments:{comments:[]},reactions:{people:[],expectedTotal:16}},B)!;
  assert.equal(reportStatus(none),'failed');
  assert.match(reportHtml(none,B),/<span class="stp failed">Échec<\/span>/);
+});
+
+test('report title and file name come from the post author and its first words', async ()=>{
+  const {reportTitle,reportFileName,reportHtml}=await import('../lib/linkedin-reactions.ts');
+  const r={createdAt:'2026-11-28T01:46:00.000Z',lang:'fr',post:{author:'Mistral AI',text:'🆕 Mistral Studio is our enterprise AI platform for putting frontier models like Le Chonk (Mistral Large 4) to work across your enterprise.\nToday…'},comments:{items:[]},reactions:{people:[]}};
+  assert.equal(reportTitle(r),'Mistral AI — Mistral Studio is our enterprise AI platform for putting frontier…');
+  assert.match(reportFileName(r),/^rapport-linkedin-mistral-ai-mistral-studio-is-our-enterprise-ai[a-z-]*-2026-11-28\.html$/);
+  assert.equal(reportFileName({post:{author:'Émilie Côté',text:'Été 2026 : nouveautés'}}),'rapport-linkedin-emilie-cote-ete-2026-nouveautes.html');
+  assert.equal(reportFileName({}),'rapport-linkedin.html');
+  const html=reportHtml(r as never);
+  assert.match(html,/<title>Mistral AI — Mistral Studio is our enterprise AI platform for putting frontier… · /);
+  assert.match(html,/<h1>Mistral AI — Mistral Studio/);
+});
+
+test('analysis groups with keywords cover every person of the report, not only the sample sent to the assistant', async ()=>{
+  const {cleanAnalysis,extendGroups}=await import('../lib/linkedin-reactions.ts');
+  const people=[
+    {url:'https://www.linkedin.com/in/a/',headline:'Senior Data Scientist at Exprivia'},
+    {url:'https://www.linkedin.com/in/b/',headline:'Machine Learning Engineer'},
+    {url:'https://www.linkedin.com/in/c/',headline:'Director of Sales EMEA'},
+    {url:'https://www.linkedin.com/in/d/',headline:'International relations student'},
+    {url:'https://www.linkedin.com/in/e/',headline:'CTO @ Mistral AI'},
+    {url:'https://www.linkedin.com/in/f/',headline:'.'},
+  ];
+  const a=cleanAnalysis({domainGroups:[
+    {label:'IA et data',profiles:['https://www.linkedin.com/in/a/'],keywords:['data scientist','machine learning','AI engineer']},
+    {label:'Direction',profiles:[],keywords:['CTO','CEO','director']},
+    {label:'Étudiants',profiles:[],keywords:['student','intern']},
+    {label:'Indéterminé',profiles:[],fallback:true},
+  ],companyGroups:[{label:'Mistral AI',profiles:[]}]},'ChatGPT');
+  const out=extendGroups(a,people);
+  const of=(l:string)=>out.domainGroups!.find(g=>g.label===l)!.ids.slice().sort().map(x=>x+'/');
+  assert.deepEqual(of('IA et data'),['https://www.linkedin.com/in/a/','https://www.linkedin.com/in/b/']);
+  assert.deepEqual(of('Direction'),['https://www.linkedin.com/in/c/','https://www.linkedin.com/in/e/'],'"director" whole word, not "cto" inside "director"');
+  assert.deepEqual(of('Étudiants'),['https://www.linkedin.com/in/d/'],'"intern" is not "international"');
+  assert.deepEqual(of('Indéterminé'),['https://www.linkedin.com/in/f/']);
+  assert.equal(out.extendedBy,5);
+  assert.equal(out.peopleClassified,6);
+  assert.deepEqual(out.companyGroups!.map(g=>g.ids),[['https://www.linkedin.com/in/e']]);
 });
