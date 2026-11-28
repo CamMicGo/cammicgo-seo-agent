@@ -188,7 +188,7 @@ public final class RelayClient {
         list.put(item);
         p.edit().putString("linkedinAssistantHistory", list.toString()).apply();
       }
-      if (nm == null || (MainActivity.foreground && MainActivity.linkedinControlOn)) return;
+      if (nm == null || MainActivity.linkedinControlOn) return;  // the open app picks it up, even in the background
       if (id.equals(p.getString("linkedinNotified", ""))) return;
       p.edit().putString("linkedinNotified", id).apply();
       boolean fr = "fr".equals(I18n.code(c));
